@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>InfernoDrift 3</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="game-wrap">
+      <canvas id="game"></canvas>
+
+      <div class="progress"><span id="progress"></span></div>
+
+      <div class="hud">
+        <div class="hud-topline">
+          <div class="score-cluster pill panel-block" id="score-cluster">
+            <div class="score-header">
+              <span class="label">Score</span>
+              <span class="best-score">Best <strong id="hud-best-score">0</strong></span>
+            </div>
+            <strong id="hud-score" class="score-value">0</strong>
+            <div class="score-subline">
+              <span id="hud-challenge" class="challenge-pill">Seed: Neon Gauntlet</span>
+              <span id="hud-survival" class="survival-pill">Survive to stack the chase.</span>
+            </div>
+          </div>
+
+          <div class="combo-cluster pill panel-block" id="combo-cluster">
+            <div class="label">Combo Drive</div>
+            <div class="combo-mainline">
+              <strong id="hud-combo" class="combo-value">x1.0</strong>
+              <strong id="hud-multiplier" class="multiplier-value">1x</strong>
+            </div>
+            <div class="combo-bar">
+              <span id="combo-bar-fill"></span>
+            </div>
+            <div class="combo-subline">
+              <span id="hud-combo-state">Chain drifts, air, pads, and near misses.</span>
+              <span id="hud-best-combo">Best x1.0</span>
+            </div>
+          </div>
+
+          <div class="danger-cluster pill panel-block" id="danger-cluster">
+            <div class="label">Danger</div>
+            <div class="danger-mainline">
+              <strong id="hud-danger">Stable</strong>
+              <strong id="hud-speed">0 MPH</strong>
+            </div>
+            <div class="lives-pill">
+              <div id="hud-hearts" class="hearts" aria-label="Lives"></div>
+              <strong id="hud-lives" class="lives-count">3/5</strong>
+            </div>
+          </div>
+
+          <button class="pill menu-btn panel-block" id="menu-btn" type="button">Menu</button>
+        </div>
+
+        <div class="hud-meta">
+          <div class="pill">
+            <span class="label">World</span>
+            <strong id="hud-world">—</strong>
+          </div>
+          <div class="pill">
+            <span class="label">Level</span>
+            <strong id="hud-level">—</strong>
+          </div>
+          <div class="pill">
+            <span class="label">Time</span>
+            <strong id="hud-time">0:00</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="status">
+        <div class="pill status-pill" id="boost-pill">
+          <div class="label">Boost</div>
+          <strong id="hud-boost-label">Charged</strong>
+          <div class="bar"><span id="boost-bar"></span></div>
+        </div>
+        <div class="pill status-pill" id="shield-pill">
+          <div class="label">Shield</div>
+          <strong id="hud-shield-label">Offline</strong>
+          <div class="bar"><span id="shield-bar"></span></div>
+        </div>
+      </div>
+
+      <div class="event-feed" id="event-feed" aria-live="polite"></div>
+
+      <div class="tutorial-prompt" id="tutorial-prompt" aria-live="polite">
+        <div class="tutorial-kicker">First Run</div>
+        <strong id="tutorial-title">Ignite the run</strong>
+        <p id="tutorial-body">Throttle up and steer. The first hunter story starts the second you move.</p>
+      </div>
+
+      <div class="touch-controls" id="touch-controls">
+        <div class="touch-stick-wrap">
+          <div id="touch-steer-pad" class="touch-steer-pad" aria-label="Touch Steering">
+            <div id="touch-steer-knob" class="touch-steer-knob"></div>
+          </div>
+        </div>
+        <div class="touch-buttons">
+          <button id="touch-drift">Drift</button>
+          <button id="touch-boost" class="primary">Boost</button>
+        </div>
+      </div>
+
+      <div class="minimap-wrap">
+        <div class="minimap-title">Radar</div>
+        <canvas id="minimap" width="180" height="180" aria-label="Minimap"></canvas>
+      </div>
+
+      <div class="overlay show" id="overlay">
+        <div class="panel title-panel">
+          <h1>InfernoDrift 3</h1>
+          <p class="subtitle">
+            Outdrift killer bots. Chain impossible escapes in a neon death arena.
+          </p>
+          <div class="hero-tags">
+            <span>Arcade drift survival</span>
+            <span>Short runs, huge swings</span>
+            <span>Easy to read, brutal to master</span>
+          </div>
+          <div class="hero-callout">
+            <strong id="overlay-challenge">Today's seed: Neon Gauntlet</strong>
+            <span id="overlay-best">Best Classic Run: 0</span>
+          </div>
+          <div class="cta-row">
+            <button class="primary" id="start-btn">Start Ignite Run</button>
+            <button class="ghost" id="tutorial-btn">Controls</button>
+          </div>
+          <div class="quick-start">
+            <div class="quick-start-card">
+              <span class="label">Start Fast</span>
+              <strong>Move, drift, then boost through the first gap.</strong>
+            </div>
+            <div class="quick-start-card">
+              <span class="label">Survive Smart</span>
+              <strong>Bait hunters wide. Ramp exits and near misses build the chain.</strong>
+            </div>
+          </div>
+          <div class="controls" id="tips" style="display: none;">
+            <div><span>Move:</span> Arrow Keys or WASD</div>
+            <div><span>Drift:</span> Space</div>
+            <div><span>Boost:</span> Shift</div>
+            <div><span>Camera Focus:</span> C</div>
+            <div><span>Restart Level:</span> R</div>
+            <div><span>Menu:</span> Esc</div>
+            <div><span>Start / Next:</span> Enter</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="overlay" id="message">
+        <div class="panel">
+          <h2 id="message-title">Level Complete</h2>
+          <p class="subtitle" id="message-body">You melted the asphalt. Ready for the next heat?</p>
+          <div class="summary-grid" id="summary-grid">
+            <div class="summary-card">
+              <span class="label">Total Score</span>
+              <strong id="summary-score">0</strong>
+            </div>
+            <div class="summary-card">
+              <span class="label">Best Combo</span>
+              <strong id="summary-combo">x1.0</strong>
+            </div>
+            <div class="summary-card">
+              <span class="label">Longest Drift</span>
+              <strong id="summary-drift">0.0s</strong>
+            </div>
+            <div class="summary-card">
+              <span class="label">Airtime</span>
+              <strong id="summary-air">0.0s</strong>
+            </div>
+            <div class="summary-card">
+              <span class="label">Near Misses</span>
+              <strong id="summary-near-miss">0</strong>
+            </div>
+            <div class="summary-card">
+              <span class="label">Hits / Lives</span>
+              <strong id="summary-hits">0 / 3</strong>
+            </div>
+          </div>
+          <div class="summary-footer">
+            <span id="summary-best">Best for difficulty: 0</span>
+            <span id="summary-challenge">Seed challenge active</span>
+          </div>
+          <div class="cta-row">
+            <button class="primary" id="next-btn">Next</button>
+            <button class="ghost" id="retry-btn">Retry</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="overlay" id="menu">
+        <div class="panel menu-panel">
+          <div class="menu-header">
+            <h2>InfernoDrift 3</h2>
+            <button class="ghost" id="menu-close" type="button">Close</button>
+          </div>
+          <div class="menu-tabs">
+            <button class="tab-btn active" data-tab="settings" type="button">Settings</button>
+            <button class="tab-btn" data-tab="customize" type="button">Customize</button>
+            <button class="tab-btn" data-tab="controls" type="button">Controls</button>
+            <button class="tab-btn" data-tab="howto" type="button">How to Play</button>
+          </div>
+          <div class="menu-content">
+            <section class="tab-panel active" id="tab-settings">
+              <label class="field">
+                <span>Difficulty</span>
+                <select id="difficulty-select">
+                  <option value="no_bots">No Bots</option>
+                  <option value="casual">Casual</option>
+                  <option value="classic" selected>Classic</option>
+                  <option value="brutal">Brutal</option>
+                </select>
+              </label>
+              <label class="field toggle">
+                <span>Invert Steering</span>
+                <input id="invert-toggle" type="checkbox" />
+              </label>
+              <label class="field toggle">
+                <span>Camera Focus</span>
+                <input id="camera-toggle" type="checkbox" />
+              </label>
+              <label class="field toggle">
+                <span>iPad / Touch Controls</span>
+                <input id="touch-mode-toggle" type="checkbox" />
+              </label>
+              <label class="field">
+                <span>Ramp Density</span>
+                <select id="ramp-density-select">
+                  <option value="low">Low</option>
+                  <option value="normal" selected>Normal</option>
+                  <option value="high">High</option>
+                  <option value="extra_high">Extra High</option>
+                </select>
+              </label>
+              <p class="hint">Changes apply instantly. Press R to restart the current level.</p>
+            </section>
+            <section class="tab-panel" id="tab-customize">
+              <div class="custom-layout">
+                <div class="custom-column">
+                  <div class="custom-section-title">Performance Build</div>
+                  <div class="custom-grid custom-grid-primary">
+                    <label class="field">
+                      <span>Body</span>
+                      <select id="body-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Wheels</span>
+                      <select id="wheel-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Driving Style</span>
+                      <select id="style-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Power</span>
+                      <select id="power-select"></select>
+                    </label>
+                  </div>
+                </div>
+                <div class="custom-column">
+                  <div class="custom-section-title">Appearance</div>
+                  <div class="custom-grid custom-grid-secondary">
+                    <label class="field">
+                      <span>Paint</span>
+                      <select id="paint-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Accent</span>
+                      <select id="accent-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Window Tint</span>
+                      <select id="tint-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Rear Kit</span>
+                      <select id="spoiler-select"></select>
+                    </label>
+                    <label class="field field-full">
+                      <span>Underglow</span>
+                      <select id="glow-select"></select>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div class="custom-stats" id="custom-stats"></div>
+              <p class="hint" id="custom-hint">Your loadout changes your car instantly and unlocks more options as you clear worlds.</p>
+            </section>
+            <section class="tab-panel" id="tab-controls">
+              <ul class="menu-list">
+                <li><strong>Steer:</strong> Arrow Keys or A / D</li>
+                <li><strong>Throttle:</strong> W / Arrow Up</li>
+                <li><strong>Brake/Reverse:</strong> S / Arrow Down</li>
+                <li><strong>Drift:</strong> Space</li>
+                <li><strong>Boost:</strong> Shift</li>
+                <li><strong>Camera Focus:</strong> C</li>
+                <li><strong>Restart Level:</strong> R</li>
+                <li><strong>Menu:</strong> Esc</li>
+              </ul>
+            </section>
+            <section class="tab-panel" id="tab-howto">
+              <ol class="menu-list">
+                <li>Stay alive until the timer ends to clear the level.</li>
+                <li>Hunter bots will chase you — dodge or bait them wide.</li>
+                <li>Hit neon ramps to launch and earn airtime bonus.</li>
+                <li>Boost pads refill boost and sling you forward.</li>
+                <li>Collect powerups: Boost, Shield, Life, or Slow.</li>
+              </ol>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="script.js"></script>
+  </body>
+</html>
