@@ -41,4 +41,4 @@ Passed locally:
 
 - Hosted backend is not deployed unless hosting credentials are available.
 - Rapier is represented by a physics-adapter-ready arcade simulation with kinematic fallback; the current committed build prioritizes stable playable physics over WASM dependency risk.
-- Main commit hash: `f91b4be267c7b68a6a173f17b0a24f0d22eadfcd`.
+- Main implementation commit hash: `a93bb5d4cba05c6955205ede9f5fff201dc28503`.
