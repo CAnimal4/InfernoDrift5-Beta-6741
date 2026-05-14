@@ -7,7 +7,8 @@ Status: local implementation complete for the 2026-05-13 revamp pass; final push
 - Repo: https://github.com/CAnimal4/InfernoDrift4
 - Pages target: https://canimal4.github.io/InfernoDrift4/
 - Starting commit for this pass: `bc965cf`
-- Final pushed commit: `PENDING_FINAL_PUSH`
+- Verified implementation commit: `c6f0119cbb1db650d46a147e6be3e0ca450ec9de`
+- Final report commit: this file is updated after the verified implementation commit; final pushed `HEAD` is reported in the assistant response.
 
 ## Implementation Summary
 
