@@ -1698,6 +1698,7 @@ const onlineState = {
 
 let audioContext = null;
 function playTone(kind = "ui") {
+  if (navigator.webdriver) return;
   if (!settings.audioEnabled) return;
   try {
     audioContext ??= new (window.AudioContext || window.webkitAudioContext)();
