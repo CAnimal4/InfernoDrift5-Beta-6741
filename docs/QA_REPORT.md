@@ -31,6 +31,12 @@ Updated for the InfernoDrift4 restart build on 2026-05-14.
 - Playwright screenshot: `output/playwright/games-smoke.png`.
 - Reviewed the in-game menu overlay on top of the live arena. The ID4 menu retains the current InfernoDrift visual identity, keeps the playfield visible behind the overlay, and exposes Settings/Games/Customize/Progress/Online/Controls/How To Play/Credits without a generic dashboard layout.
 
-## Remaining Production Verification
+## Production Verification
 
-- Push `main`, allow GitHub Actions Pages deployment, then verify `https://canimal4.github.io/InfernoDrift4/` returns 200, loads the canvas, and plays in offline mode.
+- GitHub CI for `a217c26`: completed successfully.
+- GitHub Pages workflow for `a217c26`: completed successfully.
+- `curl -I -L https://canimal4.github.io/InfernoDrift4/`: returned HTTP 200.
+- Live HTML switched from the rejected React artifact to the current-game static page with `script.js` and `style.css`.
+- Production desktop smoke via `SMOKE_URL=https://canimal4.github.io/InfernoDrift4/ node smoke_games.mjs`: passed.
+- Production mobile landscape Playwright check: canvas present, tutorial mode started, no app console errors or page errors.
+- Safari opened `https://canimal4.github.io/InfernoDrift4/?safari=a217c26`; front document title was `InfernoDrift4`.

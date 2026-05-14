@@ -1,11 +1,12 @@
 # Final Report
 
-Status: local implementation complete, pending push and GitHub Pages production verification.
+Status: implemented, pushed, and verified on GitHub Pages.
 
 ## URLs
 
 - Repo: https://github.com/CAnimal4/InfernoDrift4
 - Pages: https://canimal4.github.io/InfernoDrift4/
+- Verified game commit: `a217c26acec97dfbed1b66107c505a2894b2c7e3`
 
 ## Implementation Summary
 
@@ -39,12 +40,17 @@ Local-only. No backend hosting credentials/tooling were available in this enviro
 - `npm run smoke`: pass.
 - `npm run test:e2e`: pass.
 - Local backend health and two-client WebSocket smoke: pass.
+- GitHub CI for `a217c26`: pass.
+- GitHub Pages deploy for `a217c26`: pass.
+- Production Pages desktop smoke: pass.
+- Production Pages mobile landscape smoke: pass, canvas present, tutorial started, no app console errors.
+- Safari URL/title verification: pass, Safari front document URL is `https://canimal4.github.io/InfernoDrift4/?safari=a217c26` and title is `InfernoDrift4`.
 
 ## Known Limitations
 
 - GitHub Pages can host only the static client. Online multiplayer/social/ranked features require a separately hosted backend.
 - The ID4 mode expansion is intentionally layered on the current InfernoDrift mechanics instead of replacing the game architecture in this restart pass.
-- Live production Pages verification must happen after pushing this commit and waiting for the Pages workflow to deploy.
+- WebGL emits headless GPU performance warnings during Playwright screenshots; no application console errors were observed in the production mobile smoke.
 
 ## Next Steps
 
