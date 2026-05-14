@@ -1,6 +1,6 @@
 # Final Report
 
-Status: implemented locally; pending push and live Pages verification.
+Status: pushed to `main`, CI passed, GitHub Pages deployed, and the live Pages game was verified.
 
 ## URLs
 
@@ -26,6 +26,14 @@ Passed locally:
 - Backend `/health` check
 - Backend WebSocket guest/private-room smoke
 
+Passed after push/deploy:
+
+- Safari/GitHub repository check: `main` shows the full monorepo at commit `0170a40`.
+- Safari/GitHub Actions check: `Deploy GitHub Pages` passed for `0170a40` in 50s; `CI` passed for `0170a40` in 32s.
+- Pages HTTP check: `https://canimal4.github.io/InfernoDrift4/` returned `200`.
+- Production Playwright smoke: loaded the live URL, found the full-size WebGL canvas, started the tutorial, and confirmed `window.render_game_to_text()` reports `phase: "tutorial"` and `backend: "offline"`.
+- Production mobile-landscape smoke: started tutorial at `932x430` touch/mobile viewport with no app console errors.
+
 ## Implemented Features
 
 - TypeScript monorepo with Vite React web app, Node/WebSocket server, shared game core, shared protocol, docs, CI, and Pages workflow.
@@ -42,3 +50,4 @@ Passed locally:
 - Hosted backend is not deployed unless hosting credentials are available.
 - Rapier is represented by a physics-adapter-ready arcade simulation with kinematic fallback; the current committed build prioritizes stable playable physics over WASM dependency risk.
 - Main implementation commit hash: `a93bb5d4cba05c6955205ede9f5fff201dc28503`.
+- Deployment verification commit hash: `0170a4010544b919b20b6f2d2fbe391ea2636c75`.

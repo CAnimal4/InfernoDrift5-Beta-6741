@@ -24,6 +24,16 @@ Passed on May 13, 2026:
 - Mobile landscape screenshot: touch stick and Drift/Boost/Jump controls visible, HUD fits, no tap-target overlap.
 - In-app browser local preview: rendered menu and gameplay successfully. The browser log API still showed one stale JS.ORG error from the old baseline tab, while Playwright checks for the InfernoDrift4 app itself did not report app console errors.
 
+## Production Verification
+
+Passed after push on May 13, 2026:
+
+- Safari/GitHub repo check: `main` shows the committed monorepo and latest deployment badge.
+- Safari/GitHub Actions check: `Deploy GitHub Pages` and `CI` both completed successfully for commit `0170a40`.
+- `curl -L -s -o /dev/null -w '%{http_code} %{url_effective}\n' https://canimal4.github.io/InfernoDrift4/`: returned `200 https://canimal4.github.io/InfernoDrift4/`.
+- Production desktop Playwright smoke: loaded the Pages URL, captured `output/smoke/production-pages.png`, found a full-window canvas, clicked `Start Tutorial Race`, and read `phase: "tutorial"` / `backend: "offline"` from `window.render_game_to_text()`.
+- Production mobile-landscape Playwright smoke: captured `output/smoke/production-mobile-landscape.png`, started tutorial at `932x430`, and reported no app console errors.
+
 ## Known Limitations
 
 - Hosted backend is not deployed; backend is local/production-ready and the Pages client runs in offline/bot mode until `VITE_SERVER_URL` points to a verified `wss://` endpoint.
