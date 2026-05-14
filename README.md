@@ -1,14 +1,10 @@
 # InfernoDrift4
 
-InfernoDrift4 is a neon-fire survival drifting sequel built as a TypeScript monorepo. The GitHub Pages build is a complete offline game with bots, progression, garage customization, mobile controls, controller/keyboard support, and a backend-offline indicator. When `VITE_SERVER_URL` is configured, the same client connects to the Node/WebSocket backend for rooms, matchmaking, friends, chat, and ranked scaffolding.
+InfernoDrift4 is the current InfernoDrift game evolved instead of replaced: neon survival drifting, adaptive Risk hunters, Max Arena, touch controls, customization, deterministic smoke hooks, local progression, and an optional backend for online rooms.
 
-## Play
+Play: https://canimal4.github.io/InfernoDrift4/
 
-- GitHub Pages target: https://canimal4.github.io/InfernoDrift4/
-- Desktop: `WASD` or arrows to drive, `Shift` drift, `Space` boost, `X` jump, `R` restart, `F` fullscreen.
-- Mobile/tablet: landscape-first touch stick and Drift/Boost/Jump buttons.
-
-## Develop
+## Run Locally
 
 ```bash
 npm ci
@@ -16,7 +12,21 @@ npm run dev:web
 npm run dev:server
 ```
 
-Useful commands:
+Open `http://127.0.0.1:5173/index.html`. The static game works offline with bots. To connect a production frontend to a backend, set `window.INFERNO_SERVER_URL` or build/deploy with a configured server URL and use a public `wss://` endpoint.
+
+## Controls
+
+- Drive: `WASD` / arrows
+- Drift: `Space`
+- Boost: `Shift`
+- Jump: `X`
+- Backflip: `C`
+- Restart: `R`
+- Menu: `Esc` or `M`
+- Max Arena ball cam: `L`
+- Touch: landscape joystick plus Drift/Boost/Jump/Backflip buttons
+
+## Development
 
 ```bash
 npm run typecheck
@@ -26,26 +36,4 @@ npm run smoke
 npm run test:e2e
 ```
 
-## Backend
-
-The static Pages build works without a backend. To test online features locally:
-
-```bash
-cp .env.example .env
-npm run dev:server
-VITE_SERVER_URL=ws://127.0.0.1:8787 npm run dev:web
-```
-
-The backend stores local development data under `DATA_DIR` and never requires secrets for offline play. Production hosting requires setting `SESSION_SECRET`, `ALLOWED_ORIGINS`, and a persistent data directory or database.
-
-## Structure
-
-- `apps/web`: Vite + React + Three.js game client.
-- `apps/server`: Node/WebSocket authoritative backend.
-- `packages/game-core`: deterministic fixed-step simulation, modes, bots, saves.
-- `packages/protocol`: Zod-validated client/server protocol.
-- `docs`: architecture, backend, controls, testing, deployment, final report.
-
-## Deployment
-
-GitHub Pages deploys `apps/web/dist` through `.github/workflows/pages.yml`. The workflow must be enabled as the Pages source in repository settings if it is not already selected.
+GitHub Pages deploys the `dist/` artifact produced by `npm run build:web`.

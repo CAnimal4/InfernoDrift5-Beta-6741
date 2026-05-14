@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="InfernoDrift4 icon">
+  <rect width="512" height="512" rx="104" fill="#07101a"/>
+  <path d="M80 338c72-110 124-182 160-216 16 42 52 74 118 96-22 14-32 32-31 54 1 28 19 52 54 72-62 34-124 52-186 52-49 0-88-19-115-58Z" fill="#ff6b35"/>
+  <path d="M116 335c58-58 107-92 148-102-18 31-20 61-6 90 16 32 49 50 98 54-52 31-106 47-161 47-44 0-70-30-79-89Z" fill="#60f2ff" opacity=".9"/>
+  <text x="256" y="304" text-anchor="middle" font-family="Arial Black,Arial,sans-serif" font-size="142" fill="#07101a">4</text>
+</svg>

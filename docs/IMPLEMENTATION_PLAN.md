@@ -1,24 +1,19 @@
-# InfernoDrift4 Implementation Plan
+# Implementation Plan
 
-## Goals
+## Direction
 
-Build a real sequel in `CAnimal4/InfernoDrift4`, preserving the empty repo history and shipping a playable GitHub Pages game plus a local/production-ready backend.
+InfernoDrift4 restarts from the real current InfernoDrift codebase in the parent repo. The rejected standalone monorepo is preserved on `backup/rejected-monorepo-683a77c`.
 
-## Acceptance Criteria
+## Phases
 
-- Static client loads at `/InfernoDrift4/` with correct asset paths.
-- Offline mode is fully playable with bots and clear backend-offline status.
-- Tutorial, campaign, Max Arena, race, stunt, hunter, boss, time trial, drift score, battle, and rotating minigames can be started.
-- Garage, progression, settings, controls, mobile touch UI, save export/import, debug overlay, and credits exist.
-- Backend runs locally with guest accounts, rooms, queues, private codes, chat safety, friends scaffolding, and server-side protocol validation.
-- Tests pass: typecheck, unit, build, smoke, e2e.
-- Pages workflow deploys `apps/web/dist`.
+1. Preserve rejected work, port current InfernoDrift into `InfernoDrift4`, and verify parity.
+2. Rename/reskin to InfernoDrift4 while preserving current arcade readability.
+3. Add ID4 mode selection, progression, daily/weekly challenges, PWA shell, and backend-offline status.
+4. Add local Node/WebSocket backend with validation, guest users, rooms, queues, chat safety, and room snapshots.
+5. Run local tests, browser/game smokes, push, verify GitHub Actions, and verify Pages.
 
-## Milestones
+## Acceptance
 
-1. Scaffold monorepo, workflows, docs, package scripts.
-2. Implement deterministic game core and mode data.
-3. Implement React/Three.js client and offline playable flow.
-4. Implement Node/WebSocket backend and protocol validation.
-5. Add tests, smoke screenshots, docs, final report.
-6. Push to GitHub and verify Pages.
+- The live Pages game is visibly the current InfernoDrift made better.
+- Tutorial, campaign, Max Arena, menu tabs, customization, touch layout, and deterministic test hooks work.
+- Backend runs locally and does not pretend to be hosted.

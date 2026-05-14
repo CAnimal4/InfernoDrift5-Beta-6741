@@ -1,28 +1,31 @@
 # Testing
 
-Run the full local gate:
+Run the local validation stack from the repo root:
 
 ```bash
 npm ci
 npm run typecheck
-npm run test
+npm run lint
+npm test
 npm run build
+npm run format
 npm run smoke
 npm run test:e2e
 ```
 
-## Coverage
+## Browser Smokes
 
-- Protocol validation accepts valid messages and rejects malformed/speed-hack input.
-- Game core verifies boost, air control, deterministic stepping, and win conditions.
-- Smoke test builds and previews the web app, starts gameplay, captures desktop and mobile screenshots, and checks `render_game_to_text`.
-- Playwright e2e verifies load, tutorial movement, menu navigation, garage, settings, offline online panel, and mobile touch controls.
+`npm run smoke` starts a temporary local static server and runs `smoke_games.mjs`. It verifies the Games menu, Max Arena, settings visibility, goal replay path, dev forced demo, campaign return, and `render_game_to_text()`.
 
-## Manual QA Checklist
+`npm run test:e2e` starts a temporary local static server and runs `smoke_devmode.mjs`. It verifies protected dev-mode unlock behavior.
 
-- Start tutorial and complete/fail/restart.
-- Start Campaign Survival, Max Arena, Race/Time Trial, Garage, Settings, Controls, and Online.
-- Check desktop and phone landscape screenshots.
-- Confirm normal browser console has no app errors.
-- Confirm backend-offline state does not block offline play.
-- With local server running, connect two tabs and create/join a room.
+## Backend Smokes
+
+`npm test` covers message validation, chat sanitization, and WebSocket room snapshots. For a live local check:
+
+```bash
+npm run dev:server
+curl http://127.0.0.1:8787/health
+```
+
+Use two WebSocket clients to verify guest auth, private room create/join, sanitized chat, and invalid speed rejection.

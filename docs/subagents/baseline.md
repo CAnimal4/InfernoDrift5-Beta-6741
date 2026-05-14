@@ -1,19 +1,13 @@
-# Baseline Audit
+# Baseline Subagent Report
 
-The original `CAnimal4/InfernoDrift` repo is a static Three.js game with a large single-module script, touch controls, campaign survival, Max Arena, dev tools, deterministic test hooks, and Playwright smoke scripts. Its public project URL redirects through a JS.ORG custom domain that did not serve the game directly during planning.
+Thread limit prevented spawning new subagents, so this workstream was simulated read-only.
 
-Features to preserve:
+The real current InfernoDrift baseline lives in `/Users/amandaalden/Downloads/Codex App Test` and includes:
 
-- Fast drift/boost fantasy.
-- Touch controls and device profiles.
-- Campaign worlds and hunter pressure.
-- Max Arena ball/team identity.
-- `render_game_to_text` and deterministic automation hooks.
+- Single-canvas Three.js arcade driving.
+- InfernoDrift 3.3 campaign with Risk hunter AI.
+- InfernoDriftMax 1 arena with ball, goals, teams, health, lunges, and replay.
+- Customization, dev tools, minimap, touch layouts, and deterministic test hooks.
+- Existing smoke scripts and screenshot artifacts.
 
-Weak spots to improve:
-
-- Single large file architecture.
-- No reproducible package manifest.
-- Custom-domain Pages ambiguity.
-- No backend.
-- Limited menu hierarchy and progression depth.
+Decision: use this as the InfernoDrift4 foundation.

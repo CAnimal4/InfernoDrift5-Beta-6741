@@ -1,21 +1,12 @@
 # Deployment
 
-The Pages workflow deploys `apps/web/dist` from `main`.
+Frontend deployment uses GitHub Pages Actions.
 
-## Automatic Path
-
-1. Push to `main`.
-2. Ensure repository Settings -> Pages -> Source is set to GitHub Actions.
-3. Run or wait for `Deploy GitHub Pages`.
+1. Push `main`.
+2. Ensure Settings -> Pages -> Source is GitHub Actions.
+3. Wait for `Deploy GitHub Pages`.
 4. Open https://canimal4.github.io/InfernoDrift4/.
 
-## Manual Fallback
+The workflow runs `npm ci`, type checks, tests, builds `dist/`, uploads the Pages artifact, and deploys with official Pages actions.
 
-If Pages is not enabled programmatically:
-
-1. Open `https://github.com/CAnimal4/InfernoDrift4/settings/pages`.
-2. Under Source, choose `GitHub Actions`.
-3. Save.
-4. Open Actions and run `Deploy GitHub Pages` with `workflow_dispatch`.
-
-Backend hosting is separate. Only configure `VITE_SERVER_URL` for Pages after a public `wss://` backend is deployed and verified.
+Backend deployment is separate. Deploy `apps/server` to a Node/WebSocket host, then configure the client with a public `wss://` server URL.

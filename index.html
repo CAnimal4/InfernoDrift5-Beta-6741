@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>InfernoDrift4</title>
+    <meta
+      name="description"
+      content="InfernoDrift4: neon-fire survival drifting evolved from the current InfernoDrift with Risk hunters, Max arena, progression, touch controls, and backend-ready online play."
+    />
+    <meta name="theme-color" content="#0b1724" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="game-wrap">
+      <canvas id="game"></canvas>
+
+      <div class="progress"><span id="progress"></span></div>
+
+      <div class="hud">
+        <div class="pill">
+          <span class="label">World</span>
+          <strong id="hud-world">—</strong>
+        </div>
+        <div class="pill">
+          <span class="label">Level</span>
+          <strong id="hud-level">—</strong>
+        </div>
+        <div class="pill">
+          <span class="label">Time</span>
+          <strong id="hud-time">0:00</strong>
+        </div>
+        <div class="pill">
+          <span class="label">Score</span>
+          <strong id="hud-score">0</strong>
+        </div>
+        <div class="pill">
+          <span class="label">Speed</span>
+          <strong id="hud-speed">0 MPH</strong>
+        </div>
+        <div class="pill lives-pill">
+          <span class="label">Lives</span>
+          <div id="hud-hearts" class="hearts" aria-label="Lives"></div>
+          <strong id="hud-lives" class="lives-count">3/5</strong>
+        </div>
+        <div class="pill">
+          <span class="label">Drift</span>
+          <strong id="hud-combo">x1</strong>
+        </div>
+        <button class="pill menu-btn" id="menu-btn" type="button">Menu</button>
+      </div>
+
+      <div class="status">
+        <div class="pill">
+          <div class="label">Boost</div>
+          <div class="bar"><span id="boost-bar"></span></div>
+        </div>
+        <div class="pill">
+          <div class="label">Shield</div>
+          <div class="bar"><span id="shield-bar"></span></div>
+        </div>
+      </div>
+
+      <div class="debug-hud" id="debug-hud" hidden></div>
+
+      <div class="match-panel" id="match-panel" hidden>
+        <div class="match-panel-header">
+          <span class="eyebrow">Match</span>
+          <strong id="match-panel-score">0 - 0</strong>
+        </div>
+        <div class="match-panel-body">
+          <div class="match-panel-stats" id="match-panel-stats"></div>
+          <p class="match-panel-meta" id="match-panel-meta">Live</p>
+        </div>
+      </div>
+
+      <div class="touch-controls" id="touch-controls">
+        <div class="touch-stick-wrap">
+          <div
+            id="touch-steer-pad"
+            class="touch-steer-pad"
+            aria-label="Touch Steering"
+          >
+            <div id="touch-steer-knob" class="touch-steer-knob"></div>
+          </div>
+        </div>
+        <div class="touch-buttons">
+          <button id="touch-jump" class="ghost">Jump</button>
+          <button id="touch-drift">Drift</button>
+          <button id="touch-boost" class="primary">Boost</button>
+          <button id="touch-backflip" class="ghost">Backflip</button>
+        </div>
+      </div>
+
+      <div class="minimap-wrap">
+        <div class="minimap-title">Radar</div>
+        <canvas
+          id="minimap"
+          width="180"
+          height="180"
+          aria-label="Minimap"
+        ></canvas>
+      </div>
+
+      <div class="overlay show" id="overlay">
+        <div class="panel">
+          <div class="overlay-kicker">Neon Drift Survival</div>
+          <h1>InfernoDrift4</h1>
+          <p class="subtitle" id="overlay-subtitle">
+            The current InfernoDrift, evolved: faster boost chains, smarter
+            hunters, Max arena, tutorial missions, progression, and
+            backend-ready online play.
+          </p>
+          <div class="cta-row">
+            <button class="primary" id="start-btn">Start Ignite Run</button>
+            <button class="ghost" id="tutorial-btn">Training</button>
+          </div>
+          <div class="overlay-notes">
+            <span>First Ignition tutorial</span>
+            <span>Risk hunters</span>
+            <span>Max arena</span>
+            <span>Offline ready</span>
+          </div>
+          <div class="controls" id="tips" style="display: none"></div>
+        </div>
+      </div>
+
+      <div class="overlay" id="message">
+        <div class="panel">
+          <h2 id="message-title">Level Complete</h2>
+          <p class="subtitle" id="message-body">
+            You melted the asphalt. Ready for the next heat?
+          </p>
+          <div class="cta-row">
+            <button class="primary" id="next-btn">Next</button>
+            <button class="ghost" id="retry-btn">Retry</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="overlay" id="menu">
+        <div class="panel menu-panel">
+          <div class="menu-header">
+            <h2>InfernoDrift4</h2>
+            <button class="ghost" id="menu-close" type="button">Close</button>
+          </div>
+          <div class="menu-tabs">
+            <button class="tab-btn active" data-tab="settings" type="button">
+              Settings
+            </button>
+            <button
+              class="tab-btn"
+              id="games-tab-btn"
+              data-tab="games"
+              type="button"
+            >
+              Games
+            </button>
+            <button class="tab-btn" data-tab="customize" type="button">
+              Customize
+            </button>
+            <button class="tab-btn" data-tab="progression" type="button">
+              Progress
+            </button>
+            <button class="tab-btn" data-tab="online" type="button">
+              Online
+            </button>
+            <button class="tab-btn" data-tab="controls" type="button">
+              Controls
+            </button>
+            <button class="tab-btn" data-tab="howto" type="button">
+              How to Play
+            </button>
+            <button class="tab-btn" data-tab="credits" type="button">
+              Credits
+            </button>
+          </div>
+          <div class="menu-content">
+            <section class="tab-panel active" id="tab-settings">
+              <label class="field">
+                <span>Difficulty</span>
+                <select id="difficulty-select">
+                  <option value="no_bots">Free Play</option>
+                  <option value="casual">Casual</option>
+                  <option value="classic" selected>Classic</option>
+                  <option value="brutal">Brutal</option>
+                </select>
+              </label>
+              <label class="field toggle">
+                <span>Invert Steering</span>
+                <input id="invert-toggle" type="checkbox" />
+              </label>
+              <label class="field toggle">
+                <span>Camera Focus</span>
+                <input id="camera-toggle" type="checkbox" />
+              </label>
+              <label class="field">
+                <span>Device Mode</span>
+                <select id="device-mode-select">
+                  <option value="auto" selected>Auto Detect</option>
+                  <option value="desktop">Desktop</option>
+                  <option value="tablet">Tablet</option>
+                  <option value="phone">Phone</option>
+                </select>
+              </label>
+              <p class="hint" id="device-mode-active">Active device: Desktop</p>
+              <label class="field">
+                <span>Ramp Density</span>
+                <select id="ramp-density-select">
+                  <option value="low">Low</option>
+                  <option value="normal" selected>Normal</option>
+                  <option value="high">High</option>
+                  <option value="extra_high">Extra High</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>ID4 Hunter AI</span>
+                <select id="campaign-ai-select">
+                  <option value="normal">Normal</option>
+                  <option value="risk">Risk</option>
+                </select>
+              </label>
+              <label class="field" id="max-difficulty-field" hidden>
+                <span>Max Difficulty</span>
+                <select id="max-difficulty-select">
+                  <option value="super_easy">Super Easy</option>
+                  <option value="casual">Casual</option>
+                  <option value="classic" selected>Classic</option>
+                  <option value="brutal">Brutal</option>
+                </select>
+              </label>
+              <label class="field toggle">
+                <span>Dev Mode</span>
+                <input id="dev-mode-toggle" type="checkbox" />
+              </label>
+              <p class="hint" id="mode-settings-hint">
+                Campaign settings: hunter difficulty, ramp density, and
+                free-play options.
+              </p>
+              <p class="hint" id="dev-mode-status" hidden>Status: Disabled</p>
+              <p class="hint" id="dev-mode-hint" hidden>
+                Dev Mode unlocks player and bot speed tuning,
+                boost/invulnerability toggles, quick developer actions, and the
+                Games tab.
+              </p>
+              <div class="dev-tools" id="dev-tools" hidden>
+                <div class="dev-tools-grid">
+                  <label class="field">
+                    <span
+                      >Player Speed
+                      <strong id="dev-player-speed-value">100%</strong></span
+                    >
+                    <input
+                      id="dev-player-speed"
+                      type="range"
+                      min="50"
+                      max="220"
+                      step="5"
+                      value="100"
+                    />
+                  </label>
+                  <label class="field">
+                    <span
+                      >Bot Speed
+                      <strong id="dev-bot-speed-value">100%</strong></span
+                    >
+                    <input
+                      id="dev-bot-speed"
+                      type="range"
+                      min="0"
+                      max="220"
+                      step="5"
+                      value="100"
+                    />
+                  </label>
+                  <label class="field toggle">
+                    <span>Infinite Boost</span>
+                    <input id="dev-infinite-boost" type="checkbox" />
+                  </label>
+                  <label class="field toggle">
+                    <span>Invulnerable</span>
+                    <input id="dev-invulnerable" type="checkbox" />
+                  </label>
+                  <label class="field toggle">
+                    <span>Freeze Bots</span>
+                    <input id="dev-freeze-bots" type="checkbox" />
+                  </label>
+                </div>
+                <div class="dev-mode-panels">
+                  <div class="dev-mode-panel" id="dev-id33-panel">
+                    <div class="custom-section-title">Campaign Tools</div>
+                    <div class="dev-tools-grid">
+                      <label class="field">
+                        <span>World</span>
+                        <select id="dev-world-select"></select>
+                      </label>
+                      <label class="field">
+                        <span>Level</span>
+                        <select id="dev-level-select"></select>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="dev-mode-panel" id="dev-max-panel">
+                    <div class="custom-section-title">Arena Tools</div>
+                    <div class="dev-tools-grid">
+                      <label class="field toggle">
+                        <span>Debug HUD</span>
+                        <input id="dev-debug-hud" type="checkbox" />
+                      </label>
+                      <label class="field toggle">
+                        <span>Debug Logs</span>
+                        <input id="dev-debug-logs" type="checkbox" />
+                      </label>
+                      <label class="field toggle">
+                        <span>Demolitions</span>
+                        <input id="dev-max-demo-toggle" type="checkbox" />
+                      </label>
+                      <label class="field toggle">
+                        <span>Goal Replay</span>
+                        <input id="dev-max-replay-toggle" type="checkbox" />
+                      </label>
+                      <label class="field">
+                        <span>Boost Pickup</span>
+                        <select id="dev-max-boost-variant"></select>
+                      </label>
+                      <label class="field">
+                        <span>World Modifier</span>
+                        <select id="dev-world-modifier-select"></select>
+                      </label>
+                    </div>
+                    <div class="dev-max-summary" id="dev-max-summary"></div>
+                  </div>
+                </div>
+                <div class="cta-row dev-tools-actions">
+                  <button class="ghost" id="dev-refill-boost" type="button">
+                    Refill Boost
+                  </button>
+                  <button class="ghost" id="dev-refill-shield" type="button">
+                    Refill Shield
+                  </button>
+                  <button class="ghost" id="dev-cool-bots" type="button">
+                    Cool Bots
+                  </button>
+                  <button class="ghost" id="dev-heal" type="button">
+                    Max Lives
+                  </button>
+                  <button class="ghost" id="dev-clear-level" type="button">
+                    Clear Level
+                  </button>
+                  <button class="ghost" id="dev-reset-match" type="button">
+                    Reset Match
+                  </button>
+                  <button class="ghost" id="dev-reset-score" type="button">
+                    Reset Score
+                  </button>
+                  <button class="ghost" id="dev-trigger-replay" type="button">
+                    Replay Goal
+                  </button>
+                  <button class="ghost" id="dev-force-demo" type="button">
+                    Force Demo
+                  </button>
+                  <button class="ghost" id="dev-reset-tuning" type="button">
+                    Reset Dev Tweaks
+                  </button>
+                </div>
+              </div>
+              <p class="hint">
+                Changes apply instantly. Press R to restart the current level.
+              </p>
+            </section>
+            <section class="tab-panel" id="tab-games">
+              <p class="hint">
+                Pick the ID4 session loop. Each mode uses the current
+                InfernoDrift handling, hunters, ramps, Max ball systems, and
+                restart flow.
+              </p>
+              <div class="games-grid">
+                <button
+                  class="game-card active"
+                  id="game-card-id33"
+                  data-game-mode="infernodrift33"
+                  type="button"
+                >
+                  <img
+                    src="output/imagegen/infernodrift33-card.svg"
+                    alt="InfernoDrift4 campaign card art"
+                  />
+                  <div class="game-card-copy">
+                    <strong>Campaign Survival</strong>
+                    <span
+                      >InfernoDrift4 survival route with handcrafted level
+                      twists and Risk hunters.</span
+                    >
+                  </div>
+                </button>
+                <button
+                  class="game-card"
+                  id="game-card-max1"
+                  data-game-mode="infernodriftmax1"
+                  type="button"
+                >
+                  <img
+                    src="output/imagegen/infernodriftmax1-card.svg"
+                    alt="InfernoDrift4 Max Arena card art"
+                  />
+                  <div class="game-card-copy">
+                    <strong>Max Arena</strong>
+                    <span
+                      >Compact arena rules with preset difficulty, smarter
+                      squads, and cleaner reads.</span
+                    >
+                  </div>
+                </button>
+              </div>
+              <div class="custom-section-title">ID4 Modes</div>
+              <div class="id4-mode-grid" id="id4-mode-grid">
+                <button
+                  class="id4-mode-card active"
+                  data-id4-mode="tutorial"
+                  type="button"
+                >
+                  <strong>First Ignition</strong
+                  ><span>Learn drift, boost, jumps, and clean landings.</span>
+                </button>
+                <button
+                  class="id4-mode-card"
+                  data-id4-mode="campaign"
+                  type="button"
+                >
+                  <strong>Campaign Survival</strong
+                  ><span>Risk hunters, worlds, medals, and unlocks.</span>
+                </button>
+                <button
+                  class="id4-mode-card"
+                  data-id4-mode="race"
+                  type="button"
+                >
+                  <strong>Race / Time Trial</strong
+                  ><span
+                    >Fast restarts, ghost scoring, and clean checkpoints.</span
+                  >
+                </button>
+                <button
+                  class="id4-mode-card"
+                  data-id4-mode="stunt"
+                  type="button"
+                >
+                  <strong>Stunt Park</strong
+                  ><span
+                    >Ramps, backflips, landing boosts, and trick combos.</span
+                  >
+                </button>
+                <button
+                  class="id4-mode-card"
+                  data-id4-mode="hunter"
+                  type="button"
+                >
+                  <strong>Hunter Tag</strong
+                  ><span>Near misses, threat warnings, and escape chains.</span>
+                </button>
+                <button
+                  class="id4-mode-card"
+                  data-id4-mode="boss"
+                  type="button"
+                >
+                  <strong>Boss Chase</strong
+                  ><span>World finales with heavier coordinated hunters.</span>
+                </button>
+                <button
+                  class="id4-mode-card"
+                  data-id4-mode="battle"
+                  type="button"
+                >
+                  <strong>Battle Arena</strong
+                  ><span>Max-style hits, team roles, and replay moments.</span>
+                </button>
+                <button
+                  class="id4-mode-card"
+                  data-id4-mode="minigames"
+                  type="button"
+                >
+                  <strong>Rotating Minigames</strong
+                  ><span
+                    >Ramp Rush, Boost Bowling, Lava Floor, and King Zone.</span
+                  >
+                </button>
+              </div>
+              <p class="hint" id="game-mode-hint">
+                Current game: InfernoDrift4 Campaign
+              </p>
+            </section>
+            <section class="tab-panel" id="tab-customize">
+              <div class="custom-layout">
+                <div class="custom-column">
+                  <div class="custom-section-title">Performance Build</div>
+                  <div class="custom-grid custom-grid-primary">
+                    <label class="field">
+                      <span>Body</span>
+                      <select id="body-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Wheels</span>
+                      <select id="wheel-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Driving Style</span>
+                      <select id="style-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Power</span>
+                      <select id="power-select"></select>
+                    </label>
+                  </div>
+                </div>
+                <div class="custom-column">
+                  <div class="custom-section-title">Appearance</div>
+                  <div class="custom-grid custom-grid-secondary">
+                    <label class="field">
+                      <span>Paint</span>
+                      <select id="paint-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Accent</span>
+                      <select id="accent-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Window Tint</span>
+                      <select id="tint-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Rear Kit</span>
+                      <select id="spoiler-select"></select>
+                    </label>
+                    <label class="field field-full">
+                      <span>Underglow</span>
+                      <select id="glow-select"></select>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div class="custom-stats" id="custom-stats"></div>
+              <p class="hint" id="custom-hint">
+                Your loadout changes your car instantly and unlocks more options
+                as you clear worlds.
+              </p>
+            </section>
+            <section class="tab-panel" id="tab-progression">
+              <div class="progression-board" id="progression-board"></div>
+              <div class="custom-section-title">Daily / Weekly Challenges</div>
+              <ul class="menu-list" id="challenge-list"></ul>
+            </section>
+            <section class="tab-panel" id="tab-online">
+              <div class="online-status-card" id="online-status-card"></div>
+              <div class="custom-section-title">Backend-ready features</div>
+              <ul class="menu-list" id="online-feature-list"></ul>
+            </section>
+            <section class="tab-panel" id="tab-controls">
+              <ul class="menu-list" id="controls-list"></ul>
+            </section>
+            <section class="tab-panel" id="tab-howto">
+              <ol class="menu-list" id="howto-list"></ol>
+            </section>
+            <section class="tab-panel" id="tab-credits">
+              <ul class="menu-list">
+                <li>
+                  <strong>InfernoDrift4:</strong> built from the current
+                  InfernoDrift arcade codebase.
+                </li>
+                <li><strong>Rendering:</strong> Three.js, MIT License.</li>
+                <li>
+                  <strong>Art/audio:</strong> procedural geometry, CSS,
+                  generated Web Audio tones, and local SVG cards.
+                </li>
+                <li>
+                  <strong>Backend:</strong> local Node/WebSocket implementation,
+                  optional for online features.
+                </li>
+              </ul>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="script.js"></script>
+    <script>
+      if ("serviceWorker" in navigator && location.protocol !== "file:") {
+        navigator.serviceWorker.register("sw.js").catch(() => {});
+      }
+    </script>
+  </body>
+</html>

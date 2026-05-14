@@ -1,25 +1,28 @@
 # Architecture
 
-InfernoDrift4 separates the game into a static client, shared simulation, shared protocol, and optional backend.
+InfernoDrift4 is a restart from the current InfernoDrift static game, not the rejected React monorepo. The architecture keeps the proven arcade loop in root static files while adding only the structure needed to build, test, deploy, and connect an optional backend.
 
-## Client
+## Static Client
 
-`apps/web` uses React for menus/HUD/settings and Three.js for gameplay rendering. The canvas is driven by `InfernoDriftSim`, a fixed-step simulation from `packages/game-core`.
+- `index.html`: game shell, menus, PWA registration, and DOM HUD.
+- `script.js`: Three.js renderer, driving simulation, modes, AI, progression, saves, dev tools, test hooks, and optional backend status UI.
+- `style.css`: current neon arcade HUD/menu/touch styling.
+- `manifest.webmanifest`, `icon.svg`, `sw.js`: PWA shell.
+- `scripts/build-site.mjs`: copies the static client into `dist/` for GitHub Pages.
 
-The client exposes:
+The automation contract is preserved:
 
-- `window.render_game_to_text()`: concise JSON state for automation.
-- `window.advanceTime(ms)`: deterministic simulation stepping.
-- `window.__infernodrift4`: small debug/test API.
-
-## Simulation
-
-`packages/game-core` owns mode configs, car handling, bot roles, pickups, objectives, scoring, saves, and replay events. It intentionally keeps rendering and DOM input out of core logic.
-
-## Protocol
-
-`packages/protocol` defines Zod schemas for versioned WebSocket messages. Clients send intent/input only. The server rejects impossible input, malformed messages, stale sequences, and unsafe chat.
+- `window.advanceTime(ms)`
+- `window.render_game_to_text()`
+- `window.__infernodriftTestApi`
 
 ## Backend
 
-`apps/server` runs a Node `ws` server with local persistence. It implements guest accounts, queues, private rooms, chat, friends scaffolding, and authoritative room ticks. A production deployment can replace local JSON storage with SQLite/Postgres without changing the client protocol.
+- `apps/server/src/index.js`: local Node/WebSocket backend with health, guest auth, rooms, queue creation, chat, quick chat, bot-fill metadata, and validation.
+- `tests/server.test.mjs`: protocol and WebSocket behavior tests.
+
+The static client is fully playable without this server. A hosted server can be attached later by configuring `window.INFERNO_SERVER_URL` or `localStorage.infernoDrift4.serverUrl`.
+
+## Deployment
+
+GitHub Pages deploys only the static `dist/` artifact. The backend is not claimed live unless separately hosted and verified.

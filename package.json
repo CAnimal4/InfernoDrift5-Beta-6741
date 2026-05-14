@@ -1,46 +1,29 @@
 {
   "name": "infernodrift4",
-  "version": "1.0.0",
+  "version": "4.0.0",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "description": "InfernoDrift4, evolved from the current InfernoDrift game.",
   "scripts": {
     "dev": "npm run dev:web",
-    "dev:web": "npm --workspace apps/web run dev",
-    "dev:server": "npm --workspace apps/server run dev",
-    "build": "npm run build:packages && npm run build:web && npm run build:server",
-    "build:packages": "npm --workspace packages/protocol run build && npm --workspace packages/game-core run build",
-    "build:web": "npm --workspace apps/web run build",
-    "build:server": "npm --workspace apps/server run build",
-    "typecheck": "tsc -b --pretty false",
-    "test": "vitest run",
-    "test:e2e": "playwright test",
-    "lint": "tsc -b --pretty false",
+    "dev:web": "npx http-server . -p 5173 -c-1",
+    "dev:server": "node apps/server/src/index.js",
+    "build": "npm run build:web && npm run build:server",
+    "build:web": "node scripts/build-site.mjs",
+    "build:server": "node --check apps/server/src/index.js",
+    "typecheck": "node --check script.js && node --check smoke_games.mjs && node --check smoke_devmode.mjs && node --check apps/server/src/index.js && node --check tests/server.test.mjs",
+    "lint": "npm run typecheck",
     "format": "prettier --check .",
-    "smoke": "node tests/smoke.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "smoke": "node scripts/run-with-server.mjs smoke_games.mjs",
+    "test:e2e": "node scripts/run-with-server.mjs smoke_devmode.mjs"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^5.1.1",
-    "vite": "^7.2.7",
-    "typescript": "^5.9.3",
-    "tsx": "^4.21.0",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "three": "^0.182.0",
-    "zod": "^4.2.1",
-    "ws": "^8.19.0"
+    "ws": "^8.18.3"
   },
   "devDependencies": {
-    "@playwright/test": "^1.57.0",
-    "@types/node": "^25.0.3",
-    "@types/react": "^19.2.7",
-    "@types/react-dom": "^19.2.3",
-    "@types/three": "^0.181.0",
-    "@types/ws": "^8.18.1",
-    "prettier": "^3.7.4",
-    "vitest": "^4.0.15"
+    "http-server": "^14.1.1",
+    "playwright": "^1.57.0",
+    "prettier": "^3.7.4"
   }
 }
