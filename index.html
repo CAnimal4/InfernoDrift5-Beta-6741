@@ -11,6 +11,8 @@
     <meta name="theme-color" content="#0b1724" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="icon" href="favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -25,37 +27,43 @@
 
       <div class="progress"><span id="progress"></span></div>
 
-      <div class="hud">
-        <div class="pill">
-          <span class="label">World</span>
-          <strong id="hud-world">—</strong>
+      <div class="hud" aria-live="polite">
+        <div class="hud-cluster hud-objective">
+          <div class="pill">
+            <span class="label">World</span>
+            <strong id="hud-world">—</strong>
+          </div>
+          <div class="pill">
+            <span class="label">Level</span>
+            <strong id="hud-level">—</strong>
+          </div>
+          <div class="pill">
+            <span class="label">Time</span>
+            <strong id="hud-time">0:00</strong>
+          </div>
+          <div class="pill">
+            <span class="label">Score</span>
+            <strong id="hud-score">0</strong>
+          </div>
         </div>
-        <div class="pill">
-          <span class="label">Level</span>
-          <strong id="hud-level">—</strong>
+        <div class="hud-cluster hud-vehicle">
+          <div class="pill">
+            <span class="label">Speed</span>
+            <strong id="hud-speed">0 MPH</strong>
+          </div>
+          <div class="pill lives-pill">
+            <span class="label">Lives</span>
+            <div id="hud-hearts" class="hearts" aria-label="Lives"></div>
+            <strong id="hud-lives" class="lives-count">3/5</strong>
+          </div>
+          <div class="pill">
+            <span class="label">Drift</span>
+            <strong id="hud-combo">x1</strong>
+          </div>
+          <button class="pill menu-btn" id="menu-btn" type="button">
+            Menu
+          </button>
         </div>
-        <div class="pill">
-          <span class="label">Time</span>
-          <strong id="hud-time">0:00</strong>
-        </div>
-        <div class="pill">
-          <span class="label">Score</span>
-          <strong id="hud-score">0</strong>
-        </div>
-        <div class="pill">
-          <span class="label">Speed</span>
-          <strong id="hud-speed">0 MPH</strong>
-        </div>
-        <div class="pill lives-pill">
-          <span class="label">Lives</span>
-          <div id="hud-hearts" class="hearts" aria-label="Lives"></div>
-          <strong id="hud-lives" class="lives-count">3/5</strong>
-        </div>
-        <div class="pill">
-          <span class="label">Drift</span>
-          <strong id="hud-combo">x1</strong>
-        </div>
-        <button class="pill menu-btn" id="menu-btn" type="button">Menu</button>
       </div>
 
       <div class="status">
@@ -559,7 +567,108 @@
             </section>
             <section class="tab-panel" id="tab-online">
               <div class="online-status-card" id="online-status-card"></div>
-              <div class="custom-section-title">Backend-ready features</div>
+              <div class="online-console" id="online-console">
+                <div class="online-grid">
+                  <label class="field">
+                    <span>Server URL</span>
+                    <input
+                      id="online-server-url"
+                      type="url"
+                      placeholder="wss://infernodrift4-online.your.workers.dev/ws"
+                      autocomplete="off"
+                    />
+                  </label>
+                  <label class="field">
+                    <span>Guest name</span>
+                    <input
+                      id="online-username"
+                      maxlength="24"
+                      placeholder="Drifter"
+                      autocomplete="nickname"
+                    />
+                  </label>
+                  <label class="field">
+                    <span>Private code</span>
+                    <input
+                      id="online-room-code"
+                      maxlength="8"
+                      placeholder="AB12CD"
+                      autocomplete="off"
+                    />
+                  </label>
+                  <label class="field">
+                    <span>Playlist</span>
+                    <select id="online-playlist">
+                      <option value="casual">Casual 3v3</option>
+                      <option value="ranked">Ranked 1v1</option>
+                      <option value="max-arena">Max Arena 3v3</option>
+                      <option value="battle">Battle Arena</option>
+                    </select>
+                  </label>
+                  <label class="field toggle">
+                    <span>Bot Fill</span>
+                    <input id="online-botfill" type="checkbox" checked />
+                  </label>
+                </div>
+                <div class="cta-row online-actions">
+                  <button class="primary" id="online-connect" type="button">
+                    Connect
+                  </button>
+                  <button class="ghost" id="online-disconnect" type="button">
+                    Disconnect
+                  </button>
+                  <button class="ghost" id="online-create-room" type="button">
+                    Create Private
+                  </button>
+                  <button class="ghost" id="online-join-room" type="button">
+                    Join Code
+                  </button>
+                  <button class="ghost" id="online-queue" type="button">
+                    Queue
+                  </button>
+                </div>
+                <div class="online-panels">
+                  <div class="online-panel">
+                    <div class="custom-section-title">Room</div>
+                    <div id="online-room-state" class="online-room-state">
+                      Offline bot mode
+                    </div>
+                    <ul class="menu-list compact" id="online-room-list"></ul>
+                  </div>
+                  <div class="online-panel">
+                    <div class="custom-section-title">Lobby Chat</div>
+                    <div id="online-chat-log" class="online-chat-log"></div>
+                    <div class="online-chat-row">
+                      <input
+                        id="online-chat-input"
+                        maxlength="120"
+                        placeholder="Safe lobby chat"
+                        autocomplete="off"
+                      />
+                      <button class="ghost" id="online-chat-send" type="button">
+                        Send
+                      </button>
+                    </div>
+                    <div class="quick-chat-row">
+                      <button class="ghost" data-quick-chat="Nice drift!">
+                        Nice drift!
+                      </button>
+                      <button class="ghost" data-quick-chat="Defending">
+                        Defending
+                      </button>
+                      <button class="ghost" data-quick-chat="Need boost">
+                        Need boost
+                      </button>
+                    </div>
+                  </div>
+                  <div class="online-panel">
+                    <div class="custom-section-title">Rank / Social</div>
+                    <ul class="menu-list compact" id="online-leaderboard"></ul>
+                    <ul class="menu-list compact" id="online-social-list"></ul>
+                  </div>
+                </div>
+              </div>
+              <div class="custom-section-title">Online features</div>
               <ul class="menu-list" id="online-feature-list"></ul>
             </section>
             <section class="tab-panel" id="tab-controls">

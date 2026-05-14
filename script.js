@@ -57,6 +57,24 @@ const progressionBoard = document.getElementById("progression-board");
 const challengeList = document.getElementById("challenge-list");
 const onlineStatusCard = document.getElementById("online-status-card");
 const onlineFeatureList = document.getElementById("online-feature-list");
+const onlineServerUrlInput = document.getElementById("online-server-url");
+const onlineUsernameInput = document.getElementById("online-username");
+const onlineRoomCodeInput = document.getElementById("online-room-code");
+const onlinePlaylistSelect = document.getElementById("online-playlist");
+const onlineBotfillToggle = document.getElementById("online-botfill");
+const onlineConnectBtn = document.getElementById("online-connect");
+const onlineDisconnectBtn = document.getElementById("online-disconnect");
+const onlineCreateRoomBtn = document.getElementById("online-create-room");
+const onlineJoinRoomBtn = document.getElementById("online-join-room");
+const onlineQueueBtn = document.getElementById("online-queue");
+const onlineRoomState = document.getElementById("online-room-state");
+const onlineRoomList = document.getElementById("online-room-list");
+const onlineChatLog = document.getElementById("online-chat-log");
+const onlineChatInput = document.getElementById("online-chat-input");
+const onlineChatSend = document.getElementById("online-chat-send");
+const onlineQuickChatButtons = document.querySelectorAll("[data-quick-chat]");
+const onlineLeaderboard = document.getElementById("online-leaderboard");
+const onlineSocialList = document.getElementById("online-social-list");
 const difficultySelect = document.getElementById("difficulty-select");
 const campaignAiSelect = document.getElementById("campaign-ai-select");
 const maxDifficultyField = document.getElementById("max-difficulty-field");
@@ -124,6 +142,8 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = false;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x0b0f14, 48, 620);
@@ -1444,6 +1464,72 @@ const ID4_MODE_RULES = {
   },
 };
 
+const ID4_MINIGAME_RULES = [
+  {
+    id: "ramp-rush",
+    label: "Ramp Rush",
+    objective: "Hit the flame gates in order and land cleanly for medal time.",
+    markerCount: 5,
+    color: 0xff9f45,
+    type: "checkpoints",
+  },
+  {
+    id: "boost-bowling",
+    label: "Boost Bowling",
+    objective:
+      "Use boost lanes to knock out target pins before the clock melts.",
+    markerCount: 8,
+    color: 0xffdf7a,
+    type: "targets",
+  },
+  {
+    id: "lava-floor",
+    label: "Lava Floor",
+    objective:
+      "Stay inside the moving safe ring while the outside floor burns.",
+    markerCount: 1,
+    color: 0xff5a3d,
+    type: "zone",
+  },
+  {
+    id: "king-zone",
+    label: "King of the Zone",
+    objective: "Hold the capture ring while drifting and blocking hunters.",
+    markerCount: 1,
+    color: 0x68ffba,
+    type: "zone",
+  },
+  {
+    id: "trick-combo",
+    label: "Trick Combo",
+    objective: "Chain drift, boost, backflip, near miss, and landing bonuses.",
+    markerCount: 4,
+    color: 0x9fe7ff,
+    type: "combo",
+  },
+  {
+    id: "bot-escape",
+    label: "Bot Escape",
+    objective: "Thread escape gates while hunter waves tighten behind you.",
+    markerCount: 6,
+    color: 0xff6f86,
+    type: "checkpoints",
+  },
+];
+
+const MODE_OBJECTIVE_DEFAULT = {
+  label: "Free Run",
+  detail: "Survive, score, and restart fast.",
+  type: "survival",
+  progress: 0,
+  target: 1,
+  checkpointIndex: 0,
+  timer: 0,
+  comboTarget: "",
+  minigameId: "",
+  completed: false,
+};
+
 const input = {
   left: false,
   right: false,
@@ -1525,6 +1611,11 @@ const state = {
   effectToastTimer: 0,
   minimapHeading: 0,
   minimapDebugTimer: 0,
+  radarSnapshot: {
+    heading: 0,
+    range: 0,
+    entities: [],
+  },
   cameraTelemetry: {
     distance: CAMERA_BACK_DISTANCE,
     height: CAMERA_HEIGHT,
@@ -1543,6 +1634,7 @@ const state = {
   deviceInputMode: "auto",
   overtime: false,
   playerLoadoutStats: null,
+  modeObjective: { ...MODE_OBJECTIVE_DEFAULT },
   deviceProfile: { mode: "auto", ...DEVICE_PROFILES.desktop },
   steppingExternally: false,
   campaignRisk: {
@@ -1586,6 +1678,22 @@ const maxMode = {
     playerTouches: 0,
     recentMisses: 0,
   },
+};
+
+const onlineState = {
+  socket: null,
+  status: "offline",
+  serverUrl: "",
+  user: null,
+  room: null,
+  latencyMs: 0,
+  lastPingAt: 0,
+  inputTimer: 0,
+  messages: [],
+  pendingMessages: [],
+  leaderboard: [],
+  recentPlayers: [],
+  friends: [],
 };
 
 let audioContext = null;
@@ -1773,8 +1881,9 @@ function getDeviceAssistTuning() {
 
 function setMinimapSize(size) {
   if (!minimapCanvas) return;
-  minimapCanvas.width = size;
-  minimapCanvas.height = size;
+  const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+  minimapCanvas.width = Math.round(size * dpr);
+  minimapCanvas.height = Math.round(size * dpr);
   minimapCanvas.style.width = `${size}px`;
   minimapCanvas.style.height = `${size}px`;
 }
@@ -2734,30 +2843,259 @@ function refreshProgressionUi() {
     `;
   }
   if (challengeList) {
+    const minigame = getActiveMinigameRule();
     challengeList.innerHTML = `
       <li><strong>Daily:</strong> Earn 900 drift score in ${getId4ModeRule().label}.</li>
-      <li><strong>Weekly:</strong> Clear one campaign world and score once in Max Arena.</li>
-      <li><strong>Live event:</strong> Community goals are local/offline until a backend URL is configured.</li>
+      <li><strong>Weekly:</strong> Clear ${minigame.label}, one campaign world, and score once in Max Arena.</li>
+      <li><strong>Live event:</strong> ${minigame.objective}</li>
     `;
   }
 }
 
-function refreshOnlineUi() {
-  const configuredUrl =
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function getConfiguredServerUrl() {
+  return (
+    onlineServerUrlInput?.value?.trim() ||
     window.INFERNO_SERVER_URL ||
     localStorage.getItem("infernoDrift4.serverUrl") ||
-    "";
-  const offline = !configuredUrl;
+    ""
+  );
+}
+
+function normalizeServerUrl(url) {
+  const trimmed = String(url || "").trim();
+  if (!trimmed) return "";
+  const withProtocol =
+    trimmed.startsWith("ws://") || trimmed.startsWith("wss://")
+      ? trimmed
+      : trimmed.startsWith("http://")
+        ? `ws://${trimmed.slice(7)}`
+        : trimmed.startsWith("https://")
+          ? `wss://${trimmed.slice(8)}`
+          : `wss://${trimmed}`;
+  try {
+    const parsed = new URL(withProtocol);
+    if (!parsed.pathname || parsed.pathname === "/") parsed.pathname = "/ws";
+    return parsed.toString();
+  } catch {
+    return withProtocol;
+  }
+}
+
+function addOnlineMessage(from, text, quick = false) {
+  onlineState.messages.push({ from, text, quick, at: Date.now() });
+  onlineState.messages = onlineState.messages.slice(-24);
+  refreshOnlineUi();
+}
+
+function sendOnline(payload) {
+  if (onlineState.socket?.readyState !== WebSocket.OPEN) {
+    onlineState.pendingMessages.push(payload);
+    onlineState.pendingMessages = onlineState.pendingMessages.slice(-12);
+    if (onlineState.status === "offline") connectOnline();
+    addOnlineMessage("System", "Queued until backend connects.", true);
+    return true;
+  }
+  onlineState.socket.send(JSON.stringify(payload));
+  return true;
+}
+
+function updateOnlineTelemetry(dt) {
+  if (onlineState.socket?.readyState !== WebSocket.OPEN || !onlineState.room)
+    return;
+  onlineState.inputTimer += dt;
+  if (onlineState.inputTimer < 0.25) return;
+  onlineState.inputTimer = 0;
+  sendOnline({
+    type: "input.frame",
+    tick: Math.round(state.elapsed * 60),
+    mode: settings.id4Mode,
+    x: Number(player.position.x.toFixed(2)),
+    z: Number(player.position.z.toFixed(2)),
+    speed: Number((Math.abs(player.speed) * SPEED_TO_MPH_MULT).toFixed(1)),
+    boost: Number(state.boost.toFixed(2)),
+  });
+}
+
+function connectOnline() {
+  const serverUrl = normalizeServerUrl(getConfiguredServerUrl());
+  if (!serverUrl) {
+    addOnlineMessage(
+      "System",
+      "Backend offline - set a Worker or local ws URL.",
+    );
+    refreshOnlineUi();
+    return;
+  }
+  localStorage.setItem("infernoDrift4.serverUrl", serverUrl);
+  onlineState.serverUrl = serverUrl;
+  onlineState.status = "connecting";
+  refreshOnlineUi();
+  try {
+    onlineState.socket?.close();
+    const socket = new WebSocket(serverUrl);
+    onlineState.socket = socket;
+    socket.addEventListener("open", () => {
+      onlineState.status = "live";
+      const username =
+        onlineUsernameInput?.value?.trim() ||
+        localStorage.getItem("infernoDrift4.username") ||
+        `Drifter-${Math.floor(Math.random() * 900 + 100)}`;
+      localStorage.setItem("infernoDrift4.username", username);
+      sendOnline({ type: "auth.guest", username });
+      const pending = onlineState.pendingMessages.splice(0);
+      pending.forEach((message) => sendOnline(message));
+      onlineState.lastPingAt = performance.now();
+      sendOnline({ type: "ping", at: Date.now() });
+      addOnlineMessage("System", "Connected to InfernoDrift4 online.");
+      refreshOnlineUi();
+    });
+    socket.addEventListener("message", (event) => {
+      let msg;
+      try {
+        msg = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      handleOnlineMessage(msg);
+    });
+    socket.addEventListener("close", () => {
+      onlineState.status = "offline";
+      onlineState.room = null;
+      addOnlineMessage(
+        "System",
+        "Disconnected. Offline bot mode is still playable.",
+      );
+      refreshOnlineUi();
+    });
+    socket.addEventListener("error", () => {
+      onlineState.status = "error";
+      addOnlineMessage("System", "Backend connection failed.");
+      refreshOnlineUi();
+    });
+  } catch (error) {
+    onlineState.status = "error";
+    addOnlineMessage("System", error?.message || "Backend connection failed.");
+  }
+}
+
+function handleOnlineMessage(msg) {
+  if (msg.type === "hello") {
+    onlineState.serverId = msg.id;
+  } else if (msg.type === "auth.ok") {
+    onlineState.user = msg.user;
+  } else if (msg.type === "room.snapshot") {
+    onlineState.room = msg.room;
+    onlineState.leaderboard = msg.room?.leaderboard ?? onlineState.leaderboard;
+    onlineState.recentPlayers = msg.room?.players ?? onlineState.recentPlayers;
+    if (onlineRoomCodeInput && msg.room?.code)
+      onlineRoomCodeInput.value = msg.room.code;
+  } else if (msg.type === "chat.message") {
+    onlineState.messages.push({
+      from: msg.from || "Player",
+      text: msg.text || "",
+      quick: Boolean(msg.quick),
+      at: Date.now(),
+    });
+    onlineState.messages = onlineState.messages.slice(-24);
+  } else if (msg.type === "leaderboard.snapshot") {
+    onlineState.leaderboard = msg.leaderboard ?? [];
+  } else if (msg.type === "friends.snapshot") {
+    onlineState.friends = msg.friends ?? [];
+    onlineState.recentPlayers = msg.recentPlayers ?? onlineState.recentPlayers;
+  } else if (msg.type === "pong") {
+    onlineState.latencyMs = Math.max(
+      0,
+      Math.round(performance.now() - onlineState.lastPingAt),
+    );
+  } else if (msg.type === "error") {
+    addOnlineMessage("Server", msg.error || "Request rejected.");
+  }
+  refreshOnlineUi();
+}
+
+function refreshOnlineUi() {
+  const configuredUrl = getConfiguredServerUrl();
+  if (onlineServerUrlInput && !onlineServerUrlInput.value) {
+    onlineServerUrlInput.value = configuredUrl;
+  }
+  if (onlineUsernameInput && !onlineUsernameInput.value) {
+    onlineUsernameInput.value =
+      localStorage.getItem("infernoDrift4.username") || "Drifter";
+  }
+  const live = onlineState.status === "live";
+  const offline = !configuredUrl || onlineState.status === "offline";
   if (onlineStatusCard) {
     onlineStatusCard.innerHTML = `
-      <div class="online-dot ${offline ? "offline" : "pending"}"></div>
-      <div><strong>${offline ? "Backend offline - bot mode active" : "Backend configured"}</strong><span>${offline ? "Set VITE_SERVER_URL at build time or window.INFERNO_SERVER_URL for online rooms." : configuredUrl}</span></div>
+      <div class="online-dot ${live ? "live" : offline ? "offline" : "pending"}"></div>
+      <div><strong>${live ? "Online backend connected" : offline ? "Backend offline - bot mode active" : "Backend connecting"}</strong><span>${live ? `${escapeHtml(onlineState.serverUrl)} · ${onlineState.latencyMs || 0}ms` : configuredUrl ? escapeHtml(configuredUrl) : "Set a Cloudflare Worker or local ws URL for online rooms."}</span></div>
     `;
+  }
+  if (onlineRoomState) {
+    onlineRoomState.textContent = onlineState.room
+      ? `${onlineState.room.mode} room ${onlineState.room.code} · ${onlineState.room.players?.length ?? 0}/${onlineState.room.size} players · ${onlineState.room.bots} bot fill`
+      : live
+        ? "Connected - create, join, or queue for a room."
+        : "Offline bot mode";
+  }
+  if (onlineRoomList) {
+    onlineRoomList.innerHTML = onlineState.room
+      ? (onlineState.room.players ?? [])
+          .map(
+            (playerInfo) =>
+              `<li><strong>${escapeHtml(playerInfo.username)}</strong> <span>${Math.round(playerInfo.rating ?? 1000)} SR</span></li>`,
+          )
+          .join("")
+      : `<li><strong>Bot Match:</strong> all modes remain playable offline.</li>`;
+  }
+  if (onlineChatLog) {
+    onlineChatLog.innerHTML =
+      onlineState.messages.length === 0
+        ? `<div class="chat-line"><strong>System</strong><span>Safe chat appears here after connecting.</span></div>`
+        : onlineState.messages
+            .map(
+              (msg) =>
+                `<div class="chat-line"><strong>${escapeHtml(msg.from)}${msg.quick ? " · quick" : ""}</strong><span>${escapeHtml(msg.text)}</span></div>`,
+            )
+            .join("");
+    onlineChatLog.scrollTop = onlineChatLog.scrollHeight;
+  }
+  if (onlineLeaderboard) {
+    onlineLeaderboard.innerHTML =
+      onlineState.leaderboard.length > 0
+        ? onlineState.leaderboard
+            .slice(0, 6)
+            .map(
+              (entry, index) =>
+                `<li><strong>#${index + 1} ${escapeHtml(entry.username ?? entry.name ?? "Driver")}</strong> ${Math.round(entry.rating ?? entry.score ?? 1000)}</li>`,
+            )
+            .join("")
+        : `<li><strong>Bronze:</strong> 1000 SR placement baseline</li><li><strong>Silver:</strong> 1200 SR</li><li><strong>Gold:</strong> 1450 SR</li>`;
+  }
+  if (onlineSocialList) {
+    const friends = onlineState.friends.length
+      ? onlineState.friends
+          .map((friend) => escapeHtml(friend.username ?? friend))
+          .join(", ")
+      : "Friends sync when backend is connected.";
+    const recent = onlineState.recentPlayers.length
+      ? onlineState.recentPlayers
+          .map((playerInfo) => escapeHtml(playerInfo.username ?? playerInfo))
+          .join(", ")
+      : "Recent players appear after a room.";
+    onlineSocialList.innerHTML = `<li><strong>Friends:</strong> ${friends}</li><li><strong>Recent:</strong> ${recent}</li>`;
   }
   if (onlineFeatureList) {
     onlineFeatureList.innerHTML = `
       <li><strong>Offline:</strong> campaign, Max Arena, bots, progression, garage, saves, and challenges work now.</li>
-      <li><strong>Online backend:</strong> guest accounts, rooms, private codes, matchmaking queues, friends, chat, rankings, and leaderboards run locally.</li>
+      <li><strong>Online backend:</strong> guest accounts, rooms, private codes, matchmaking queues, bot fill, recent players, friends shell, chat, ranks, and leaderboards use the configured WebSocket backend.</li>
       <li><strong>Safety:</strong> chat is sanitized and rate limited; gameplay messages are schema checked server-side.</li>
     `;
   }
@@ -2898,6 +3236,7 @@ const obstacles = [];
 const ramps = [];
 const powerups = [];
 const boostPads = [];
+const modeMarkers = [];
 const bots = [];
 
 const tempVector = new THREE.Vector3();
@@ -3662,6 +4001,295 @@ function makeBoostPad() {
   return padGroup;
 }
 
+function clearModeObjectives() {
+  modeMarkers.forEach((marker) => {
+    marker.parent?.remove(marker);
+    disposeObject3D(marker);
+  });
+  modeMarkers.splice(0, modeMarkers.length);
+  state.modeObjective = { ...MODE_OBJECTIVE_DEFAULT };
+}
+
+function makeModeMarker({
+  x,
+  z,
+  color = 0x9fe7ff,
+  label = "Objective",
+  radius = 8,
+  kind = "objective",
+  index = 0,
+}) {
+  const group = new THREE.Group();
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(radius, 0.36, 10, 52),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.82,
+      roughness: 0.24,
+    }),
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.36;
+  const beacon = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius * 0.12, radius * 0.55, 3.2, 18, 1, true),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.36,
+      transparent: true,
+      opacity: 0.18,
+      depthWrite: false,
+    }),
+  );
+  beacon.position.y = 1.75;
+  group.add(ring, beacon);
+  group.position.set(x, 0, z);
+  group.userData = {
+    label,
+    radius,
+    kind,
+    index,
+    complete: false,
+    ring,
+    beacon,
+    radarKind: "objective",
+    radarColor: `#${color.toString(16).padStart(6, "0")}`,
+  };
+  props.add(group);
+  modeMarkers.push(group);
+  return group;
+}
+
+function getActiveMinigameRule() {
+  const seed = state.progression.runs + state.worldIndex + state.levelIndex;
+  return ID4_MINIGAME_RULES[seed % ID4_MINIGAME_RULES.length];
+}
+
+function objectivePoints(count, radius = HALF_WORLD * 0.58, phase = 0) {
+  return Array.from({ length: count }, (_, index) => {
+    const angle = phase + (index / count) * Math.PI * 2;
+    return {
+      x: Math.cos(angle) * radius,
+      z: Math.sin(angle) * radius,
+    };
+  });
+}
+
+function spawnModeObjectives() {
+  clearModeObjectives();
+  const mode = settings.id4Mode;
+  if (isMaxMode()) {
+    state.modeObjective = {
+      ...MODE_OBJECTIVE_DEFAULT,
+      label: mode === "battle" ? "Battle Arena" : "Max Arena",
+      detail: "Score, defend, and use target lunges to win the arena.",
+      type: "max",
+      target: MAX_MODE_GOAL_TARGET,
+    };
+    return;
+  }
+  let rule = {
+    label: getId4ModeRule().label,
+    objective: getId4ModeRule().objective,
+    markerCount: 0,
+    color: 0x9fe7ff,
+    type: "survival",
+  };
+  if (mode === "race") {
+    rule = {
+      label: "Race / Time Trial",
+      objective: "Clear all six checkpoints before time expires.",
+      markerCount: 6,
+      color: 0x86f4ff,
+      type: "checkpoints",
+    };
+  } else if (mode === "stunt") {
+    rule = {
+      label: "Stunt Park",
+      objective:
+        "Hit stunt gates, then land flips and drifts for a combo medal.",
+      markerCount: 5,
+      color: 0xffc76b,
+      type: "combo",
+    };
+  } else if (mode === "hunter" || mode === "boss") {
+    rule = {
+      label: mode === "boss" ? "Boss Chase" : "Hunter Tag",
+      objective:
+        mode === "boss"
+          ? "Survive the finale boss pack and clear escape gates."
+          : "Bait hunters through gates without losing all lives.",
+      markerCount: mode === "boss" ? 4 : 5,
+      color: mode === "boss" ? 0xff4a2e : 0xff6f86,
+      type: "checkpoints",
+    };
+  } else if (mode === "minigames") {
+    rule = getActiveMinigameRule();
+  }
+
+  state.modeObjective = {
+    ...MODE_OBJECTIVE_DEFAULT,
+    label: rule.label,
+    detail: rule.objective,
+    type: rule.type,
+    target:
+      rule.type === "zone"
+        ? 8
+        : rule.type === "combo"
+          ? 6
+          : Math.max(1, rule.markerCount || 1),
+    minigameId: rule.id ?? "",
+    comboTarget:
+      rule.type === "combo"
+        ? "drift + boost + air + landing"
+        : rule.type === "zone"
+          ? "hold the lit zone"
+          : "",
+  };
+
+  if (rule.type === "survival") return;
+  const markerRadius =
+    rule.type === "zone" ? 26 : rule.type === "targets" ? 5 : 8;
+  const points =
+    rule.type === "zone"
+      ? [{ x: 0, z: 12 }]
+      : objectivePoints(
+          rule.markerCount,
+          rule.type === "targets" ? HALF_WORLD * 0.42 : HALF_WORLD * 0.58,
+          mode === "stunt" ? Math.PI * 0.2 : Math.PI * -0.38,
+        );
+  points.forEach((point, index) => {
+    const marker = makeModeMarker({
+      ...point,
+      color: rule.color,
+      label: rule.label,
+      radius: markerRadius,
+      kind: rule.type,
+      index,
+    });
+    marker.visible =
+      index === 0 || rule.type === "targets" || rule.type === "zone";
+    if (rule.type === "targets") {
+      const pin = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.2, 1.5, 4.4, 14),
+        new THREE.MeshStandardMaterial({
+          color: 0xfaf4ea,
+          emissive: rule.color,
+          emissiveIntensity: 0.2,
+          roughness: 0.38,
+        }),
+      );
+      pin.position.y = 2.2;
+      marker.add(pin);
+    }
+  });
+}
+
+function completeModeMarker(marker, value = 1) {
+  if (!marker || marker.userData.complete) return;
+  marker.userData.complete = true;
+  marker.visible = false;
+  state.modeObjective.progress += value;
+  state.score += Math.round(140 * value * Math.max(1, state.combo));
+  state.boost = Math.min(1, state.boost + 0.14);
+  setEffectToast(
+    `${state.modeObjective.label}: ${state.modeObjective.progress}/${state.modeObjective.target}`,
+  );
+  const next = modeMarkers.find(
+    (candidate) =>
+      !candidate.userData.complete &&
+      candidate.userData.index === marker.userData.index + 1,
+  );
+  if (next && state.modeObjective.type !== "targets") next.visible = true;
+}
+
+function updateModeObjectives(dt) {
+  const objective = state.modeObjective;
+  if (!objective || objective.completed) return;
+  if (isMaxMode()) {
+    objective.progress = Math.max(maxMode.blueScore, maxMode.redScore);
+    objective.target = MAX_MODE_GOAL_TARGET;
+    objective.detail = `${maxMode.blueScore}-${maxMode.redScore} with ${player.role ?? "striker"} role active.`;
+    return;
+  }
+  if (objective.type === "survival") {
+    objective.progress = Math.max(0, getLevel().time - state.timeLeft);
+    objective.target = getLevel().time;
+    return;
+  }
+  objective.timer += dt;
+  modeMarkers.forEach((marker, index) => {
+    if (marker.userData.complete || !marker.visible) return;
+    if (objective.type === "zone") {
+      const orbit =
+        state.elapsed * (objective.minigameId === "lava-floor" ? 0.42 : 0.28);
+      marker.position.x = Math.cos(orbit) * HALF_WORLD * 0.22;
+      marker.position.z = Math.sin(orbit * 0.82) * HALF_WORLD * 0.22;
+    }
+    marker.rotation.y += dt * 0.8;
+    const distance = Math.hypot(
+      player.position.x - marker.position.x,
+      player.position.z - marker.position.z,
+    );
+    const inside = distance <= marker.userData.radius + CAR_RADIUS;
+    if (objective.type === "zone") {
+      if (inside) {
+        const driftBonus = input.drift ? 1.8 : 1;
+        objective.progress = Math.min(
+          objective.target,
+          objective.progress + dt * driftBonus,
+        );
+        state.score += dt * 38 * driftBonus;
+        state.boost = Math.min(1, state.boost + dt * 0.02);
+      } else if (objective.minigameId === "lava-floor" && state.running) {
+        state.heat = Math.min(1.35, state.heat + dt * 0.04);
+        state.score = Math.max(0, state.score - dt * 16);
+      }
+      return;
+    }
+    if (!inside) return;
+    const value =
+      objective.type === "combo"
+        ? Math.max(1, Math.min(3, state.combo + state.airTime * 0.6))
+        : 1;
+    completeModeMarker(marker, value);
+    if (objective.type === "targets") {
+      for (let i = 0; i < 10; i += 1) {
+        spawnFx(
+          marker.position.clone().add(new THREE.Vector3(0, 1.2, 0)),
+          new THREE.Vector3(
+            (Math.random() - 0.5) * 5,
+            1.5 + Math.random() * 2.4,
+            (Math.random() - 0.5) * 5,
+          ),
+          0xffdf7a,
+          0.8,
+          0.34,
+        );
+      }
+    }
+    if (objective.type !== "targets") {
+      state.modeObjective.checkpointIndex = Math.max(
+        state.modeObjective.checkpointIndex,
+        index + 1,
+      );
+    }
+  });
+  if (objective.type === "combo") {
+    objective.progress = Math.max(objective.progress, Math.floor(state.combo));
+    if (state.backflipChainCount > 0) objective.progress += dt * 0.7;
+  }
+  if (objective.progress >= objective.target && !objective.completed) {
+    objective.completed = true;
+    setEffectToast(`${objective.label} Cleared`);
+    state.score += 450;
+    if (state.running && settings.id4Mode !== "campaign") {
+      completeLevel();
+    }
+  }
+}
+
 function generateSpacedPolarPoints(
   count,
   minRadius,
@@ -4355,6 +4983,7 @@ function setMenuOpen(open) {
 
 function clearWorld() {
   obstacles.splice(0, obstacles.length);
+  clearModeObjectives();
   ramps.forEach((ramp) => {
     scene.remove(ramp);
     disposeObject3D(ramp);
@@ -4526,6 +5155,7 @@ function resetLevel() {
   } else {
     spawnPowerups();
   }
+  spawnModeObjectives();
 }
 
 function clearBotState() {
@@ -4987,6 +5617,13 @@ function spawnBots() {
     bot.turnRate = 2.1 * profile.botSkill;
     bot.aiBurstCooldown = Math.random() * 1.2;
     bot.lastRampTime = 0;
+    if (settings.id4Mode === "boss" && i === 0) {
+      bot.role = "boss";
+      bot.maxSpeed *= 1.12;
+      bot.accel *= 1.16;
+      bot.visualRoot.scale.setScalar(1.34);
+      bot.collisionRadius = BOT_RADIUS * 1.34;
+    }
     bots.push(bot);
   }
 }
@@ -7466,6 +8103,8 @@ function stepGame(dt) {
       updatePowerupCollisions();
       updateBoostPads(dt);
     }
+    updateOnlineTelemetry(dt);
+    updateModeObjectives(dt);
     updateFx(dt);
 
     if (
@@ -7752,6 +8391,285 @@ function drawMinimap() {
   minimapCtx.stroke();
 }
 
+function createRadarModel() {
+  const dims = getMaxArenaDimensions();
+  const size = minimapCanvas.width;
+  const pad = Math.max(4, size * 0.035);
+  const center = size * 0.5;
+  const half = center - pad;
+  const range = Math.max(
+    isMaxMode() ? dims.halfWidth : HALF_WORLD,
+    isMaxMode() ? dims.halfLength : HALF_WORLD,
+  );
+  const scale = half / range;
+  const referenceHeading = state.minimapHeading;
+  const forwardX = Math.sin(referenceHeading);
+  const forwardZ = Math.cos(referenceHeading);
+  const rightX = Math.cos(referenceHeading);
+  const rightZ = -Math.sin(referenceHeading);
+  const project = (wx, wz, radius = 0) => {
+    const dx = wx - player.position.x;
+    const dz = wz - player.position.z;
+    const right = dx * rightX + dz * rightZ;
+    const forward = dx * forwardX + dz * forwardZ;
+    const rawX = center + right * scale;
+    const rawY = center - forward * scale;
+    const edgePad = pad + radius + 2;
+    const x = THREE.MathUtils.clamp(rawX, edgePad, size - edgePad);
+    const y = THREE.MathUtils.clamp(rawY, edgePad, size - edgePad);
+    const edge = x !== rawX || y !== rawY;
+    const sector =
+      Math.abs(forward) >= Math.abs(right)
+        ? forward >= 0
+          ? "front"
+          : "rear"
+        : right >= 0
+          ? "right"
+          : "left";
+    return { x, y, rawX, rawY, right, forward, edge, sector };
+  };
+  const entities = [];
+  const addEntity = (
+    kind,
+    wx,
+    wz,
+    heading = referenceHeading,
+    color = "rgba(255,255,255,0.9)",
+    sizePx = 4,
+  ) => {
+    const p = project(wx, wz, sizePx);
+    entities.push({
+      kind,
+      x: p.x,
+      y: p.y,
+      right: p.right,
+      forward: p.forward,
+      sector: p.sector,
+      edge: p.edge,
+      heading: angleDifference(referenceHeading, heading),
+      color,
+      sizePx,
+    });
+  };
+
+  if (isMaxMode()) {
+    if (maxMode.ball) {
+      addEntity(
+        "ball",
+        maxMode.ball.position.x,
+        maxMode.ball.position.z,
+        referenceHeading,
+        "rgba(245,245,242,0.96)",
+        4.6,
+      );
+    }
+    addEntity("blue-goal", 0, -dims.goalLineZ, 0, "rgba(86,233,255,0.95)", 5);
+    addEntity(
+      "red-goal",
+      0,
+      dims.goalLineZ,
+      Math.PI,
+      "rgba(255,108,108,0.95)",
+      5,
+    );
+  } else {
+    boostPads
+      .slice(0, 12)
+      .forEach((pad) =>
+        addEntity(
+          "boost",
+          pad.position.x,
+          pad.position.z,
+          referenceHeading,
+          "rgba(86,233,255,0.78)",
+          2.3,
+        ),
+      );
+    ramps
+      .slice(0, 18)
+      .forEach((ramp) =>
+        addEntity(
+          ramp.userData.kind === "titan" ? "titan-ramp" : "ramp",
+          ramp.position.x,
+          ramp.position.z,
+          referenceHeading,
+          "rgba(255,171,92,0.9)",
+          ramp.userData.kind === "titan" ? 4.4 : 3.1,
+        ),
+      );
+    powerups.forEach((powerup) =>
+      addEntity(
+        `powerup-${powerup.userData.type}`,
+        powerup.position.x,
+        powerup.position.z,
+        referenceHeading,
+        "rgba(255,207,103,0.9)",
+        3,
+      ),
+    );
+    modeMarkers.forEach((marker) => {
+      if (marker.userData?.complete) return;
+      addEntity(
+        marker.userData?.radarKind ?? "objective",
+        marker.position.x,
+        marker.position.z,
+        referenceHeading,
+        marker.userData?.radarColor ?? "rgba(255,255,255,0.9)",
+        4.2,
+      );
+    });
+  }
+
+  bots.forEach((bot) => {
+    addEntity(
+      bot.role ?? (isMaxMode() ? (bot.team ?? "bot") : "hunter"),
+      bot.position.x,
+      bot.position.z,
+      bot.moveHeading,
+      isMaxMode()
+        ? bot.team === "blue"
+          ? "rgba(86,233,255,0.95)"
+          : "rgba(255,108,108,0.95)"
+        : bot.role === "boss"
+          ? "rgba(255,72,46,0.98)"
+          : "rgba(255,98,98,0.95)",
+      bot.role === "boss" ? 5.8 : 4.3,
+    );
+  });
+
+  state.radarSnapshot = {
+    heading: Number(referenceHeading.toFixed(3)),
+    range: Number(range.toFixed(1)),
+    coordinateSystem:
+      "player-relative radar: top/front, right/car-right, left/car-left, bottom/rear",
+    entities: entities.slice(0, 32).map((entity) => ({
+      kind: entity.kind,
+      x: Number(entity.x.toFixed(2)),
+      y: Number(entity.y.toFixed(2)),
+      right: Number(entity.right.toFixed(2)),
+      forward: Number(entity.forward.toFixed(2)),
+      sector: entity.sector,
+      edge: entity.edge,
+      heading: Number(entity.heading.toFixed(3)),
+    })),
+  };
+
+  return { size, pad, center, half, entities };
+}
+
+function drawRadar() {
+  if (!minimapCtx || !minimapCanvas) return;
+  const { size, pad, center, half, entities } = createRadarModel();
+  minimapCtx.clearRect(0, 0, size, size);
+  const bg = minimapCtx.createLinearGradient(0, 0, size, size);
+  bg.addColorStop(0, "rgba(11, 23, 36, 0.98)");
+  bg.addColorStop(0.58, "rgba(5, 11, 18, 0.98)");
+  bg.addColorStop(
+    1,
+    isMaxMode() ? "rgba(34,18,22,0.98)" : "rgba(9,16,26,0.98)",
+  );
+  minimapCtx.fillStyle = bg;
+  minimapCtx.fillRect(0, 0, size, size);
+  minimapCtx.save();
+  minimapCtx.beginPath();
+  minimapCtx.roundRect(pad, pad, size - pad * 2, size - pad * 2, 10);
+  minimapCtx.clip();
+  const scan = minimapCtx.createLinearGradient(0, 0, 0, size);
+  scan.addColorStop(0, "rgba(86,233,255,0.08)");
+  scan.addColorStop(0.5, "rgba(86,233,255,0)");
+  scan.addColorStop(1, "rgba(255,154,108,0.04)");
+  minimapCtx.fillStyle = scan;
+  minimapCtx.fillRect(0, 0, size, size);
+  minimapCtx.fillStyle = "rgba(126,255,255,0.09)";
+  minimapCtx.beginPath();
+  minimapCtx.moveTo(center, center);
+  minimapCtx.arc(center, center, half * 0.76, -Math.PI * 0.68, -Math.PI * 0.32);
+  minimapCtx.closePath();
+  minimapCtx.fill();
+  minimapCtx.strokeStyle = "rgba(126,255,255,0.5)";
+  minimapCtx.lineWidth = 1;
+  minimapCtx.beginPath();
+  minimapCtx.moveTo(center, pad + 5);
+  minimapCtx.lineTo(center, pad + 18);
+  minimapCtx.stroke();
+
+  const drawHeadingMarker = (x, y, relHeading, color, sizePx, edge = false) => {
+    const fx = Math.sin(relHeading);
+    const fy = Math.cos(relHeading);
+    const nose = sizePx * (edge ? 1.75 : 1.55);
+    const wing = sizePx * 0.72;
+    minimapCtx.save();
+    minimapCtx.translate(x, y);
+    minimapCtx.fillStyle = color;
+    minimapCtx.strokeStyle = "rgba(5,10,18,0.72)";
+    minimapCtx.lineWidth = Math.max(1.1, sizePx * 0.24);
+    minimapCtx.beginPath();
+    minimapCtx.moveTo(fx * nose, -fy * nose);
+    minimapCtx.lineTo(-fy * wing, -fx * wing);
+    minimapCtx.lineTo(fy * wing, fx * wing);
+    minimapCtx.closePath();
+    minimapCtx.fill();
+    minimapCtx.stroke();
+    if (!edge) {
+      minimapCtx.beginPath();
+      minimapCtx.arc(0, 0, Math.max(1.5, sizePx * 0.28), 0, Math.PI * 2);
+      minimapCtx.fill();
+    }
+    minimapCtx.restore();
+  };
+  const drawDot = (entity, radius, stroke = false) => {
+    minimapCtx.fillStyle = entity.color;
+    minimapCtx.strokeStyle = entity.color;
+    minimapCtx.lineWidth = 1.6;
+    minimapCtx.beginPath();
+    minimapCtx.arc(entity.x, entity.y, radius, 0, Math.PI * 2);
+    if (stroke) minimapCtx.stroke();
+    else minimapCtx.fill();
+  };
+  const drawDiamond = (entity, radius) => {
+    minimapCtx.fillStyle = entity.color;
+    minimapCtx.beginPath();
+    minimapCtx.moveTo(entity.x, entity.y - radius);
+    minimapCtx.lineTo(entity.x + radius, entity.y);
+    minimapCtx.lineTo(entity.x, entity.y + radius);
+    minimapCtx.lineTo(entity.x - radius, entity.y);
+    minimapCtx.closePath();
+    minimapCtx.fill();
+  };
+
+  entities.forEach((entity) => {
+    if (entity.kind === "boost") drawDot(entity, 2.1);
+    else if (entity.kind.startsWith("powerup")) drawDiamond(entity, 3);
+    else if (entity.kind.includes("ramp")) drawDiamond(entity, entity.sizePx);
+    else if (entity.kind === "ball") drawDot(entity, 4.3, true);
+    else if (entity.kind.includes("goal")) {
+      minimapCtx.fillStyle = entity.color;
+      minimapCtx.fillRect(entity.x - 8, entity.y - 2, 16, 4);
+    } else if (entity.kind === "objective") drawDiamond(entity, 4.2);
+    else
+      drawHeadingMarker(
+        entity.x,
+        entity.y,
+        entity.edge
+          ? Math.atan2(entity.x - center, center - entity.y)
+          : entity.heading,
+        entity.color,
+        entity.sizePx,
+        entity.edge,
+      );
+  });
+
+  drawHeadingMarker(center, center, 0, "#7effff", 7.2);
+  minimapCtx.restore();
+  minimapCtx.strokeStyle = isMaxMode()
+    ? "rgba(255,154,108,0.28)"
+    : "rgba(86,233,255,0.32)";
+  minimapCtx.lineWidth = 1.4;
+  minimapCtx.beginPath();
+  minimapCtx.roundRect(pad, pad, size - pad * 2, size - pad * 2, 10);
+  minimapCtx.stroke();
+}
+
 function updateDebugHud() {
   if (!debugHud) return;
   const visible = settings.devMode && DEBUG_FLAGS.enabled;
@@ -7874,12 +8792,19 @@ function updateHud() {
       hudLabelNodes[5].textContent = "Lives";
       hudLabelNodes[6].textContent = "Drift";
     }
-    hudWorld.textContent = getWorld().name;
+    const objective = state.modeObjective ?? MODE_OBJECTIVE_DEFAULT;
+    const modeLabel =
+      settings.id4Mode === "campaign" ? getWorld().name : objective.label;
+    hudWorld.textContent = modeLabel;
     const levelLabel =
       settings.campaignAiMode === "risk" ? `${level.name} [Risk]` : level.name;
+    const objectiveProgress =
+      objective.target > 1
+        ? `${objective.label} ${Math.floor(objective.progress)}/${Math.ceil(objective.target)}`
+        : levelLabel;
     hudLevel.textContent = state.effectToast
-      ? `${levelLabel} - ${state.effectToast}`
-      : levelLabel;
+      ? `${objectiveProgress} - ${state.effectToast}`
+      : objectiveProgress;
     hudScore.textContent = Math.floor(state.score).toString();
     hudSpeed.textContent = `${Math.round(Math.abs(player.speed) * SPEED_TO_MPH_MULT)} MPH`;
     renderLivesHud();
@@ -7900,7 +8825,7 @@ function updateHud() {
   boostBar.style.width = `${Math.round(state.boost * 100)}%`;
   shieldBar.style.width = `${Math.round((isMaxMode() ? (player.maxHealth ?? MAX_HEALTH_MAX) / MAX_HEALTH_MAX : state.shield) * 100)}%`;
   progressBar.style.width = `${Math.min(100, (1 - state.timeLeft / level.time) * 100)}%`;
-  drawMinimap();
+  drawRadar();
   updateDebugHud();
   updateBotHealthBars();
   updateMatchPanel();
@@ -8526,6 +9451,71 @@ id4ModeCards.forEach((card) => {
   });
 });
 
+onlineConnectBtn?.addEventListener("click", () => connectOnline());
+onlineDisconnectBtn?.addEventListener("click", () => {
+  onlineState.socket?.close();
+  onlineState.socket = null;
+  onlineState.status = "offline";
+  onlineState.room = null;
+  refreshOnlineUi();
+});
+onlineCreateRoomBtn?.addEventListener("click", () => {
+  if (onlineState.status !== "live") connectOnline();
+  sendOnline({
+    type: "room.create",
+    mode: onlinePlaylistSelect?.value ?? settings.id4Mode,
+    size: onlinePlaylistSelect?.value === "ranked" ? 2 : 6,
+    ranked: onlinePlaylistSelect?.value === "ranked",
+    botFill: onlineBotfillToggle?.checked ?? true,
+  });
+});
+onlineJoinRoomBtn?.addEventListener("click", () => {
+  if (onlineState.status !== "live") connectOnline();
+  sendOnline({
+    type: "room.join",
+    code: onlineRoomCodeInput?.value?.trim()?.toUpperCase() ?? "",
+    botFill: onlineBotfillToggle?.checked ?? true,
+  });
+});
+onlineQueueBtn?.addEventListener("click", () => {
+  if (onlineState.status !== "live") connectOnline();
+  sendOnline({
+    type: "queue.join",
+    mode: onlinePlaylistSelect?.value ?? settings.id4Mode,
+    size: onlinePlaylistSelect?.value === "ranked" ? 2 : 6,
+    ranked: onlinePlaylistSelect?.value === "ranked",
+    botFill: onlineBotfillToggle?.checked ?? true,
+  });
+});
+onlineChatSend?.addEventListener("click", () => {
+  const text = onlineChatInput?.value?.trim() ?? "";
+  if (!text) return;
+  if (sendOnline({ type: "chat.send", text }) && onlineChatInput) {
+    onlineChatInput.value = "";
+  }
+});
+onlineChatInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") onlineChatSend?.click();
+});
+onlineQuickChatButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    sendOnline({ type: "quick.send", text: button.dataset.quickChat });
+  });
+});
+onlineServerUrlInput?.addEventListener("change", () => {
+  const normalized = normalizeServerUrl(onlineServerUrlInput.value);
+  onlineServerUrlInput.value = normalized;
+  if (normalized) localStorage.setItem("infernoDrift4.serverUrl", normalized);
+  else localStorage.removeItem("infernoDrift4.serverUrl");
+  refreshOnlineUi();
+});
+onlineUsernameInput?.addEventListener("change", () => {
+  localStorage.setItem(
+    "infernoDrift4.username",
+    onlineUsernameInput.value.trim() || "Drifter",
+  );
+});
+
 difficultySelect.addEventListener("change", (event) => {
   const previousDifficulty = settings.difficulty;
   settings.difficulty = event.target.value;
@@ -8964,6 +9954,30 @@ window.render_game_to_text = () => {
         ? { blue: maxMode.blueScore, red: maxMode.redScore }
         : Math.floor(state.score),
     },
+    objectiveState: {
+      label: state.modeObjective?.label ?? "",
+      type: state.modeObjective?.type ?? "",
+      progress: Number((state.modeObjective?.progress ?? 0).toFixed(2)),
+      target: Number((state.modeObjective?.target ?? 0).toFixed(2)),
+      minigameId: state.modeObjective?.minigameId ?? "",
+      completed: Boolean(state.modeObjective?.completed),
+    },
+    radar: state.radarSnapshot,
+    online: {
+      status: onlineState.status,
+      connected: onlineState.socket?.readyState === WebSocket.OPEN,
+      roomCode: onlineState.room?.code ?? null,
+      latencyMs: onlineState.latencyMs,
+      players: onlineState.room?.players?.length ?? 0,
+      bots: onlineState.room?.bots ?? null,
+    },
+    device: {
+      mode: state.deviceProfile?.mode ?? settings.deviceMode,
+      type: state.deviceProfile?.type ?? "desktop",
+      touchActive: Boolean(input.touchEnabled),
+      minimapSize:
+        state.deviceProfile?.minimapSize ?? DEVICE_PROFILES.desktop.minimapSize,
+    },
     camera: {
       distance: Number(state.cameraTelemetry.distance.toFixed(2)),
       height: Number(state.cameraTelemetry.height.toFixed(2)),
@@ -9048,6 +10062,14 @@ window.__infernodriftTestApi = {
     teams: maxMode.stats?.teams ?? null,
     events: maxMode.stats?.events ?? [],
   }),
+  setDeviceMode: (mode = "auto") => {
+    if (!DEVICE_PROFILES[mode] && mode !== "auto") return null;
+    settings.deviceMode = mode;
+    state.deviceInputMode =
+      mode === "auto" ? "auto" : mode === "desktop" ? "desktop" : "touch";
+    applyDeviceProfile();
+    return state.deviceProfile;
+  },
 };
 
 loadPersistentState();

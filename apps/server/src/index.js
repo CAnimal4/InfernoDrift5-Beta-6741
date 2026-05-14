@@ -36,16 +36,32 @@ export function validateClientMessage(raw) {
     return { ok: false, error: "invalid_shape" };
   const allowed = new Set([
     "hello",
+    "ping",
     "auth.guest",
     "room.create",
     "room.join",
+    "room.leave",
     "queue.join",
+    "queue.cancel",
     "chat.send",
     "quick.send",
     "input.frame",
+    "leaderboard.get",
     "friend.request",
+    "friend.list",
   ]);
   if (!allowed.has(data.type)) return { ok: false, error: "unknown_type" };
+  const encodedSize = Buffer.byteLength(JSON.stringify(data), "utf8");
+  if (encodedSize > 2048) return { ok: false, error: "message_too_large" };
+  if (data.type === "input.frame") {
+    const speed = Math.abs(Number(data.speed ?? 0));
+    if (!Number.isFinite(speed) || speed > 420)
+      return { ok: false, error: "speed_rejected" };
+    if (data.score || data.goal || data.devWin || data.admin)
+      return { ok: false, error: "authoritative_rejected" };
+  }
+  if (data.type === "queue.join" && data.ranked && data.devMode)
+    return { ok: false, error: "ranked_dev_rejected" };
   return { ok: true, data };
 }
 
@@ -67,7 +83,7 @@ function loadDb(dataDir) {
 }
 
 function makeCode() {
-  return Math.random().toString(36).slice(2, 8).toUpperCase();
+  return randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase();
 }
 
 export function createInfernoServer(options = {}) {
@@ -104,12 +120,7 @@ export function createInfernoServer(options = {}) {
   const wss = new WebSocketServer({
     server,
     verifyClient: ({ origin }, done) => {
-      if (
-        !allowedOrigins.length ||
-        !origin ||
-        allowedOrigins.includes(origin) ||
-        allowedOrigins.some((allowed) => origin.startsWith(allowed))
-      )
+      if (!allowedOrigins.length || !origin || allowedOrigins.includes(origin))
         done(true);
       else done(false, 403, "origin not allowed");
     },
@@ -159,6 +170,10 @@ export function createInfernoServer(options = {}) {
       const client = clients.get(id);
       const msg = parsed.data;
 
+      if (msg.type === "ping") {
+        send(ws, { type: "pong", at: msg.at ?? Date.now() });
+      }
+
       if (msg.type === "auth.guest") {
         const username =
           sanitizeChat(msg.username || client.user.username).slice(0, 24) ||
@@ -197,6 +212,15 @@ export function createInfernoServer(options = {}) {
         broadcast(room, roomSnapshot(room));
       }
 
+      if (msg.type === "room.leave" || msg.type === "queue.cancel") {
+        const room = rooms.get(client.roomId);
+        room?.players.delete(id);
+        client.roomId = null;
+        if (room && room.players.size === 0) rooms.delete(room.id);
+        else if (room) broadcast(room, roomSnapshot(room));
+        send(ws, { type: "room.left" });
+      }
+
       if (msg.type === "chat.send" || msg.type === "quick.send") {
         const now = Date.now();
         const bucket = rate.get(id) ?? [];
@@ -227,6 +251,21 @@ export function createInfernoServer(options = {}) {
           return send(ws, { type: "error", error: "speed_rejected" });
         send(ws, { type: "input.accepted", tick: Number(msg.tick ?? 0) });
       }
+
+      if (msg.type === "leaderboard.get") {
+        send(ws, {
+          type: "leaderboard.snapshot",
+          leaderboard: db.data.leaderboard.slice(0, 10),
+        });
+      }
+
+      if (msg.type === "friend.request" || msg.type === "friend.list") {
+        send(ws, {
+          type: "friends.snapshot",
+          friends: [],
+          recentPlayers: [...clients.values()].map((peer) => peer.user),
+        });
+      }
     });
 
     ws.on("close", () => {
@@ -248,6 +287,11 @@ export function createInfernoServer(options = {}) {
     clients,
     listen: () =>
       new Promise((resolve) => server.listen(port, () => resolve(server))),
+    close: () =>
+      new Promise((resolve) => {
+        for (const client of clients.values()) client.ws.close();
+        wss.close(() => server.close(resolve));
+      }),
   };
 }
 

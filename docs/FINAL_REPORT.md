@@ -1,59 +1,61 @@
 # Final Report
 
-Status: implemented, pushed, and verified on GitHub Pages.
+Status: local implementation complete for the 2026-05-13 revamp pass; final push/Pages verification is pending the last commit. Hosted backend verification is pending Cloudflare credentials.
 
 ## URLs
 
 - Repo: https://github.com/CAnimal4/InfernoDrift4
-- Pages: https://canimal4.github.io/InfernoDrift4/
-- Verified game commit: `a217c26acec97dfbed1b66107c505a2894b2c7e3`
+- Pages target: https://canimal4.github.io/InfernoDrift4/
+- Starting commit for this pass: `bc965cf`
+- Final pushed commit: `PENDING_FINAL_PUSH`
 
 ## Implementation Summary
 
-- Preserved the rejected monorepo state on `backup/rejected-monorepo-683a77c`.
-- Rebuilt `main` from the current InfernoDrift foundation: `index.html`, `script.js`, `style.css`, existing smoke hooks, procedural cards, dev tools, minimap, Max Arena, Risk hunters, customization, and deterministic test API.
-- Renamed and reskinned the product to InfernoDrift4 while keeping the existing readable car scale, neon arena mood, HUD rhythm, minimap, and arcade survival feel.
-- Added ID4 mode routing over the current game: First Ignition tutorial, Campaign Survival, Race, Stunt Park, Hunter Tag, Boss Chase, Drift Score Attack, Battle Arena, Max Arena, and rotating minigames as functional menu/objective entries backed by current campaign/Max mechanics.
-- Added local progression surfaces: XP, runs, best score, medals, tutorial completion, daily/weekly/live challenge board, unlock previews, and post-run reward banking.
-- Added PWA files: manifest, icon, service worker, and static build output for GitHub Pages.
-- Added classic-launcher-inspired camera/physics tuning only where applicable: smoothed drive input, boost FOV pulse, drift-side camera lean, landing/boost camera shake, and speed-sensitive camera look-ahead.
-- Added a local Node/WebSocket backend with health endpoint, guest usernames, private rooms, room snapshots, bot fill metadata, matchmaking-style queue creation, quick/lobby chat, sanitization, rate limits, and server-side speed validation.
-- Added CI and Pages workflows using GitHub Pages Actions artifact deployment.
+- Continued from the ID3-derived InfernoDrift4 static game, preserving the current game feel rather than returning to the rejected standalone monorepo.
+- Added uploaded favicon processing with `scripts/generate-icons.mjs`; generated `favicon.ico`, `icon.svg`, `icon-64.png`, `icon-192.png`, and `icon-512.png`.
+- Reworked HUD into compact objective/vehicle clusters, moved boost/shield into a lower non-interactive status strip, and fixed the status/menu hit-test overlap caught by browser smoke.
+- Replaced the old circular minimap with a clean forward-relative tactical radar. Top is in front of the player, left is car-left, right is car-right, and off-radar threats clamp to the edge. Radar state is exposed in `render_game_to_text()`.
+- Added mode objective state and markers for Tutorial, Campaign Survival, Race/Time Trial, Stunt Park, Hunter Tag, Boss Chase, Battle/Max Arena, and rotating minigames.
+- Expanded minigame rules for Ramp Rush, Boost Bowling, Lava Floor, King of the Zone, Trick Combo, and Bot Escape so each has distinct objective type/markers/scoring hooks.
+- Added real Online tab connection UI: server URL, guest username, connect/disconnect, create private room, join code, queue, bot fill, lobby chat, quick chat, room snapshot, leaderboard, friends, recent players, and backend-offline fallback.
+- Added Cloudflare Worker + Durable Object backend scaffold with per-room Durable Objects, WebSocket room coordination, chat validation, quick chat, room snapshots, leaderboard/friends/recent shell messages, and deployment workflow.
+- Hardened the local Node backend with exact origin allowlisting, stronger message validation, private room two-client tests, chat sanitizer/rate-limit behavior, ranked dev-flag rejection, and invalid speed/score/goal rejection.
+- Added phone landscape smoke coverage and a device-mode test hook; high-DPI radar canvas is generated for sharper mobile radar icons.
 
 ## Backend Status
 
-Local-only. No backend hosting credentials/tooling were available in this environment, so the client remains fully playable offline and the backend is production-ready to run separately. The client can be pointed at a real backend via `window.INFERNO_SERVER_URL` or `localStorage.infernoDrift4.serverUrl`.
+Worker-ready/local-only unless Cloudflare credentials are added. GitHub Pages can host the static client only. The client runs fully offline with bots and connects automatically when a reachable `ws://` or `wss://.../ws` backend is configured.
+
+Cloudflare deployment requires GitHub repository secrets:
+
+- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_API_TOKEN`
 
 ## Tests Run
 
-- `node --check script.js`: pass.
-- `node --check smoke_games.mjs`: pass.
-- `node --check smoke_devmode.mjs`: pass.
-- `node --check apps/server/src/index.js`: pass.
-- `node --check tests/server.test.mjs`: pass.
-- `npm ci`: pass.
 - `npm run typecheck`: pass.
 - `npm run lint`: pass.
-- `npm test`: pass, 3 tests.
+- `npm test`: pass, 5 tests.
 - `npm run build`: pass.
 - `npm run format`: pass.
 - `npm run smoke`: pass.
 - `npm run test:e2e`: pass.
-- Local backend health and two-client WebSocket smoke: pass.
-- GitHub CI for `a217c26`: pass.
-- GitHub Pages deploy for `a217c26`: pass.
-- Production Pages desktop smoke: pass.
-- Production Pages mobile landscape smoke: pass, canvas present, tutorial started, no app console errors.
-- Safari URL/title verification: pass, Safari front document URL is `https://canimal4.github.io/InfernoDrift4/?safari=a217c26` and title is `InfernoDrift4`.
+- `npm run smoke:online-local`: pass against local Node backend.
+- `npm run worker:check`: pass.
+- `npm run worker:types`: pass.
+- `develop-web-game` Playwright client: first run timed out on `page.goto`; second run passed, screenshots and state JSON reviewed.
+
+Tests still required before final push/deploy:
+
+- production Pages verification after push
+- hosted Worker verification only if Cloudflare secrets are available
 
 ## Known Limitations
 
-- GitHub Pages can host only the static client. Online multiplayer/social/ranked features require a separately hosted backend.
-- The ID4 mode expansion is intentionally layered on the current InfernoDrift mechanics instead of replacing the game architecture in this restart pass.
-- WebGL emits headless GPU performance warnings during Playwright screenshots; no application console errors were observed in the production mobile smoke.
+- Hosted backend deployment is blocked until Cloudflare credentials/secrets are available and verified.
+- The game remains intentionally rooted in the current static ID3 codebase; deeper TypeScript/module migration is deferred behind proven gameplay parity and fun.
+- Headless Chromium emits WebGL/SwiftShader GPU stall warnings during screenshots; these are not application console errors.
 
-## Next Steps
+## Manual Steps If Needed
 
-- Push `main` and the backup branch to GitHub.
-- Verify the GitHub Pages workflow and production URL in Safari/Playwright.
-- If backend hosting becomes available, deploy `apps/server`, configure `VITE_SERVER_URL` or `window.INFERNO_SERVER_URL`, and rerun the two-client online smoke against the hosted endpoint.
+If Pages does not deploy automatically after push, open GitHub repo Settings -> Pages and set Source to GitHub Actions, then rerun the Pages workflow. If online must be live, add the Cloudflare secrets listed above and run the Worker deployment workflow.

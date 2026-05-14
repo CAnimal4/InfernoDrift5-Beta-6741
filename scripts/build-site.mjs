@@ -12,6 +12,10 @@ for (const file of [
   "script.js",
   "manifest.webmanifest",
   "icon.svg",
+  "favicon.ico",
+  "icon-192.png",
+  "icon-512.png",
+  "icon-64.png",
   "sw.js",
 ]) {
   fs.copyFileSync(path.join(root, file), path.join(dist, file));

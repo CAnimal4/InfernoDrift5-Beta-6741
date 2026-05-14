@@ -5,6 +5,7 @@
   --hot: #ff6540;
   --heat: #ffcf67;
   --cool: #56e9ff;
+  --ice: #86f4ff;
   --bg: #05090f;
   --panel: rgba(8, 14, 24, 0.86);
   --glass: rgba(255, 255, 255, 0.13);
@@ -16,9 +17,9 @@
   --hud-top: calc(
     var(--progress-top) + var(--progress-height) + var(--stack-gap)
   );
-  --status-top: calc(var(--hud-top) + 48px);
-  --minimap-top: calc(var(--status-top) + 36px);
-  --minimap-size: 194px;
+  --status-top: calc(var(--hud-top) + 42px);
+  --minimap-top: calc(var(--hud-top) + 58px);
+  --minimap-size: 188px;
   --touch-scale: 1;
   --touch-stick-size: 132px;
   --touch-knob-size: 56px;
@@ -79,14 +80,29 @@ canvas {
   left: 24px;
   right: 24px;
   top: var(--hud-top);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(220px, max-content) minmax(210px, max-content);
+  justify-content: space-between;
+  gap: 12px;
   text-align: left;
   z-index: 5;
   font-size: 0.9rem;
   transform: scale(var(--hud-scale));
   transform-origin: top left;
+  pointer-events: none;
+}
+
+.hud-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  max-width: min(48vw, 560px);
+}
+
+.hud-vehicle {
+  justify-content: flex-end;
+  justify-self: end;
 }
 
 .hud .pill {
@@ -106,6 +122,8 @@ canvas {
   gap: 8px;
   align-items: center;
   justify-content: flex-start;
+  min-height: 32px;
+  pointer-events: auto;
 }
 
 body.playing .hud .pill {
@@ -117,6 +135,11 @@ body.playing .hud .pill {
   box-shadow:
     0 0 12px rgba(86, 233, 255, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  padding: 5px 9px;
+}
+
+body.playing .hud .label {
+  display: none;
 }
 
 .hud .menu-btn {
@@ -487,11 +510,18 @@ body.max-mode .hud strong {
 }
 
 .field select,
+.field input[type="text"],
+.field input[type="url"],
+.field input[type="search"],
 .field input[type="checkbox"] {
   margin-top: 4px;
 }
 
-.field select {
+.field select,
+.field input[type="text"],
+.field input[type="url"],
+.field input[type="search"],
+.online-chat-row input {
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid var(--stroke);
@@ -705,6 +735,108 @@ body.max-mode .hud strong {
 
 .online-dot.pending {
   color: var(--ice);
+}
+
+.online-dot.offline {
+  color: rgba(199, 211, 224, 0.48);
+}
+
+.online-dot.live {
+  color: #72ffae;
+}
+
+.online-console {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(126, 178, 255, 0.16);
+  background: rgba(5, 10, 18, 0.38);
+}
+
+.online-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 0.9fr 0.75fr 0.85fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.online-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.online-panels {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(220px, 1.25fr) minmax(
+      180px,
+      0.9fr
+    );
+  gap: 10px;
+}
+
+.online-panel {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(9, 15, 24, 0.48);
+  border: 1px solid rgba(126, 178, 255, 0.13);
+}
+
+.online-room-state {
+  color: var(--ink);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.menu-list.compact {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.online-chat-log {
+  min-height: 130px;
+  max-height: 170px;
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(4, 8, 14, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+}
+
+.chat-line {
+  display: grid;
+  gap: 1px;
+}
+
+.chat-line strong {
+  color: var(--ink);
+}
+
+.online-chat-row,
+.quick-chat-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.online-chat-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.quick-chat-row {
+  flex-wrap: wrap;
+}
+
+.quick-chat-row button {
+  padding: 7px 10px;
+  font-size: 0.82rem;
 }
 
 .custom-layout {
@@ -1031,17 +1163,17 @@ button:hover {
   top: var(--minimap-top);
   z-index: 8;
   border: 1px solid var(--stroke);
-  border-radius: 22px;
+  border-radius: 16px;
   background:
     radial-gradient(circle at top, rgba(86, 233, 255, 0.14), transparent 52%),
     rgba(8, 14, 24, 0.86);
   backdrop-filter: blur(10px);
-  padding: 12px;
+  padding: 7px;
   box-shadow:
     0 18px 40px rgba(0, 0, 0, 0.24),
     var(--glow);
   display: grid;
-  gap: 8px;
+  gap: 4px;
   transform: scale(var(--hud-scale));
   transform-origin: top left;
 }
@@ -1069,9 +1201,9 @@ body.dev-mode-enabled #dev-mode-hint {
 }
 
 .minimap-title {
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   color: var(--muted);
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   text-align: center;
 }
@@ -1079,16 +1211,16 @@ body.dev-mode-enabled #dev-mode-hint {
 #minimap {
   width: var(--minimap-size);
   height: var(--minimap-size);
-  border-radius: 16px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(10, 18, 30, 0.95);
 }
 
 body.device-tablet {
   --stack-gap: 22px;
-  --status-top: calc(var(--hud-top) + 44px);
-  --minimap-top: calc(var(--status-top) + 30px);
-  --minimap-size: 162px;
+  --status-top: var(--hud-top);
+  --minimap-top: calc(var(--hud-top) + 54px);
+  --minimap-size: 150px;
   --touch-scale: 1.03;
   --touch-stick-size: 150px;
   --touch-knob-size: 62px;
@@ -1121,9 +1253,9 @@ body.device-phone {
   --progress-top: 16px;
   --progress-height: 8px;
   --stack-gap: 18px;
-  --status-top: calc(var(--hud-top) + 60px);
-  --minimap-top: calc(var(--status-top) + 52px);
-  --minimap-size: 112px;
+  --status-top: calc(var(--hud-top) + 34px);
+  --minimap-top: calc(var(--status-top) + 44px);
+  --minimap-size: 108px;
   --touch-scale: 0.84;
   --touch-stick-size: 118px;
   --touch-knob-size: 50px;
@@ -1141,7 +1273,18 @@ body.device-phone {
 body.device-phone .hud {
   left: 10px;
   right: 10px;
-  gap: 5px;
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+body.device-phone .hud-cluster {
+  max-width: calc(100vw - 20px);
+  gap: 4px;
+}
+
+body.device-phone .hud-vehicle {
+  justify-self: start;
+  justify-content: flex-start;
 }
 
 body.device-phone .status {
@@ -1161,7 +1304,7 @@ body.device-phone .bar {
 
 body.device-phone .minimap-wrap {
   left: 10px;
-  padding: 7px;
+  padding: 5px;
 }
 
 body.device-phone .menu-panel {
@@ -1183,7 +1326,9 @@ body.device-phone .custom-stats,
 body.device-phone .dev-tools-grid,
 body.device-phone .games-grid,
 body.device-phone .id4-mode-grid,
-body.device-phone .progression-board {
+body.device-phone .progression-board,
+body.device-phone .online-grid,
+body.device-phone .online-panels {
   grid-template-columns: 1fr;
 }
 
@@ -1219,15 +1364,16 @@ body.device-phone .cta-row {
   top: var(--status-top);
   display: flex;
   gap: 6px;
-  z-index: 6;
+  z-index: 5;
   transform: scale(var(--hud-scale));
   transform-origin: top right;
+  pointer-events: none;
 }
 
 .status .pill {
-  padding: 7px 10px;
+  padding: 6px 9px;
   border: 1px solid var(--stroke);
-  border-radius: 14px;
+  border-radius: 12px;
   background: linear-gradient(
     180deg,
     rgba(10, 17, 28, 0.92),
@@ -1236,6 +1382,7 @@ body.device-phone .cta-row {
   backdrop-filter: blur(10px);
   display: grid;
   gap: 4px;
+  min-width: 104px;
 }
 
 .bar {
@@ -1258,15 +1405,22 @@ body.device-phone .cta-row {
   :root {
     --progress-top: 18px;
     --stack-gap: 20px;
-    --status-top: calc(var(--hud-top) + 60px);
-    --minimap-top: calc(var(--status-top) + 48px);
+    --status-top: calc(var(--hud-top) + 46px);
+    --minimap-top: calc(var(--status-top) + 46px);
   }
 
   .hud {
     left: 12px;
     right: 12px;
     top: var(--hud-top);
-    gap: 6px;
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .hud-cluster,
+  .hud-vehicle {
+    max-width: calc(100vw - 24px);
+    justify-content: flex-start;
   }
 
   .status {
@@ -1297,13 +1451,15 @@ body.device-phone .cta-row {
   }
 
   #minimap {
-    width: 140px;
-    height: 140px;
+    width: var(--minimap-size);
+    height: var(--minimap-size);
   }
 
   .custom-layout,
   .custom-grid,
-  .custom-stats {
+  .custom-stats,
+  .online-grid,
+  .online-panels {
     grid-template-columns: 1fr;
   }
 

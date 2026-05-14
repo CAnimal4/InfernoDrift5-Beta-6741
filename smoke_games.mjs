@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import assert from "node:assert/strict";
 import { chromium } from "playwright";
 
 fs.mkdirSync("output/playwright", { recursive: true });
@@ -104,6 +105,65 @@ const idHud = {
   level: await page.locator("#hud-level").textContent(),
 };
 
+async function openGamesMenu() {
+  await page.evaluate(() => {
+    const menu = document.getElementById("menu");
+    if (!menu?.classList.contains("show")) {
+      document.getElementById("menu-btn")?.click();
+    }
+  });
+  await page.waitForTimeout(120);
+  await page.locator("#games-tab-btn").click({ force: true });
+}
+
+const modeChecks = [];
+for (const mode of [
+  "tutorial",
+  "campaign",
+  "race",
+  "stunt",
+  "hunter",
+  "boss",
+  "battle",
+  "minigames",
+]) {
+  await openGamesMenu();
+  await page.locator(`[data-id4-mode="${mode}"]`).click({ force: true });
+  await page.waitForTimeout(160);
+  await page.evaluate(() => window.advanceTime(360));
+  const text = JSON.parse(
+    await page.evaluate(() => window.render_game_to_text()),
+  );
+  modeChecks.push({
+    selected: mode,
+    id4Mode: text.id4Mode,
+    gameMode: text.mode,
+    objective: text.objective,
+    objectiveState: text.objectiveState,
+  });
+  assert.equal(text.id4Mode, mode);
+  assert.match(text.objective, /\S/);
+  if (mode === "battle") assert.equal(text.mode, "infernodriftmax1");
+  else assert.equal(text.mode, "infernodrift33");
+}
+
+assert.equal(gamesVisible, true);
+assert.equal(maxDifficultyVisible, true);
+assert.equal(maxDifficultyHiddenInCampaign, true);
+assert.match(gameHint, /Battle Arena/);
+assert.equal(initialText.mode, "infernodriftmax1");
+assert.equal(initialText.id4Mode, "battle");
+assert.equal(initialText.online.status, "offline");
+assert.match(initialText.radar.coordinateSystem, /top\/front/);
+assert.ok(initialText.radar.entities.some((entity) => entity.kind === "ball"));
+assert.ok(
+  initialText.radar.entities.some((entity) => entity.sector === "front"),
+);
+assert.match(replayMeta, /Replay/);
+assert.equal(matchStats.teams.blue.goals, 1);
+assert.ok(postDemoText.stats.player.demolitions >= 1);
+assert.match(idHud.world, /\S/);
+
 await page.screenshot({
   path: "output/playwright/games-smoke.png",
   fullPage: false,
@@ -125,6 +185,7 @@ console.log(
       riskText,
       postDemoText,
       idHud,
+      modeChecks,
     },
     null,
     2,
