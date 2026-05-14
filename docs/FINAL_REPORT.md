@@ -1,6 +1,6 @@
 # Final Report
 
-Status: local implementation complete for the 2026-05-13 revamp pass; final push/Pages verification is pending the last commit. Hosted backend verification is pending Cloudflare credentials.
+Status: implementation complete for the 2026-05-13/14 revamp pass. The static GitHub Pages game has been verified live; hosted backend verification is blocked until Cloudflare credentials are available.
 
 ## URLs
 
@@ -8,7 +8,8 @@ Status: local implementation complete for the 2026-05-13 revamp pass; final push
 - Pages target: https://canimal4.github.io/InfernoDrift4/
 - Starting commit for this pass: `bc965cf`
 - Verified implementation commit: `c6f0119cbb1db650d46a147e6be3e0ca450ec9de`
-- Final report commit: this file is updated after the verified implementation commit; final pushed `HEAD` is reported in the assistant response.
+- Headless-audio smoke cleanup commit: `7933408e66daecba08f1f84a958fda74ee7e60c5`
+- Final pushed `HEAD`: reported in the assistant response after the report commit.
 
 ## Implementation Summary
 
@@ -44,11 +45,11 @@ Cloudflare deployment requires GitHub repository secrets:
 - `npm run smoke:online-local`: pass against local Node backend.
 - `npm run worker:check`: pass.
 - `npm run worker:types`: pass.
+- Production Pages smoke: pass against `https://canimal4.github.io/InfernoDrift4/`.
 - `develop-web-game` Playwright client: first run timed out on `page.goto`; second run passed, screenshots and state JSON reviewed.
 
-Tests still required before final push/deploy:
+Tests still required only when credentials become available:
 
-- production Pages verification after push
 - hosted Worker verification only if Cloudflare secrets are available
 
 ## Known Limitations

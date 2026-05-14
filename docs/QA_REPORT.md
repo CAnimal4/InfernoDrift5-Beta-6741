@@ -34,14 +34,12 @@ Updated for the InfernoDrift4 revamp pass on 2026-05-13.
 - Worker validation dry-run passes through Wrangler.
 - `npm run smoke:online-local`: passed against the local Node backend. It connected through the actual Online tab, created a private room, showed bot fill, sent sanitized chat, and confirmed `render_game_to_text().online.status === "live"`.
 
-## Remaining Deployment QA
+## Deployment QA
 
-After committing and pushing:
-
-- Verify GitHub CI and Pages workflows for the final pushed commit.
-- Open `https://canimal4.github.io/InfernoDrift4/` in Safari and Playwright.
-- Confirm HTTP 200, nonblank canvas, correct `/InfernoDrift4/` asset paths, clean app console, playable tutorial/campaign/Max Arena, and phone landscape layout.
-- If Cloudflare secrets are available, verify hosted `wss://.../ws` from the Pages build with two tabs. If not, record backend as Worker-ready/local-only.
+- Live Pages returned HTTP 200 at `https://canimal4.github.io/InfernoDrift4/`.
+- Production Pages smoke passed against the live URL with correct `/InfernoDrift4/` asset paths and nonblank gameplay state.
+- Live HTML includes the generated favicon/app-icon references and the upgraded Online tab controls.
+- Hosted Cloudflare Worker verification remains blocked until `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are configured as GitHub secrets. Until then, backend status is Worker-ready/local-only.
 
 ## Known Test Environment Noise
 
