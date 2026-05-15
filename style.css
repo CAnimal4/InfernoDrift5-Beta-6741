@@ -64,6 +64,62 @@ canvas {
   display: block;
 }
 
+.remote-name-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.remote-name-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: min(170px, 32vw);
+  padding: 4px 8px 5px;
+  border: 1px solid rgba(126, 255, 255, 0.35);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(6, 13, 22, 0.82), rgba(5, 9, 15, 0.64));
+  box-shadow: 0 0 18px rgba(86, 233, 255, 0.18);
+  color: #eaffff;
+  font-size: clamp(0.68rem, 1.2vw, 0.82rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  will-change: transform, opacity;
+}
+
+.remote-name-tag::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 7px;
+  height: 7px;
+  border-right: 1px solid rgba(126, 255, 255, 0.34);
+  border-bottom: 1px solid rgba(126, 255, 255, 0.34);
+  background: rgba(5, 9, 15, 0.7);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.remote-name-tag.team-red {
+  border-color: rgba(255, 127, 127, 0.42);
+  box-shadow: 0 0 18px rgba(255, 108, 108, 0.18);
+  color: #ffecec;
+}
+
+.remote-name-tag.team-neutral {
+  border-color: rgba(255, 209, 122, 0.4);
+  box-shadow: 0 0 18px rgba(255, 184, 91, 0.16);
+  color: #fff3db;
+}
+
 .hud {
   position: absolute;
   left: 24px;

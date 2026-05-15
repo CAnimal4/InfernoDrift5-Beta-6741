@@ -108,6 +108,11 @@ const customHint = document.getElementById("custom-hint");
 const touchControlsRoot = document.getElementById("touch-controls");
 const touchSteerPad = document.getElementById("touch-steer-pad");
 const touchSteerKnob = document.getElementById("touch-steer-knob");
+const gameWrap = document.getElementById("game-wrap");
+const remoteNameLayer = document.createElement("div");
+remoteNameLayer.className = "remote-name-layer";
+remoteNameLayer.setAttribute("aria-hidden", "true");
+gameWrap?.appendChild(remoteNameLayer);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
@@ -2428,6 +2433,8 @@ class Car {
 
 const player = new Car({ color: 0xfff1d0, accent: 0x12151c, isBot: false });
 scene.add(player.group);
+const remotePlayers = new Map();
+const remoteNameProjector = new THREE.Vector3();
 
 function rebuildPlayerCarMesh() {
   const loadout = getCurrentCustomization();
@@ -2458,6 +2465,162 @@ function makeBot(color) {
   bot.botId = botIdSeed++;
   scene.add(bot.group);
   return bot;
+}
+
+function sanitizeRemoteUsername(value) {
+  return String(value ?? "Player")
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[^a-z0-9 _.-]/gi, "")
+    .slice(0, 18) || "Player";
+}
+
+function getRemotePlayerColor(team) {
+  if (team === "red") return 0xff7f7f;
+  if (team === "blue") return 0x78f0ff;
+  return 0xffd17a;
+}
+
+function makeRemoteCar(team = "neutral") {
+  const car = new Car({
+    color: getRemotePlayerColor(team),
+    accent: team === "red" ? 0x241316 : 0x111a24,
+    isBot: false
+  });
+  car.visualRoot.scale.setScalar(1.06);
+  car.collisionRadius = CAR_RADIUS;
+  car.healthBarGroup.visible = false;
+  scene.add(car.group);
+  return car;
+}
+
+function removeRemotePlayer(id) {
+  const remote = remotePlayers.get(id);
+  if (!remote) return;
+  scene.remove(remote.car.group);
+  scene.remove(remote.car.healthBarGroup);
+  remote.tag.remove();
+  remotePlayers.delete(id);
+}
+
+function setRemoteHumanPlayers(players = []) {
+  const keep = new Set();
+  players.slice(0, 8).forEach((playerData, index) => {
+    const id = String(playerData.id ?? playerData.username ?? `remote-${index}`).slice(0, 64);
+    const username = sanitizeRemoteUsername(playerData.username ?? playerData.name);
+    const team = ["blue", "red", "neutral"].includes(playerData.team) ? playerData.team : "neutral";
+    keep.add(id);
+    let remote = remotePlayers.get(id);
+    if (!remote) {
+      const tag = document.createElement("div");
+      tag.className = `remote-name-tag team-${team}`;
+      tag.textContent = username;
+      remoteNameLayer.appendChild(tag);
+      remote = {
+        id,
+        username,
+        team,
+        car: makeRemoteCar(team),
+        tag,
+        target: new THREE.Vector3(),
+        speed: 0,
+        visible: false
+      };
+      remotePlayers.set(id, remote);
+    }
+    if (remote.username !== username) {
+      remote.username = username;
+      remote.tag.textContent = username;
+    }
+    if (remote.team !== team) {
+      remote.team = team;
+      remote.tag.className = `remote-name-tag team-${team}`;
+      remote.car.rebuildVisual({
+        ...remote.car.visualConfig,
+        primary: getRemotePlayerColor(team),
+        accent: team === "red" ? 0x241316 : 0x111a24,
+        tintColor: 0x263f5b,
+        glowColor: team === "red" ? 0xff7f7f : 0x78f0ff
+      });
+    }
+    const x = Number.isFinite(Number(playerData.x)) ? Number(playerData.x) : player.position.x + 8 + index * 4;
+    const y = Number.isFinite(Number(playerData.y)) ? Number(playerData.y) : 0;
+    const z = Number.isFinite(Number(playerData.z)) ? Number(playerData.z) : player.position.z + 16 + index * 5;
+    remote.target.set(x, y, z);
+    remote.speed = Number.isFinite(Number(playerData.speed)) ? Number(playerData.speed) : 0;
+    if (!remote.visible) {
+      remote.car.setPosition(x, y, z);
+      remote.visible = true;
+    }
+    remote.car.heading = Number.isFinite(Number(playerData.heading)) ? Number(playerData.heading) : remote.car.heading;
+    remote.car.moveHeading = remote.car.heading;
+    remote.car.setDemolished(Boolean(playerData.demolished));
+  });
+  for (const id of [...remotePlayers.keys()]) {
+    if (!keep.has(id)) removeRemotePlayer(id);
+  }
+}
+
+function updateRemoteHumanPlayers(dt) {
+  for (const remote of remotePlayers.values()) {
+    if (remote.car.demolished) {
+      remote.car.group.visible = false;
+      continue;
+    }
+    remote.car.group.visible = true;
+    remote.car.position.lerp(remote.target, Math.min(1, dt * 12));
+    remote.car.group.position.copy(remote.car.position);
+    remote.car.group.rotation.y = remote.car.heading;
+    remote.car.updateWheels(remote.speed * dt);
+  }
+}
+
+function updateRemoteNameTags() {
+  if (!remoteNameLayer) return;
+  const shouldShow = state.running && !isMenuOpen() && !overlay.classList.contains("show");
+  remoteNameLayer.hidden = !shouldShow || remotePlayers.size === 0;
+  if (remoteNameLayer.hidden) return;
+  camera.updateMatrixWorld();
+
+  for (const remote of remotePlayers.values()) {
+    const tag = remote.tag;
+    if (remote.car.demolished || !remote.car.group.visible) {
+      tag.hidden = true;
+      continue;
+    }
+    remoteNameProjector
+      .set(remote.car.position.x, remote.car.position.y + 1.75, remote.car.position.z)
+      .project(camera);
+    const onScreen =
+      remoteNameProjector.z > -1 &&
+      remoteNameProjector.z < 1 &&
+      remoteNameProjector.x > -1.12 &&
+      remoteNameProjector.x < 1.12 &&
+      remoteNameProjector.y > -1.18 &&
+      remoteNameProjector.y < 1.22;
+    remote.screen = {
+      x: Number(remoteNameProjector.x.toFixed(3)),
+      y: Number(remoteNameProjector.y.toFixed(3)),
+      z: Number(remoteNameProjector.z.toFixed(3)),
+      onScreen
+    };
+    if (!onScreen) {
+      tag.hidden = true;
+      continue;
+    }
+    const left = (remoteNameProjector.x * 0.5 + 0.5) * window.innerWidth;
+    const top = (-remoteNameProjector.y * 0.5 + 0.5) * window.innerHeight;
+    if (top < 96) {
+      tag.hidden = true;
+      continue;
+    }
+    const distance = remote.car.position.distanceTo(player.position);
+    const opacity = THREE.MathUtils.clamp(1 - (distance - 90) / 160, 0.45, 0.95);
+    tag.hidden = false;
+    tag.style.opacity = opacity.toFixed(2);
+    tag.style.transform = `translate3d(${left}px, ${top}px, 0) translate(-50%, -112%)`;
+  }
 }
 
 function getDifficultyProfile() {
@@ -5073,8 +5236,10 @@ function stepGame(dt) {
   if (maxMode.replayActive && !pausedByMenu) {
     updateGoalReplay(dt);
     updateFx(dt);
+    updateRemoteHumanPlayers(dt);
     updateCamera(dt);
     updateHud();
+    updateRemoteNameTags();
     renderer.render(scene, camera);
     return;
   }
@@ -5149,8 +5314,10 @@ function stepGame(dt) {
   }
 
   updatePlayfieldReadability(dt);
+  updateRemoteHumanPlayers(dt);
   updateCamera(dt);
   updateHud();
+  updateRemoteNameTags();
   renderer.render(scene, camera);
 }
 
@@ -6393,6 +6560,15 @@ window.render_game_to_text = () => {
       z: Number(bot.position.z.toFixed(2)),
       demolished: Boolean(bot.demolished)
     })),
+    humanPlayers: [...remotePlayers.values()].map((remote) => ({
+      id: remote.id,
+      username: remote.username,
+      team: remote.team,
+      x: Number(remote.car.position.x.toFixed(2)),
+      y: Number(remote.car.position.y.toFixed(2)),
+      z: Number(remote.car.position.z.toFixed(2)),
+      nameTagVisible: !remote.tag.hidden
+    })),
     stats: isMaxMode()
       ? {
           difficulty: settings.maxDifficulty,
@@ -6439,7 +6615,25 @@ window.__infernodriftTestApi = {
     player: player.matchStats,
     teams: maxMode.stats?.teams ?? null,
     events: maxMode.stats?.events ?? []
-  })
+  }),
+  setRemoteHumanPlayers: (players = []) => {
+    setRemoteHumanPlayers(Array.isArray(players) ? players : []);
+    return [...remotePlayers.values()].map((remote) => ({
+      id: remote.id,
+      username: remote.username,
+      team: remote.team
+    }));
+  },
+  getRemoteNameTags: () =>
+    [...remotePlayers.values()].map((remote) => ({
+      id: remote.id,
+      username: remote.username,
+      team: remote.team,
+      hidden: remote.tag.hidden,
+      text: remote.tag.textContent ?? "",
+      opacity: remote.tag.style.opacity || "",
+      screen: remote.screen ?? null
+    }))
 };
 
 loadPersistentState();

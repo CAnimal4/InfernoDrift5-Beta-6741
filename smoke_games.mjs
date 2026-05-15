@@ -38,6 +38,33 @@ assert.ok(campaignState.bots.length >= 4);
 assert.match(await page.locator("#hud-world").textContent(), /\S/);
 assert.match(await page.locator("#hud-level").textContent(), /\S/);
 
+await page.evaluate(() => {
+  const state = JSON.parse(window.render_game_to_text());
+  window.__infernodriftTestApi.setRemoteHumanPlayers([
+    {
+      id: "friend-1",
+      username: "Clark",
+      team: "blue",
+      x: state.player.x + 2,
+      y: 0,
+      z: state.player.z,
+      heading: 0,
+      speed: 24,
+    },
+  ]);
+});
+await page.evaluate(() => window.advanceTime(300));
+const remoteTags = await page.evaluate(() =>
+  window.__infernodriftTestApi.getRemoteNameTags(),
+);
+assert.equal(remoteTags[0].text, "Clark");
+assert.equal(remoteTags[0].hidden, false);
+const campaignWithFriend = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
+assert.equal(campaignWithFriend.humanPlayers[0].username, "Clark");
+assert.equal(campaignWithFriend.humanPlayers[0].nameTagVisible, true);
+
 await openMenu(page);
 await page.locator('[data-tab="settings"]').click({ force: true });
 await page.locator("#dev-mode-toggle").click({ force: true });
@@ -94,6 +121,7 @@ console.log(
         mode: campaignState.mode,
         bots: campaignState.bots.length,
         speed: campaignState.player.speed_mph,
+        humanNameTag: campaignWithFriend.humanPlayers[0].username,
       },
       max: {
         mode: maxState.mode,
