@@ -13,6 +13,8 @@ Status: current tree is a playable React/TypeScript/Three revamp with local test
 - Active client source is now Vite/React in `client/`, not the older root static client.
 - `npm run build:web` now publishes the Vite bundle to both `dist/` and the repository root so GitHub Pages works whether the repo is configured for Actions artifacts or branch-root serving.
 - The live playfield and garage preview use Three.js components in `client/src/game/`.
+- The latest quality pass improves actual feel and presentation: stronger acceleration/boost/drift/landing reward loops, clearer mode scoring, richer arena/car/marker visuals, smoother speed/drift camera lean, and a cockpit-style menu/HUD/garage instead of the earlier generic-feeling shell.
+- `window.advanceTime(ms)` now reads the live input state on each deterministic frame, so automated playtests can genuinely drive the car.
 - Core game state, modes, radar, objectives, bots, progression, car classes, save migration, and deterministic stepping are typed in `packages/game-core/src/index.ts`.
 - Shared TypeScript protocol/moderation lives in `packages/protocol/src/index.ts`.
 - Local Node backend and Cloudflare Worker/Durable Object backend remain in `apps/server` and `apps/worker`.
@@ -36,13 +38,14 @@ Cloudflare Worker live deployment is blocked until both are true:
 Fresh parent verification for the current tree:
 
 - `npm run typecheck`: passed.
-- `npm test`: passed, 18 total tests.
+- `npm test`: passed, 22 total tests.
 - `npm run build`: passed; Vite reports one large Three/React chunk warning.
 - `npm run smoke`: passed; covers Max Arena, campaign return, replay, radar text state, and all major modes/minigames.
 - `npm run test:e2e`: passed; covers dev-mode and phone-landscape mobile layout/touch/radar checks.
 - `npm run smoke:online-local`: passed; local WebSocket backend connects from Online tab, creates a room, and sanitizes chat.
 - `npm run worker:check`: passed dry-run deploy for Worker/Durable Object binding.
 - `npm run worker:types`: passed.
+- `develop-web-game` quality-loop screenshots reviewed after the recovery pass: `output/web-game-audit2/shot-3.png`, `title.png`, and `menu-garage.png`.
 - `develop-web-game` Playwright loop: passed after fixing title/menu interception; screenshot/state artifacts are in `output/web-game/`.
 - Production Pages smoke: passed at `https://canimal4.github.io/InfernoDrift4/?v=771883b` after the deploy-root fix. The live HTML now serves the Vite React bundle, the legacy `script.js` shell is no longer referenced, desktop gameplay/mode routing passed, and phone landscape HUD/radar/touch layout passed.
 
@@ -53,3 +56,4 @@ Known test noise: headless Chromium reports SwiftShader/WebGL `ReadPixels` perfo
 - Hosted backend deployment is blocked without secrets and a verified Worker URL.
 - Pages deployment for the current React revamp is live and verified after the root/Actions artifact compatibility fix.
 - Social persistence, cloud saves, blocks/reports, DMs, live events, audio runtime, keyboard remapping, multiple saved loadouts, and full hosted online are not complete product features in the inspected source.
+- The new scene is still built from procedural Three.js primitives, not custom modeled assets; it is cleaner and more readable, but a hand-authored asset pass would still raise the ceiling.

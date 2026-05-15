@@ -1,6 +1,6 @@
 # QA Report
 
-Updated on 2026-05-15 after the docs-only worker pass and parent verification run.
+Updated on 2026-05-15 after the game-feel/UI recovery pass and parent verification run.
 
 ## Scope
 
@@ -34,11 +34,12 @@ These checks passed against the current tree:
 
 Evidence highlights:
 
-- `npm test` passed 18 tests across backend/protocol/game-core.
+- `npm test` passed 22 tests across backend/protocol/game-core.
 - `npm run smoke` passed and asserted Max Arena, campaign return, replay state, forced demo, forward-relative radar state, and all major mode/minigame route IDs.
 - `npm run test:e2e` passed and asserted dev-mode UI plus phone landscape HUD/radar/touch layout.
 - `npm run smoke:online-local` passed using a local WebSocket backend, private room creation, and sanitized chat.
 - `worker:check` passed a Wrangler dry-run with the Durable Object binding; `worker:types` passed.
+- The recovery pass fixed deterministic input in `advanceTime(ms)` and re-ran the web-game action loop; screenshot review confirmed the car actually moves, the HUD/radar are cleaner, and the garage/title are visibly stronger than the rejected pass.
 - The develop-web-game loop caught and then verified the fix for title/menu click interception. Final artifacts are `output/web-game/shot-*.png` and `output/web-game/state-*.json`.
 - Production Pages smoke passed at `https://canimal4.github.io/InfernoDrift4/?v=771883b` after the deploy-root fix. A prior smoke caught that Pages was still serving the legacy branch-root shell in one deployment configuration; the build now publishes the React bundle to both `dist/` and the repository root and clears the old service-worker cache. The final live check confirmed the HTML no longer references `script.js`, desktop mode routing passed, and phone landscape HUD/radar/touch layout passed.
 

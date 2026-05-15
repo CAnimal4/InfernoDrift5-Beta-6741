@@ -373,8 +373,8 @@ export const CAR_CLASSES: Record<
 > = {
   balanced: {
     label: "Balanced Street",
-    accel: 78,
-    maxSpeed: 132,
+    accel: 92,
+    maxSpeed: 142,
     grip: 1,
     drift: 1,
     mass: 1,
@@ -382,8 +382,8 @@ export const CAR_CLASSES: Record<
   },
   lightweight: {
     label: "Lightweight Drift",
-    accel: 86,
-    maxSpeed: 128,
+    accel: 104,
+    maxSpeed: 136,
     grip: 0.92,
     drift: 1.22,
     mass: 0.75,
@@ -391,8 +391,8 @@ export const CAR_CLASSES: Record<
   },
   bruiser: {
     label: "Heavy Bruiser",
-    accel: 64,
-    maxSpeed: 120,
+    accel: 74,
+    maxSpeed: 128,
     grip: 1.08,
     drift: 0.86,
     mass: 1.45,
@@ -400,8 +400,8 @@ export const CAR_CLASSES: Record<
   },
   stunt: {
     label: "Stunt Car",
-    accel: 74,
-    maxSpeed: 126,
+    accel: 90,
+    maxSpeed: 134,
     grip: 0.96,
     drift: 1.06,
     mass: 0.95,
@@ -409,8 +409,8 @@ export const CAR_CLASSES: Record<
   },
   speed: {
     label: "Speed Car",
-    accel: 70,
-    maxSpeed: 154,
+    accel: 86,
+    maxSpeed: 166,
     grip: 0.84,
     drift: 0.96,
     mass: 0.9,
@@ -468,6 +468,7 @@ export function startGame(state: GameState, mode = state.mode): GameState {
   const next = createInitialGameState(mode);
   next.machine = "playing";
   next.progression = state.progression;
+  next.online = { ...state.online };
   return next;
 }
 
@@ -486,6 +487,11 @@ export function stepGame(
     if (state.replay.timer <= 0) {
       state.replay.active = false;
       state.machine = "playing";
+    } else {
+      state.elapsed += clampedDt;
+      state.timeRemaining = Math.max(0, state.timeRemaining - clampedDt);
+      state.radar = createRadar(state);
+      return state;
     }
   }
   state.elapsed += clampedDt;
@@ -807,14 +813,23 @@ function updatePlayer(state: GameState, input: InputFrame, dt: number): void {
   const airborne = car.y > 0.04 || car.airborne;
   const throttle = clamp(input.throttle, -1, 1);
   const throttleAbs = Math.abs(throttle);
-  const boostActive = input.boost && car.boost > 0.02;
-  const driftActive = input.drift && !airborne && Math.abs(car.speed) > 18;
-  const landingPush = car.landingBoost > 0 ? 28 : 0;
+  const boostActive = input.boost && car.boost > 0.015;
+  const driftActive = input.drift && !airborne && Math.abs(car.speed) > 14;
+  const boostDirection = Math.sign(car.speed) || Math.sign(throttle) || 1;
+  const launchAssist =
+    throttleAbs > 0.05 && Math.abs(car.speed) < 24
+      ? throttle * (22 / Math.sqrt(spec.mass))
+      : 0;
+  const landingPush = car.landingBoost > 0 ? 38 * boostDirection : 0;
+  const boostKick = boostActive
+    ? boostDirection * (104 + clamp(car.driftCombo - 1, 0, 4) * 7)
+    : 0;
   const accel =
-    throttle * spec.accel +
-    (boostActive ? 78 : 0) +
+    throttle * spec.accel * (1.08 / Math.sqrt(spec.mass)) +
+    boostKick +
     landingPush -
-    brakingForce(car.speed, throttle, airborne);
+    brakingForce(car.speed, throttle, airborne) +
+    launchAssist;
   const grip = coastGrip(state.mode, spec, driftActive, airborne, throttleAbs);
   car.landingBoost = Math.max(0, car.landingBoost - dt);
   car.speed += accel * dt;
@@ -823,21 +838,23 @@ function updatePlayer(state: GameState, input: InputFrame, dt: number): void {
     car.speed = 0;
   car.speed = clamp(
     car.speed,
-    -42,
-    spec.maxSpeed * (boostActive ? 1.22 : 1) + landingPush,
+    -48,
+    spec.maxSpeed * (boostActive ? 1.28 : 1) + Math.abs(landingPush),
   );
   const turnPower =
     (airborne
-      ? spec.air * 0.85
+      ? spec.air * 0.95
       : driftActive
-        ? 1.7 * spec.drift
-        : 1.06 * spec.grip) * input.steer;
+        ? 2.05 * spec.drift
+        : 1.16 * spec.grip) *
+    input.steer *
+    (boostActive && !driftActive ? 0.94 : 1);
   car.heading += turnPower * dt * clamp(Math.abs(car.speed) / 44, 0.22, 2.6);
   if (boostActive) {
-    car.boost = Math.max(0, car.boost - dt * 0.22);
-    state.score += dt * 18;
+    car.boost = Math.max(0, car.boost - dt * 0.3);
+    state.score += dt * (24 + Math.max(0, car.driftCombo - 1) * 8);
   } else {
-    car.boost = Math.min(1, car.boost + dt * (driftActive ? 0.08 : 0.035));
+    car.boost = Math.min(1, car.boost + dt * (driftActive ? 0.16 : 0.045));
   }
   const forwardX = Math.sin(car.heading);
   const forwardZ = Math.cos(car.heading);
@@ -845,9 +862,11 @@ function updatePlayer(state: GameState, input: InputFrame, dt: number): void {
   car.vz = forwardZ * car.speed;
   car.x += car.vx * dt;
   car.z += car.vz * dt;
-  if (input.jump && !airborne) {
-    car.vy = 40;
+  if (input.jump && !airborne && Math.abs(car.speed) > 8) {
+    car.vy = 38 + clamp(Math.abs(car.speed) * 0.11, 0, 18);
     car.airborne = true;
+    car.trickCharge = Math.min(2.5, car.trickCharge + 0.18);
+    if (isAirScoringMode(state.mode)) state.score += 60;
   }
   if (input.backflip && airborne) {
     car.vy += 9 * spec.air * dt;
@@ -857,12 +876,19 @@ function updatePlayer(state: GameState, input: InputFrame, dt: number): void {
   }
   updateRampAndVertical(state, input, dt);
   if (driftActive) {
+    const steerCommitment = clamp(Math.abs(input.steer), 0.25, 1);
     car.driftCombo = Math.min(
       9.9,
-      car.driftCombo + dt * (1.4 + Math.abs(input.steer)),
+      car.driftCombo +
+        dt * (1.8 + steerCommitment * 1.7 + (boostActive ? 0.35 : 0)),
     );
-    car.driftScore += dt * Math.abs(car.speed) * car.driftCombo;
-    state.score += dt * 34 * car.driftCombo;
+    const driftGain =
+      dt *
+      Math.abs(car.speed) *
+      car.driftCombo *
+      (1.1 + steerCommitment * 0.45);
+    car.driftScore += driftGain;
+    state.score += dt * 42 * car.driftCombo + driftGain * 0.05;
   } else {
     car.driftCombo = Math.max(1, car.driftCombo - dt * 0.9);
   }
@@ -895,9 +921,16 @@ function updateRampAndVertical(
   ) {
     car.vy = 46 + Math.min(22, Math.abs(car.speed) * 0.18);
     car.airborne = true;
+    car.trickCharge = Math.min(2.5, car.trickCharge + 0.22);
   }
   if (car.airborne || car.y > 0) {
     car.airTime += dt;
+    if (isAirScoringMode(state.mode)) {
+      const controlBonus = input.backflip ? 58 : input.drift ? 28 : 16;
+      state.score += dt * (controlBonus + car.trickCharge * 32);
+      if (input.drift)
+        car.trickCharge = Math.min(2.5, car.trickCharge + dt * 0.7);
+    }
     car.vy -= 94 * dt;
     car.y += car.vy * dt;
     if (car.y <= 0) {
@@ -927,7 +960,9 @@ function updateBots(state: GameState, dt: number): void {
           ? 1.8
           : bot.personality === "boss"
             ? 1.55
-            : 2.4);
+            : bot.personality === "rammer"
+              ? 2.75
+              : 2.4);
     bot.heading += clamp(
       angleDiff(desired, bot.heading),
       -turnLimit,
@@ -938,11 +973,15 @@ function updateBots(state: GameState, dt: number): void {
         ? 1.18
         : bot.personality === "sprinter"
           ? 1.24
-          : bot.personality === "stalker"
-            ? 0.78
-            : bot.personality === "blocker"
-              ? 0.92
-              : 1;
+          : bot.personality === "rammer"
+            ? 1.14
+            : bot.personality === "predictor"
+              ? 1.04
+              : bot.personality === "stalker"
+                ? 0.78
+                : bot.personality === "blocker"
+                  ? 0.92
+                  : 1;
     const pressure = botPressureForMode(state.mode, state.elapsed);
     bot.speed += (58 * speedScale * pressure - bot.speed) * dt * 1.4;
     bot.x += Math.sin(bot.heading) * bot.speed * dt;
@@ -966,19 +1005,18 @@ function updateBots(state: GameState, dt: number): void {
       bot.cooldown = 1.4;
       respawnBot(bot, state.stats.demolitions);
     } else if (dist < 17) {
+      const damageRate = botDamageRate(bot, state.mode);
       state.player.shield = Math.max(
         0,
-        state.player.shield - dt * (bot.personality === "boss" ? 0.7 : 0.32),
+        state.player.shield -
+          dt * damageRate * (state.player.nearMissTimer > 0 ? 0.72 : 1),
       );
+      state.player.driftCombo = Math.max(1, state.player.driftCombo - dt * 1.4);
       if (state.player.shield <= 0) {
         state.player.lives = Math.max(0, state.player.lives - 1);
         state.player.shield = 1;
         if (state.player.lives <= 0)
-          completeRun(
-            state,
-            false,
-            "Hunters boxed you in. Drift earlier and use boost through open lanes.",
-          );
+          completeRun(state, false, botFailureReason(state.mode, bot));
       }
     } else if (
       dist < nearMissRadiusForMode(state.mode) &&
@@ -994,12 +1032,24 @@ function updateBots(state: GameState, dt: number): void {
           : state.mode === "hunter" || state.mode === "bot-escape"
             ? 130
             : 90;
-      state.score += nearMissScore;
-      state.player.boost = Math.min(1, state.player.boost + 0.08);
+      const styleMultiplier =
+        1 +
+        clamp(state.player.driftCombo - 1, 0, 4) * 0.18 +
+        (state.player.airborne ? 0.35 : 0);
+      state.score += Math.round(nearMissScore * styleMultiplier);
+      state.player.boost = Math.min(1, state.player.boost + 0.12);
+      state.player.driftCombo = Math.min(9.9, state.player.driftCombo + 0.22);
+      if (state.mode === "drift-score")
+        state.player.driftScore += nearMissScore * styleMultiplier;
+      if (state.mode === "trick-combo")
+        state.objective.progress = Math.min(
+          state.objective.target,
+          state.objective.progress + 0.45,
+        );
       if (state.mode === "hunter" || state.mode === "bot-escape")
         state.objective.progress = Math.min(
           state.objective.target,
-          state.objective.progress + 0.2,
+          state.objective.progress + 0.35,
         );
     }
   }
@@ -1013,11 +1063,20 @@ function updateBall(state: GameState, dt: number): void {
   const pz = state.player.z - ball.z;
   const dist = Math.hypot(px, pz);
   if (dist < 18) {
-    const force = Math.max(40, Math.abs(state.player.speed) * 1.3);
+    const shotStyle =
+      1 +
+      (state.player.boost > 0.02 ? 0.18 : 0) +
+      (state.player.driftCombo > 1.25 ? 0.14 : 0);
+    const force = Math.max(48, Math.abs(state.player.speed) * 1.45 * shotStyle);
     ball.vx -= (px / Math.max(1, dist)) * force;
     ball.vz -= (pz / Math.max(1, dist)) * force;
     state.stats.shots += 1;
-    state.score += 40;
+    state.score += 45 + Math.round(Math.abs(state.player.speed) * 0.45);
+    if (state.mode === "battle")
+      state.objective.progress = Math.min(
+        state.objective.target,
+        state.objective.progress + 0.08,
+      );
   }
   for (const bot of state.bots) {
     const dx = bot.x - ball.x;
@@ -1043,9 +1102,11 @@ function updateBall(state: GameState, dt: number): void {
         state.stats.goalsBlue += 1;
         state.objective.progress += state.mode === "battle" ? 0.7 : 1;
         state.score += state.mode === "battle" ? 180 : 320;
+        state.player.boost = Math.min(1, state.player.boost + 0.25);
       } else {
         state.stats.goalsRed += 1;
         state.score = Math.max(0, state.score - 120);
+        state.player.shield = Math.max(0, state.player.shield - 0.18);
       }
       state.replay = { active: true, meta: "Goal replay", timer: 2.2 };
       state.machine = "replay";
@@ -1094,17 +1155,26 @@ function updateModePassiveObjective(
       updateTutorialObjective(state, input);
       break;
     case "campaign":
-      objective.progress = Math.min(objective.target, objective.progress + dt);
-      state.score += dt * (state.player.nearMissTimer > 0 ? 34 : 12);
+      objective.progress = Math.min(
+        objective.target,
+        objective.progress + dt * (state.player.shield > 0.55 ? 1 : 0.65),
+      );
+      state.score += dt * (state.player.nearMissTimer > 0 ? 42 : 14);
       break;
     case "drift-score":
       objective.progress = Math.min(
         objective.target,
         Math.max(
           objective.progress,
-          state.player.driftScore + state.stats.nearMisses * 160,
+          state.player.driftScore +
+            state.stats.nearMisses * 190 +
+            state.stats.landings * 130 +
+            state.player.trickCharge * 85,
         ),
       );
+      break;
+    case "battle":
+      updateBattlePressureObjective(state, dt);
       break;
     case "lava-floor":
       updateLavaFloorObjective(state, dt);
@@ -1203,12 +1273,34 @@ function updateKingZoneObjective(
   const contested = state.bots.some(
     (bot) => distance2(bot.x, bot.z, zone.x, zone.z) < zone.radius,
   );
-  const holdRate = (input.drift ? 1.8 : 0.75) * (contested ? 0.45 : 1);
+  const speedBonus = clamp(Math.abs(state.player.speed) / 90, 0.25, 1.25);
+  const holdRate =
+    (input.drift ? 2.1 : 0.8) * speedBonus * (contested ? 0.45 : 1);
   state.objective.progress = Math.min(
     state.objective.target,
     state.objective.progress + dt * holdRate,
   );
-  state.score += dt * (contested ? 35 : 85);
+  state.score += dt * (contested ? 42 : 96) * speedBonus;
+  state.player.boost = Math.min(1, state.player.boost + dt * 0.045);
+  if (contested && Math.abs(state.player.speed) < 22)
+    state.player.shield = Math.max(0, state.player.shield - dt * 0.08);
+}
+
+function updateBattlePressureObjective(state: GameState, dt: number): void {
+  if (!state.ball) return;
+  const ballDistance = distance2(
+    state.player.x,
+    state.player.z,
+    state.ball.x,
+    state.ball.z,
+  );
+  if (ballDistance > 52 || Math.abs(state.player.speed) < 36) return;
+  const pressure = clamp(1 - ballDistance / 52, 0.1, 1);
+  state.objective.progress = Math.min(
+    state.objective.target,
+    state.objective.progress + dt * pressure * 0.08,
+  );
+  state.score += dt * 30 * pressure;
 }
 
 function updateBotEscapeObjective(state: GameState, dt: number): void {
@@ -1223,6 +1315,8 @@ function updateBotEscapeObjective(state: GameState, dt: number): void {
     state.objective.progress + dt * escapeRate,
   );
   state.score += dt * (closest > 68 ? 36 : 12);
+  if (closest < 30)
+    state.player.shield = Math.max(0, state.player.shield - dt * 0.06);
 }
 
 function hitMarker(state: GameState): ObjectiveMarker | null {
@@ -1267,23 +1361,34 @@ function handleMarkerHit(
         state,
         marker,
         1,
-        180 + Math.round(state.timeRemaining * 2),
+        checkpointScore(state, 180 + Math.round(state.timeRemaining * 2)),
       );
+      state.player.boost = Math.min(1, state.player.boost + 0.08);
       break;
     case "time-trial":
       completeMarker(
         state,
         marker,
         1,
-        240 + Math.round(state.timeRemaining * 3),
+        checkpointScore(state, 240 + Math.round(state.timeRemaining * 3)),
       );
       state.timeRemaining = Math.min(
         MODE_TIME_LIMITS[state.mode],
-        state.timeRemaining + 1.5,
+        state.timeRemaining +
+          (Math.abs(state.player.speed) > 86 && !state.player.airborne
+            ? 2.3
+            : 1.4),
       );
       break;
     case "stunt":
-      completeMarker(state, marker, state.player.airborne ? 1.2 : 0.45, 180);
+      completeMarker(
+        state,
+        marker,
+        state.player.airborne ? 1.25 + state.player.trickCharge * 0.12 : 0.45,
+        state.player.airborne
+          ? 220 + Math.round(state.player.trickCharge * 120)
+          : 120,
+      );
       break;
     case "hunter":
       completeMarker(state, marker, 1, 190);
@@ -1308,20 +1413,42 @@ function handleMarkerHit(
       }
       break;
     case "battle":
-      completeMarker(state, marker, 0.5, 120);
-      break;
-    case "ramp-rush":
-      completeMarker(state, marker, state.player.airborne ? 1 : 0.35, 210);
-      state.player.boost = Math.min(1, state.player.boost + 0.1);
-      break;
-    case "boost-bowling": {
-      const boostedHit = input.boost || Math.abs(state.player.speed) > 58;
       completeMarker(
         state,
         marker,
-        boostedHit ? 1 : 0.35,
-        boostedHit ? 220 : 80,
+        0.55,
+        150 + Math.round(Math.abs(state.player.speed) * 0.7),
       );
+      state.player.shield = Math.min(1, state.player.shield + 0.08);
+      break;
+    case "ramp-rush":
+      completeMarker(
+        state,
+        marker,
+        state.player.airborne ? 1.05 : 0.35,
+        state.player.airborne
+          ? 250 + Math.round(Math.abs(state.player.speed))
+          : 90,
+      );
+      state.player.boost = Math.min(1, state.player.boost + 0.14);
+      break;
+    case "boost-bowling": {
+      const speed = Math.abs(state.player.speed);
+      const boostedHit = input.boost || speed > 58;
+      if (!boostedHit) {
+        state.score += 65;
+        state.player.boost = Math.min(1, state.player.boost + 0.05);
+        return;
+      }
+      completeMarker(
+        state,
+        marker,
+        1,
+        230 +
+          Math.round(clamp(speed - 58, 0, 90) * 2.2) +
+          (input.boost ? 90 : 0),
+      );
+      state.player.boost = Math.min(1, state.player.boost + 0.08);
       break;
     }
     case "bot-escape":
@@ -1366,11 +1493,13 @@ function completeRun(
   won: boolean,
   reason: string | null = null,
 ): void {
+  if (state.machine === "results") return;
   state.objective.complete = won;
   state.objective.failReason = won
     ? null
     : reason || "The run ended before the objective was complete.";
   state.machine = "results";
+  state.replay = { active: false, meta: "", timer: 0 };
   const medal = medalForRun(state, won);
   state.progression.medals[state.mode] = medal;
   const xpAward = won
@@ -1400,6 +1529,42 @@ function classForMode(mode: ModeId): CarClassId {
   if (mode === "battle" || mode === "boost-bowling") return "bruiser";
   if (mode === "hunter" || mode === "bot-escape") return "lightweight";
   return "balanced";
+}
+
+function isAirScoringMode(mode: ModeId): boolean {
+  return mode === "stunt" || mode === "ramp-rush" || mode === "trick-combo";
+}
+
+function checkpointScore(state: GameState, base: number): number {
+  const speedBonus = clamp(Math.abs(state.player.speed) - 45, 0, 95) * 1.4;
+  const cleanBonus = state.player.shield > 0.82 ? 55 : 0;
+  const driftBonus =
+    state.player.driftCombo > 1.4 ? state.player.driftCombo * 24 : 0;
+  return Math.round(base + speedBonus + cleanBonus + driftBonus);
+}
+
+function botDamageRate(bot: Bot, mode: ModeId): number {
+  const base =
+    bot.personality === "boss"
+      ? 0.78
+      : bot.personality === "rammer"
+        ? 0.52
+        : bot.personality === "blocker"
+          ? 0.42
+          : bot.personality === "sprinter"
+            ? 0.36
+            : 0.3;
+  return mode === "bot-escape" || mode === "hunter" ? base * 1.08 : base;
+}
+
+function botFailureReason(mode: ModeId, bot: Bot): string {
+  if (mode === "boss")
+    return "The boss pattern caught you. Wait for the weak point, then boost or drift through it.";
+  if (mode === "bot-escape")
+    return `${bot.personality} hunter pressure broke the car. Use decoy gates and near misses to refill boost.`;
+  if (mode === "battle")
+    return "Arena hits depleted your shield. Build speed before committing to contact.";
+  return "Hunters boxed you in. Drift earlier and use boost through open lanes.";
 }
 
 function brakingForce(
@@ -1530,26 +1695,40 @@ function awardLanding(
   state.stats.landings += 1;
   const bonus =
     grade === "inferno"
-      ? 360
+      ? 440
       : grade === "perfect"
-        ? 230
+        ? 280
         : grade === "clean"
-          ? 110
+          ? 130
           : 20;
   state.score += bonus;
-  car.boost = Math.min(1, car.boost + bonus / 850);
+  car.boost = Math.min(1, car.boost + bonus / 760);
+  car.driftCombo = Math.min(
+    9.9,
+    car.driftCombo +
+      (grade === "inferno"
+        ? 0.75
+        : grade === "perfect"
+          ? 0.45
+          : grade === "clean"
+            ? 0.18
+            : 0.04),
+  );
   if (grade !== "rough") {
     car.landingBoost =
-      grade === "inferno" ? 1.25 : grade === "perfect" ? 0.85 : 0.45;
-    car.speed += grade === "inferno" ? 18 : grade === "perfect" ? 11 : 6;
+      grade === "inferno" ? 1.45 : grade === "perfect" ? 1 : 0.55;
+    car.speed += grade === "inferno" ? 22 : grade === "perfect" ? 14 : 8;
+    if (state.mode === "drift-score") car.driftScore += bonus * 1.4;
     if (
       state.mode === "stunt" ||
       state.mode === "ramp-rush" ||
       state.mode === "trick-combo"
     ) {
+      const landingProgress =
+        grade === "inferno" ? 1.65 : grade === "perfect" ? 1.05 : 0.65;
       state.objective.progress = Math.min(
         state.objective.target,
-        state.objective.progress + (grade === "inferno" ? 1.4 : 0.75),
+        state.objective.progress + landingProgress,
       );
     }
     if (state.mode === "tutorial" && state.objective.progress >= 5)
@@ -1570,6 +1749,14 @@ function botTarget(state: GameState, bot: Bot): { x: number; z: number } {
       z: state.player.z + Math.cos(angle) * 34,
     };
   }
+  if (bot.personality === "rammer") {
+    return {
+      x: state.player.x + Math.sin(state.player.heading) * 10,
+      z: state.player.z + Math.cos(state.player.heading) * 10,
+    };
+  }
+  if (bot.personality === "predictor")
+    return predictPlayer(state.player, "predictor");
   if (bot.personality === "blocker") {
     const ahead = predictPlayer(state.player, "predictor");
     const side = bot.id % 2 === 0 ? 1 : -1;

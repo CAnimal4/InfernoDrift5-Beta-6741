@@ -29,3 +29,13 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Updated docs to describe the React Three playfield, garage preview, typed game-core state/modes/radar/progression, protocol moderation expansion, local Node backend, and Cloudflare Worker/Durable Object backend.
 - Marked current React-revamp validation as pending parent verification. Older passing logs in this file belong to prior source states unless a parent run confirms the current tree.
 - Marked Cloudflare live deployment as blocked because no verified Worker URL is recorded in docs/source and deploy secrets are not visible in the repo. Live online should only become unblocked after secrets exist and a real `wss://.../ws` endpoint is verified from Pages.
+
+2026-05-14 quality recovery pass after user rejected game/UI feel:
+
+- Spawned role-scoped workers for UI/HUD, gameplay-core, and Three.js scene polish. Integrated the completed gameplay-core and renderer passes plus the local input fix.
+- Fixed deterministic browser playtesting: `window.advanceTime(ms)` now reads current keyboard/touch/gamepad state per frame, so Playwright action bursts actually accelerate/steer/drift/boost instead of reusing a stale parked input frame.
+- Gameplay-core pass made the car faster and punchier, strengthened boost/drift/jump/landing loops, added better near-miss scaling, improved bot personality pressure/damage/fail reasons, made Boost Bowling require boost/high-speed hits, and added tests for those scoring/replay behaviors.
+- Three.js pass replaced the flat-looking arena with a cleaner lit neon track: rings/lanes/rail/goal frames, richer car model, headlights/tails/underglow, additive boost/drift trails, airborne shadow/jump column, landing shock ring, more readable markers/ramps, and smoothed camera lean/FOV.
+- UI pass now presents the menu as a cockpit surface with Play/Garage/Progress/Online/Settings hierarchy, clearer mode cards, smaller HUD clusters, forward radar count, stronger garage preview controls, and better phone landscape scaling.
+- Visual QA screenshots reviewed: `output/web-game-audit2/shot-3.png` showed improved live driving scene with actual movement and cleaner radar/HUD; `output/web-game-audit2/title.png` and `menu-garage.png` showed improved title/garage hierarchy.
+- Validation after this pass: `npm run typecheck`, `npm test`, `npm run format`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run worker:check`, and `npm run worker:types` passed. Headless WebGL still logs expected SwiftShader `ReadPixels` warnings only.

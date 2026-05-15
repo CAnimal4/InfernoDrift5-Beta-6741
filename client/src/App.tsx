@@ -137,6 +137,45 @@ export function App() {
   const touchRef = useRef<InputFrame>({ ...DEFAULT_INPUT });
   const keysRef = useRef(new Set<string>());
 
+  const readInputFrame = useCallback((): InputFrame => {
+    const keys = keysRef.current;
+    const frame: InputFrame = {
+      throttle:
+        keys.has("KeyW") || keys.has("ArrowUp")
+          ? 1
+          : keys.has("KeyS") || keys.has("ArrowDown")
+            ? -0.55
+            : touchRef.current.throttle,
+      steer:
+        (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) +
+          (keys.has("KeyA") || keys.has("ArrowLeft") ? -1 : 0) ||
+        touchRef.current.steer,
+      drift: keys.has("Space") || touchRef.current.drift,
+      boost:
+        keys.has("ShiftLeft") ||
+        keys.has("ShiftRight") ||
+        touchRef.current.boost,
+      jump: keys.has("KeyX") || touchRef.current.jump,
+      backflip: keys.has("KeyC") || touchRef.current.backflip,
+    };
+    const pad = navigator.getGamepads?.()[0];
+    if (pad) {
+      frame.steer =
+        Math.abs(pad.axes[0] ?? 0) > 0.14 ? (pad.axes[0] ?? 0) : frame.steer;
+      frame.throttle =
+        pad.buttons[7]?.pressed || pad.buttons[0]?.pressed
+          ? 1
+          : pad.buttons[6]?.pressed
+            ? -0.55
+            : frame.throttle;
+      frame.drift = frame.drift || Boolean(pad.buttons[1]?.pressed);
+      frame.boost = frame.boost || Boolean(pad.buttons[2]?.pressed);
+      frame.jump = frame.jump || Boolean(pad.buttons[3]?.pressed);
+    }
+    inputRef.current = frame;
+    return frame;
+  }, []);
+
   useEffect(() => {
     gameRef.current = game;
   }, [game]);
@@ -240,9 +279,9 @@ export function App() {
     window.render_game_to_text = serializeState;
     window.advanceTime = (ms: number) => {
       const frames = Math.max(1, Math.round(ms / (1000 / 60)));
-      const input = inputRef.current;
       const next = gameRef.current;
-      for (let i = 0; i < frames; i += 1) stepGame(next, input, 1 / 60);
+      for (let i = 0; i < frames; i += 1)
+        stepGame(next, readInputFrame(), 1 / 60);
       commitGame(next);
     };
     window.__infernodriftTestApi = {
@@ -283,7 +322,7 @@ export function App() {
         beginMode(mode);
       },
     };
-  }, [beginMode, commitGame, serializeState]);
+  }, [beginMode, commitGame, readInputFrame, serializeState]);
 
   useEffect(() => {
     const save = {
@@ -336,54 +375,16 @@ export function App() {
     const loop = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      const keys = keysRef.current;
-      inputRef.current = {
-        throttle:
-          keys.has("KeyW") || keys.has("ArrowUp")
-            ? 1
-            : keys.has("KeyS") || keys.has("ArrowDown")
-              ? -0.55
-              : touchRef.current.throttle,
-        steer:
-          (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) +
-            (keys.has("KeyA") || keys.has("ArrowLeft") ? -1 : 0) ||
-          touchRef.current.steer,
-        drift: keys.has("Space") || touchRef.current.drift,
-        boost:
-          keys.has("ShiftLeft") ||
-          keys.has("ShiftRight") ||
-          touchRef.current.boost,
-        jump: keys.has("KeyX") || touchRef.current.jump,
-        backflip: keys.has("KeyC") || touchRef.current.backflip,
-      };
-      const pad = navigator.getGamepads?.()[0];
-      if (pad) {
-        inputRef.current.steer =
-          Math.abs(pad.axes[0] ?? 0) > 0.14
-            ? (pad.axes[0] ?? 0)
-            : inputRef.current.steer;
-        inputRef.current.throttle =
-          pad.buttons[7]?.pressed || pad.buttons[0]?.pressed
-            ? 1
-            : pad.buttons[6]?.pressed
-              ? -0.55
-              : inputRef.current.throttle;
-        inputRef.current.drift =
-          inputRef.current.drift || Boolean(pad.buttons[1]?.pressed);
-        inputRef.current.boost =
-          inputRef.current.boost || Boolean(pad.buttons[2]?.pressed);
-        inputRef.current.jump =
-          inputRef.current.jump || Boolean(pad.buttons[3]?.pressed);
-      }
+      const input = readInputFrame();
       const next = gameRef.current;
-      stepGame(next, inputRef.current, dt);
+      stepGame(next, input, dt);
       if (next.machine === "playing" || next.machine === "replay")
         setGame(cloneGameState(next));
       frame = requestAnimationFrame(loop);
     };
     frame = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frame);
-  }, []);
+  }, [readInputFrame]);
 
   const connectOnline = useCallback(() => {
     if (!online.serverUrl) {
@@ -484,6 +485,30 @@ export function App() {
       ? activeMeta.label
       : `${activeMeta.label}`;
   const freeChatLocked = !online.freeChatEnabled;
+  const objectivePercent = Math.round(
+    clamp(
+      (game.objective.progress / Math.max(1, game.objective.target)) * 100,
+      0,
+      100,
+    ),
+  );
+  const currentMedal = game.progression.medals[selectedMode] ?? "Unranked";
+  const carSpec = CAR_CLASSES[carClass];
+  const speedPercent = Math.round(
+    clamp((carSpec.maxSpeed / 160) * 100, 12, 100),
+  );
+  const driftPercent = Math.round(clamp(carSpec.drift * 74, 12, 100));
+  const airPercent = Math.round(clamp(carSpec.air * 70, 12, 100));
+  const modeFamily =
+    activeMeta.baseMode === "infernodriftmax1" ? "Max circuit" : "ID4 circuit";
+  const menuStatus =
+    game.machine === "paused"
+      ? "Paused"
+      : game.machine === "playing"
+        ? "Live run"
+        : game.machine === "results"
+          ? "Results"
+          : "Ready";
 
   return (
     <div
@@ -493,13 +518,10 @@ export function App() {
 
       <div className="hud" aria-label="Gameplay status">
         <div className="hud-cluster hud-objective">
-          <div className="pill">
-            <span className="label">World</span>
-            <strong id="hud-world">{hudWorld}</strong>
-          </div>
-          <div className="pill">
-            <span className="label">Level</span>
+          <div className="pill hud-mode-pill">
+            <span className="label">Mode</span>
             <strong id="hud-level">{hudLevel}</strong>
+            <small id="hud-world">{hudWorld}</small>
           </div>
           <div className="pill">
             <span className="label">Time</span>
@@ -508,6 +530,13 @@ export function App() {
           <div className="pill">
             <span className="label">Score</span>
             <strong id="hud-score">{Math.round(game.score)}</strong>
+          </div>
+          <div className="pill hud-objective-meter">
+            <span className="label">Objective</span>
+            <strong>{objectivePercent}%</strong>
+            <div className="bar tiny">
+              <span style={{ width: `${objectivePercent}%` }} />
+            </div>
           </div>
         </div>
         <div className="hud-cluster hud-vehicle">
@@ -541,20 +570,20 @@ export function App() {
             type="button"
             onClick={() => showMenu("play")}
           >
-            Menu
+            Cockpit
           </button>
         </div>
       </div>
 
       <div className="status" aria-hidden="true">
         <div className="pill">
-          <div className="label">Boost</div>
+          <div className="label">Boost Reserve</div>
           <div className="bar">
             <span style={{ width: `${game.player.boost * 100}%` }} />
           </div>
         </div>
         <div className="pill">
-          <div className="label">Shield</div>
+          <div className="label">Shield Cell</div>
           <div className="bar shield">
             <span style={{ width: `${game.player.shield * 100}%` }} />
           </div>
@@ -562,7 +591,10 @@ export function App() {
       </div>
 
       <div className="radar-panel">
-        <div className="minimap-title">Radar</div>
+        <div className="minimap-title">
+          <span>Forward Radar</span>
+          <b>{game.radar.length}</b>
+        </div>
         <Radar entities={game.radar} />
       </div>
 
@@ -648,12 +680,19 @@ export function App() {
         aria-modal="true"
       >
         <div className="hero-panel">
-          <span className="eyebrow">Neon drift survival</span>
-          <h1>InfernoDrift4</h1>
-          <p>
-            Fast ID3-style drifting, real mode rules, Max Arena, garage builds,
-            offline bots, and backend-ready social play.
-          </p>
+          <div className="hero-copy">
+            <span className="eyebrow">Neon drift cockpit online</span>
+            <h1>InfernoDrift4</h1>
+            <p>
+              Launch a hot lap, throw the car into Max Arena, tune the garage,
+              or keep the whole thing offline with bots.
+            </p>
+          </div>
+          <div className="hero-telemetry" aria-label="Selected mode telemetry">
+            <span>{modeFamily}</span>
+            <strong>{activeMeta.label}</strong>
+            <small>{activeMeta.help}</small>
+          </div>
           <div className="cta-row">
             <button
               id="start-btn"
@@ -661,20 +700,23 @@ export function App() {
               type="button"
               onClick={() => beginMode(selectedMode)}
             >
-              Start Ignite Run
+              Launch {activeMeta.label}
             </button>
             <button
               id="tutorial-btn"
               type="button"
               onClick={() => beginMode("tutorial")}
             >
-              First Ignition
+              Training Run
+            </button>
+            <button type="button" onClick={() => showMenu("play")}>
+              Open Cockpit
             </button>
           </div>
           <div className="mode-strip">
-            <span>Offline guest ready</span>
-            <span>13+ free chat gate</span>
-            <span>Forward radar</span>
+            <span>Offline bots armed</span>
+            <span>Max Arena ready</span>
+            <span>{currentMedal} license</span>
           </div>
         </div>
       </div>
@@ -686,18 +728,30 @@ export function App() {
         aria-modal="true"
       >
         <div className="results-panel">
+          <span className="eyebrow">
+            {game.objective.complete
+              ? "Finish line cleared"
+              : "Telemetry redline"}
+          </span>
           <h2>{game.objective.complete ? "Run Complete" : "Run Failed"}</h2>
-          <p>
+          <p className="result-copy">
             {game.objective.complete
               ? `${game.objective.label} banked ${Math.round(game.score)} points.`
               : game.objective.failReason}
           </p>
           <div className="stat-grid">
             <strong>
-              {game.progression.medals[game.mode] ?? "None"} Medal
+              <span>Medal</span>
+              {game.progression.medals[game.mode] ?? "None"}
             </strong>
-            <strong>{game.stats.nearMisses.toFixed(1)} Near Miss</strong>
-            <strong>{game.stats.landings} Landings</strong>
+            <strong>
+              <span>Near Miss</span>
+              {game.stats.nearMisses.toFixed(1)}
+            </strong>
+            <strong>
+              <span>Landings</span>
+              {game.stats.landings}
+            </strong>
           </div>
           <div className="cta-row">
             <button
@@ -705,10 +759,10 @@ export function App() {
               className="primary"
               onClick={() => beginMode(selectedMode)}
             >
-              Restart
+              Restart Run
             </button>
             <button id="retry-btn" onClick={() => showMenu("play")}>
-              Menu
+              Mode Deck
             </button>
           </div>
         </div>
@@ -722,13 +776,28 @@ export function App() {
       >
         <div className="menu-panel">
           <header className="menu-header">
-            <div>
-              <span className="eyebrow">Cockpit</span>
+            <div className="menu-title-block">
+              <span className="eyebrow">{menuStatus} cockpit</span>
               <h2>InfernoDrift4</h2>
+              <p>
+                {activeMeta.label} tuned for {carSpec.label}.{" "}
+                {online.status === "live"
+                  ? `Online room ${online.roomCode ?? "lobby"} synced.`
+                  : "Offline bot mode is ready."}
+              </p>
             </div>
-            <button id="menu-close" onClick={closeMenu}>
-              Close
-            </button>
+            <div className="menu-header-actions">
+              <button
+                className="primary"
+                type="button"
+                onClick={() => beginMode(selectedMode)}
+              >
+                Play Now
+              </button>
+              <button id="menu-close" onClick={closeMenu}>
+                {game.machine === "paused" ? "Resume" : "Close"}
+              </button>
+            </div>
           </header>
           <nav className="menu-tabs" role="tablist">
             {(
@@ -750,9 +819,12 @@ export function App() {
                 aria-selected={tab === item}
                 onClick={() => setTab(item)}
               >
-                {item === "howto"
-                  ? "How To"
-                  : item[0].toUpperCase() + item.slice(1)}
+                <span>
+                  {item === "howto"
+                    ? "How To"
+                    : item[0].toUpperCase() + item.slice(1)}
+                </span>
+                <small>{tabSubtitle(item)}</small>
               </button>
             ))}
           </nav>
@@ -760,10 +832,26 @@ export function App() {
           <main className="menu-content">
             {tab === "play" && (
               <section id="tab-games" className="tab-panel active">
-                <p id="game-mode-hint" className="hint">
-                  Current game: InfernoDrift4 {activeMeta.label} -{" "}
-                  {activeMeta.help}
-                </p>
+                <div className="play-briefing">
+                  <div>
+                    <span className="eyebrow">{modeFamily}</span>
+                    <h3>{activeMeta.label}</h3>
+                    <p id="game-mode-hint" className="hint">
+                      Current game: InfernoDrift4 {activeMeta.label} -{" "}
+                      {activeMeta.help}
+                    </p>
+                  </div>
+                  <div className="briefing-meter">
+                    <span>Objective</span>
+                    <strong>
+                      {Math.round(game.objective.progress)}/
+                      {game.objective.target}
+                    </strong>
+                    <div className="bar">
+                      <span style={{ width: `${objectivePercent}%` }} />
+                    </div>
+                  </div>
+                </div>
                 <div className="featured-modes">
                   <button
                     id="game-card-id33"
@@ -771,6 +859,7 @@ export function App() {
                     onClick={() => beginMode("campaign")}
                     type="button"
                   >
+                    <em>ID4 mainline</em>
                     <strong>Campaign Survival</strong>
                     <span>
                       World progression, Risk hunters, bosses, medals.
@@ -782,6 +871,7 @@ export function App() {
                     onClick={() => beginMode("battle")}
                     type="button"
                   >
+                    <em>Max circuit</em>
                     <strong>Max Arena</strong>
                     <span>
                       Ball hits, team roles, goal replay, 3v3 bot fill.
@@ -797,9 +887,18 @@ export function App() {
                       onClick={() => beginMode(id)}
                       type="button"
                     >
-                      <em>{tag}</em>
+                      <span className="mode-card-topline">
+                        <em>{tag}</em>
+                        <b>{MODE_META[id].target}</b>
+                      </span>
                       <strong>{MODE_META[id].label}</strong>
                       <span>{MODE_META[id].help}</span>
+                      <small>
+                        {MODE_META[id].baseMode === "infernodriftmax1"
+                          ? "Arena rules"
+                          : "Street rules"}{" "}
+                        · {game.progression.medals[id] ?? "No medal"}
+                      </small>
                     </button>
                   ))}
                 </div>
@@ -824,6 +923,14 @@ export function App() {
                   carClass={carClass}
                 />
                 <div className="garage-controls">
+                  <div className="garage-title">
+                    <span className="eyebrow">Garage bay</span>
+                    <h3>{carSpec.label}</h3>
+                    <p className="hint">
+                      Paint, underglow, and class stats update before your next
+                      launch.
+                    </p>
+                  </div>
                   <label className="field">
                     <span>Car Class</span>
                     <select
@@ -841,30 +948,53 @@ export function App() {
                       ))}
                     </select>
                   </label>
-                  <label className="field">
-                    <span>Paint</span>
-                    <input
-                      type="color"
-                      value={paint}
-                      onChange={(event) => setPaint(event.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Accent / Underglow</span>
-                    <input
-                      type="color"
-                      value={accent}
-                      onChange={(event) => setAccent(event.target.value)}
-                    />
-                  </label>
-                  <div id="custom-stats" className="custom-stats">
-                    <strong>{CAR_CLASSES[carClass].label}</strong>
-                    <span>
-                      Top {CAR_CLASSES[carClass].maxSpeed} · Drift{" "}
-                      {CAR_CLASSES[carClass].drift.toFixed(2)} · Mass{" "}
-                      {CAR_CLASSES[carClass].mass.toFixed(2)}
-                    </span>
+                  <div className="paint-grid">
+                    <label className="field color-field">
+                      <span>Paint</span>
+                      <input
+                        type="color"
+                        value={paint}
+                        onChange={(event) => setPaint(event.target.value)}
+                      />
+                    </label>
+                    <label className="field color-field">
+                      <span>Underglow</span>
+                      <input
+                        type="color"
+                        value={accent}
+                        onChange={(event) => setAccent(event.target.value)}
+                      />
+                    </label>
                   </div>
+                  <div id="custom-stats" className="custom-stats">
+                    <strong>{carSpec.label}</strong>
+                    <div className="stat-meter">
+                      <span>Top {carSpec.maxSpeed}</span>
+                      <div className="bar">
+                        <span style={{ width: `${speedPercent}%` }} />
+                      </div>
+                    </div>
+                    <div className="stat-meter">
+                      <span>Drift {carSpec.drift.toFixed(2)}</span>
+                      <div className="bar">
+                        <span style={{ width: `${driftPercent}%` }} />
+                      </div>
+                    </div>
+                    <div className="stat-meter">
+                      <span>Air {carSpec.air.toFixed(2)}</span>
+                      <div className="bar shield">
+                        <span style={{ width: `${airPercent}%` }} />
+                      </div>
+                    </div>
+                    <small>Mass {carSpec.mass.toFixed(2)}</small>
+                  </div>
+                  <button
+                    className="primary wide"
+                    type="button"
+                    onClick={() => beginMode(selectedMode)}
+                  >
+                    Launch Tuned Car
+                  </button>
                 </div>
               </section>
             )}
@@ -872,10 +1002,27 @@ export function App() {
             {tab === "progress" && (
               <section id="tab-progression" className="tab-panel active">
                 <div className="progression-board" id="progression-board">
-                  <strong>Level {game.progression.level}</strong>
-                  <span>{game.progression.xp} XP</span>
-                  <span>Daily {game.progression.dailySeed}</span>
-                  <span>Weekly {game.progression.weeklySeed}</span>
+                  <strong>
+                    <span>Driver Level</span>
+                    {game.progression.level}
+                  </strong>
+                  <span>
+                    <b>{game.progression.xp}</b> XP banked
+                  </span>
+                  <span>
+                    <b>{game.progression.dailySeed}</b> daily seed
+                  </span>
+                  <span>
+                    <b>{game.progression.weeklySeed}</b> weekly route
+                  </span>
+                </div>
+                <div className="medal-wall" aria-label="Mode medals">
+                  {MODE_GROUPS.slice(0, 10).map(({ id }) => (
+                    <div key={id}>
+                      <span>{MODE_META[id].label}</span>
+                      <strong>{game.progression.medals[id] ?? "Open"}</strong>
+                    </div>
+                  ))}
                 </div>
                 <ul id="challenge-list" className="menu-list">
                   <li>Daily: score 900 drift points in {activeMeta.label}.</li>
@@ -897,17 +1044,20 @@ export function App() {
                   id="online-status-card"
                   className={`online-status-card ${online.status}`}
                 >
-                  <strong>
-                    {online.status === "live"
-                      ? "Online backend connected"
-                      : "Backend offline - bot mode active"}
-                  </strong>
-                  <span>
-                    {online.error ||
-                      (online.status === "live"
-                        ? `Room ${online.roomCode ?? "lobby"} synced. Quick chat and 13+ moderated lobby chat are active.`
-                        : "Set a WebSocket backend for rooms, social, and cloud saves.")}
-                  </span>
+                  <div className="online-signal" aria-hidden="true" />
+                  <div>
+                    <strong>
+                      {online.status === "live"
+                        ? "Online backend connected"
+                        : "Backend offline - bot mode active"}
+                    </strong>
+                    <span>
+                      {online.error ||
+                        (online.status === "live"
+                          ? `Room ${online.roomCode ?? "lobby"} synced. Quick chat and 13+ moderated lobby chat are active.`
+                          : "Set a WebSocket backend for rooms, social, and cloud saves.")}
+                    </span>
+                  </div>
                 </div>
                 <div className="online-grid">
                   <label className="field">
@@ -1029,19 +1179,29 @@ export function App() {
                         : "Offline bot mode"}
                     </div>
                     <ul id="online-room-list" className="menu-list compact">
-                      {online.players.map((player) => (
-                        <li key={player}>{player}</li>
-                      ))}
+                      {online.players.length ? (
+                        online.players.map((player) => (
+                          <li key={player}>{player}</li>
+                        ))
+                      ) : (
+                        <li>Solo cockpit. Bots will fill the grid.</li>
+                      )}
                     </ul>
                   </div>
                   <div className="online-panel">
                     <strong>Chat</strong>
                     <div id="online-chat-log" className="online-chat-log">
-                      {online.chat.map((line, index) => (
-                        <div key={index}>
-                          <b>{line.from}</b> {line.text}
-                        </div>
-                      ))}
+                      {online.chat.length ? (
+                        online.chat.map((line, index) => (
+                          <div key={index}>
+                            <b>{line.from}</b> {line.text}
+                          </div>
+                        ))
+                      ) : (
+                        <span className="empty-note">
+                          Quick chat is ready. Free chat unlocks at 13+.
+                        </span>
+                      )}
                     </div>
                     <div className="online-chat-row">
                       <input
@@ -1108,108 +1268,123 @@ export function App() {
 
             {tab === "settings" && (
               <section id="tab-settings" className="tab-panel active">
-                <label
-                  className="field"
-                  id="max-difficulty-field"
-                  hidden={game.baseMode !== "infernodriftmax1"}
-                >
-                  <span>Max Difficulty</span>
-                  <select id="max-difficulty-select">
-                    <option value="classic">Classic</option>
-                    <option value="brutal">Brutal</option>
-                  </select>
-                </label>
-                <label className="field toggle">
-                  <span>Dev Mode</span>
-                  <input
-                    id="dev-mode-toggle"
-                    checked={devMode}
-                    onChange={(event) => setDevMode(event.target.checked)}
-                    type="checkbox"
-                  />
-                </label>
-                <label className="field">
-                  <span>Device Mode</span>
-                  <select
-                    id="device-mode-select"
-                    value={deviceMode}
-                    onChange={(event) =>
-                      setDeviceMode(event.target.value as typeof deviceMode)
-                    }
-                  >
-                    <option value="auto">Auto</option>
-                    <option value="desktop">Desktop</option>
-                    <option value="tablet">Tablet</option>
-                    <option value="phone">Phone</option>
-                  </select>
-                </label>
-                <label className="field toggle">
-                  <span>Reduced Motion</span>
-                  <input
-                    checked={reducedMotion}
-                    onChange={(event) => setReducedMotion(event.target.checked)}
-                    type="checkbox"
-                  />
-                </label>
-                <label className="field">
-                  <span>Camera Shake {cameraShake.toFixed(1)}</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={cameraShake}
-                    onChange={(event) =>
-                      setCameraShake(Number(event.target.value))
-                    }
-                  />
-                </label>
-                <label className="field">
-                  <span>SFX Volume {Math.round(sfxVolume * 100)}%</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={sfxVolume}
-                    onChange={(event) =>
-                      setSfxVolume(Number(event.target.value))
-                    }
-                  />
-                </label>
-                <label className="field">
-                  <span>Music Volume {Math.round(musicVolume * 100)}%</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={musicVolume}
-                    onChange={(event) =>
-                      setMusicVolume(Number(event.target.value))
-                    }
-                  />
-                </label>
-                <p id="dev-mode-hint" className="hint">
-                  {devMode
-                    ? "Dev Mode enabled. Test hooks and force actions are active."
-                    : "Dev Mode disabled."}
-                </p>
-                <button
-                  id="dev-force-demo"
-                  onClick={() => {
-                    const api = window.__infernodriftTestApi as {
-                      forceDemo?: () => void;
-                    };
-                    api.forceDemo?.();
-                  }}
-                >
-                  Force Demo
-                </button>
-                <select id="dev-max-boost-variant" defaultValue="hyper">
-                  <option value="hyper">Hyper</option>
-                  <option value="classic">Classic</option>
-                </select>
+                <div className="settings-grid">
+                  <div className="settings-panel">
+                    <strong>Run Feel</strong>
+                    <label
+                      className="field"
+                      id="max-difficulty-field"
+                      hidden={game.baseMode !== "infernodriftmax1"}
+                    >
+                      <span>Max Difficulty</span>
+                      <select id="max-difficulty-select">
+                        <option value="classic">Classic</option>
+                        <option value="brutal">Brutal</option>
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>Camera Shake {cameraShake.toFixed(1)}</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={cameraShake}
+                        onChange={(event) =>
+                          setCameraShake(Number(event.target.value))
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      <span>SFX Volume {Math.round(sfxVolume * 100)}%</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={sfxVolume}
+                        onChange={(event) =>
+                          setSfxVolume(Number(event.target.value))
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Music Volume {Math.round(musicVolume * 100)}%</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={musicVolume}
+                        onChange={(event) =>
+                          setMusicVolume(Number(event.target.value))
+                        }
+                      />
+                    </label>
+                  </div>
+                  <div className="settings-panel">
+                    <strong>Display</strong>
+                    <label className="field">
+                      <span>Device Mode</span>
+                      <select
+                        id="device-mode-select"
+                        value={deviceMode}
+                        onChange={(event) =>
+                          setDeviceMode(event.target.value as typeof deviceMode)
+                        }
+                      >
+                        <option value="auto">Auto</option>
+                        <option value="desktop">Desktop</option>
+                        <option value="tablet">Tablet</option>
+                        <option value="phone">Phone</option>
+                      </select>
+                    </label>
+                    <label className="field toggle">
+                      <span>Reduced Motion</span>
+                      <input
+                        checked={reducedMotion}
+                        onChange={(event) =>
+                          setReducedMotion(event.target.checked)
+                        }
+                        type="checkbox"
+                      />
+                    </label>
+                  </div>
+                  <div className="settings-panel dev-panel">
+                    <strong>Dev Console</strong>
+                    <label className="field toggle">
+                      <span>Dev Mode</span>
+                      <input
+                        id="dev-mode-toggle"
+                        checked={devMode}
+                        onChange={(event) => setDevMode(event.target.checked)}
+                        type="checkbox"
+                      />
+                    </label>
+                    <p id="dev-mode-hint" className="hint">
+                      {devMode
+                        ? "Dev Mode enabled. Test hooks and force actions are active."
+                        : "Dev Mode disabled."}
+                    </p>
+                    <div className="dev-actions">
+                      <button
+                        id="dev-force-demo"
+                        onClick={() => {
+                          const api = window.__infernodriftTestApi as {
+                            forceDemo?: () => void;
+                          };
+                          api.forceDemo?.();
+                        }}
+                      >
+                        Force Demo
+                      </button>
+                      <select id="dev-max-boost-variant" defaultValue="hyper">
+                        <option value="hyper">Hyper</option>
+                        <option value="classic">Classic</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
               </section>
             )}
 
@@ -1332,6 +1507,24 @@ function resolveDeviceType(mode: "auto" | "desktop" | "tablet" | "phone") {
   if (window.innerWidth < 760) return "phone";
   if (window.innerWidth < 1100) return "tablet";
   return "desktop";
+}
+
+function tabSubtitle(tab: PrimaryTab): string {
+  switch (tab) {
+    case "play":
+      return "Modes";
+    case "garage":
+      return "Tune";
+    case "progress":
+      return "Medals";
+    case "online":
+      return "Rooms";
+    case "settings":
+      return "Feel";
+    case "howto":
+      return "Controls";
+  }
+  return "";
 }
 
 function formatTime(value: number) {

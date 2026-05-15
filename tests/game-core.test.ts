@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   createInitialGameState,
   createRadar,
+  startGame,
   stepGame,
   type GameState,
   type InputFrame,
@@ -147,6 +148,65 @@ test("near misses are discrete scoring events with boost rewards and cooldown", 
   assert.ok(state.player.boost > 0);
 });
 
+test("drift-score near misses scale with combo and feed the drift target", () => {
+  const state = playing("drift-score");
+  const bot = state.bots[0];
+  bot.x = state.player.x + 27;
+  bot.z = state.player.z;
+  bot.speed = 0;
+  state.player.speed = 72;
+  state.player.driftCombo = 4;
+
+  stepGame(state, input(), 0.05);
+
+  assert.equal(state.stats.nearMisses, 1);
+  assert.ok(state.score > 160);
+  assert.ok(state.player.driftScore > 160);
+  assert.ok(state.objective.progress > 160);
+});
+
+test("Boost Bowling only clears pins from boosted or high-speed hits", () => {
+  const weak = playing("boost-bowling");
+  const weakPin = weak.markers[0];
+  weak.player.x = weakPin.x;
+  weak.player.z = weakPin.z;
+  weak.player.speed = 34;
+
+  stepGame(weak, input(), 0.05);
+
+  assert.equal(weakPin.complete, false);
+  assert.equal(weak.objective.progress, 0);
+  assert.equal(weak.score, 65);
+
+  const strong = playing("boost-bowling");
+  const strongPin = strong.markers[0];
+  strong.player.x = strongPin.x;
+  strong.player.z = strongPin.z;
+  strong.player.speed = 82;
+
+  stepGame(strong, input({ boost: true }), 0.05);
+
+  assert.equal(strongPin.complete, true);
+  assert.equal(strong.objective.progress, 1);
+  assert.ok(strong.score > weak.score + 250);
+});
+
+test("goal replay freezes play until the replay timer ends", () => {
+  const state = playing("max");
+  assert.ok(state.ball);
+  state.ball.z = 211;
+
+  stepGame(state, input(), 0.05);
+  assert.equal(state.machine, "replay");
+
+  const xAfterGoal = state.player.x;
+  stepGame(state, input({ throttle: 1, steer: 1, boost: true }), 0.05);
+
+  assert.equal(state.machine, "replay");
+  assert.equal(state.player.x, xAfterGoal);
+  assert.equal(state.stats.goalsBlue, 1);
+});
+
 test("Lava Floor banks progress only in the safe zone and burns shield outside", () => {
   const state = playing("lava-floor");
   const zone = state.markers[0];
@@ -165,6 +225,31 @@ test("Lava Floor banks progress only in the safe zone and burns shield outside",
   advance(state, 0.6);
 
   assert.ok(state.player.shield < shieldAfterSafeZone);
+});
+
+test("fast restart clears result and replay state while preserving persistent progress", () => {
+  const state = playing("hunter");
+  state.machine = "results";
+  state.objective.failReason = "boxed in";
+  state.replay = { active: true, meta: "Goal replay", timer: 1.2 };
+  state.progression.xp = 620;
+  state.progression.unlocked.push("test-unlock");
+  state.online = { status: "live", roomCode: "ABCD", latencyMs: 42 };
+
+  const restarted = startGame(state);
+
+  assert.equal(restarted.machine, "playing");
+  assert.equal(restarted.mode, "hunter");
+  assert.equal(restarted.objective.failReason, null);
+  assert.equal(restarted.replay.active, false);
+  assert.equal(restarted.score, 0);
+  assert.equal(restarted.progression.xp, 620);
+  assert.ok(restarted.progression.unlocked.includes("test-unlock"));
+  assert.deepEqual(restarted.online, {
+    status: "live",
+    roomCode: "ABCD",
+    latencyMs: 42,
+  });
 });
 
 test("winning a mode grants mode rewards and records the reward log", () => {
