@@ -4,66 +4,31 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
+import {
+  QUICK_CHAT,
+  makePrivateCode,
+  normalizeRoomOptions,
+  normalizeUsername,
+  sanitizeChat,
+  validateClientMessage,
+} from "../../worker/src/protocol.js";
 
-const QUICK_CHAT = new Set([
-  "Nice drift!",
-  "Defending",
-  "Need boost",
-  "Centering",
-  "Good run!",
-  "Again?",
-]);
-const BAD_WORDS = /\b(?:damn|hell|shit|fuck|bitch|asshole)\b/gi;
+export { sanitizeChat, validateClientMessage };
 
-export function sanitizeChat(input) {
-  return String(input ?? "")
-    .replace(/<[^>]*>/g, "")
-    .replace(BAD_WORDS, "boost")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 120);
-}
+const DEFAULT_LEADERBOARD = [
+  { username: "Ghost Apex", rating: 1480, playlist: "ranked" },
+  { username: "Cinderline", rating: 1320, playlist: "casual" },
+  { username: "Neon Rookie", rating: 1000, playlist: "casual" },
+];
 
-export function validateClientMessage(raw) {
-  let data;
-  try {
-    data =
-      typeof raw === "string" ? JSON.parse(raw) : JSON.parse(raw.toString());
-  } catch {
-    return { ok: false, error: "invalid_json" };
-  }
-  if (!data || typeof data !== "object" || typeof data.type !== "string")
-    return { ok: false, error: "invalid_shape" };
-  const allowed = new Set([
-    "hello",
-    "ping",
-    "auth.guest",
-    "room.create",
-    "room.join",
-    "room.leave",
-    "queue.join",
-    "queue.cancel",
-    "chat.send",
-    "quick.send",
-    "input.frame",
-    "leaderboard.get",
-    "friend.request",
-    "friend.list",
-  ]);
-  if (!allowed.has(data.type)) return { ok: false, error: "unknown_type" };
-  const encodedSize = Buffer.byteLength(JSON.stringify(data), "utf8");
-  if (encodedSize > 2048) return { ok: false, error: "message_too_large" };
-  if (data.type === "input.frame") {
-    const speed = Math.abs(Number(data.speed ?? 0));
-    if (!Number.isFinite(speed) || speed > 420)
-      return { ok: false, error: "speed_rejected" };
-    if (data.score || data.goal || data.devWin || data.admin)
-      return { ok: false, error: "authoritative_rejected" };
-  }
-  if (data.type === "queue.join" && data.ranked && data.devMode)
-    return { ok: false, error: "ranked_dev_rejected" };
-  return { ok: true, data };
-}
+const BOT_NAMES = [
+  "Ash Bot",
+  "Boost Bot",
+  "Cinder Bot",
+  "Drift Bot",
+  "Ember Bot",
+  "Flux Bot",
+];
 
 function loadDb(dataDir) {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -71,7 +36,7 @@ function loadDb(dataDir) {
   if (!fs.existsSync(file))
     fs.writeFileSync(
       file,
-      JSON.stringify({ users: {}, leaderboard: [] }, null, 2),
+      JSON.stringify({ users: {}, leaderboard: DEFAULT_LEADERBOARD }, null, 2),
     );
   return {
     file,
@@ -83,7 +48,7 @@ function loadDb(dataDir) {
 }
 
 function makeCode() {
-  return randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase();
+  return makePrivateCode();
 }
 
 export function createInfernoServer(options = {}) {
@@ -96,6 +61,10 @@ export function createInfernoServer(options = {}) {
     .map((origin) => origin.trim())
     .filter(Boolean);
   const db = loadDb(dataDir);
+  if (!Array.isArray(db.data.leaderboard) || db.data.leaderboard.length === 0) {
+    db.data.leaderboard = DEFAULT_LEADERBOARD;
+    db.save();
+  }
   const rooms = new Map();
   const clients = new Map();
   const rate = new Map();
@@ -137,30 +106,118 @@ export function createInfernoServer(options = {}) {
     }
   }
 
+  function leaderboardSnapshot(playlist = "") {
+    const rows = Array.isArray(db.data.leaderboard)
+      ? db.data.leaderboard
+      : DEFAULT_LEADERBOARD;
+    const filtered =
+      playlist && playlist !== "casual"
+        ? rows.filter((row) => !row.playlist || row.playlist === playlist)
+        : rows;
+    return (filtered.length ? filtered : rows).slice(0, 10);
+  }
+
+  function buildBotPlayers(room) {
+    if (!room.botFill) return [];
+    return BOT_NAMES.slice(0, Math.max(0, room.size - room.players.size)).map(
+      (name, index) => ({
+        id: `bot-${room.id}-${index + 1}`,
+        username: name,
+        rating: 900 + index * 25,
+        bot: true,
+      }),
+    );
+  }
+
+  function friendsSnapshot() {
+    return {
+      type: "friends.snapshot",
+      friends: [],
+      recentPlayers: [...clients.values()].map((peer) => peer.user),
+    };
+  }
+
   function roomSnapshot(room) {
+    const bots = buildBotPlayers(room);
     return {
       type: "room.snapshot",
       room: {
         id: room.id,
         code: room.code,
         mode: room.mode,
+        playlist: room.playlist,
         size: room.size,
+        teamSize: room.teamSize,
         ranked: room.ranked,
+        botFill: room.botFill,
         players: [...room.players]
           .map((id) => clients.get(id)?.user)
           .filter(Boolean),
-        bots: Math.max(0, room.size - room.players.size),
-        leaderboard: db.data.leaderboard.slice(0, 10),
+        bots: bots.length,
+        botPlayers: bots,
+        leaderboard: leaderboardSnapshot(room.playlist),
       },
     };
+  }
+
+  function leaveRoom(id, { notify = false } = {}) {
+    const client = clients.get(id);
+    const room = client?.roomId ? rooms.get(client.roomId) : null;
+    if (!client || !room) return;
+    room.players.delete(id);
+    client.roomId = null;
+    if (room.players.size === 0) rooms.delete(room.id);
+    else broadcast(room, roomSnapshot(room));
+    if (notify) send(client.ws, { type: "room.left" });
+  }
+
+  function makeRoom(options, source = "private") {
+    return {
+      id: randomUUID(),
+      code: makeCode(),
+      source,
+      mode: options.mode,
+      playlist: options.playlist,
+      size: options.size,
+      teamSize: options.teamSize,
+      ranked: options.ranked,
+      botFill: options.botFill,
+      players: new Set(),
+    };
+  }
+
+  function joinRoom(id, room) {
+    const client = clients.get(id);
+    if (!client) return;
+    if (client.roomId && client.roomId !== room.id) leaveRoom(id);
+    room.players.add(id);
+    client.roomId = room.id;
+    broadcast(room, roomSnapshot(room));
+  }
+
+  function findQueuedRoom(options) {
+    return [...rooms.values()].find(
+      (room) =>
+        room.source === "queue" &&
+        room.playlist === options.playlist &&
+        room.teamSize === options.teamSize &&
+        room.ranked === options.ranked &&
+        room.players.size < room.size,
+    );
   }
 
   wss.on("connection", (ws) => {
     const id = randomUUID();
     clients.set(id, {
       ws,
-      user: { id, username: `Guest-${id.slice(0, 4)}`, rating: 1000 },
+      user: {
+        id,
+        username: `Guest-${id.slice(0, 4)}`,
+        rating: 1000,
+        online: true,
+      },
       roomId: null,
+      latestInput: null,
     });
     send(ws, { type: "hello", id, server: "InfernoDrift4" });
 
@@ -168,37 +225,53 @@ export function createInfernoServer(options = {}) {
       const parsed = validateClientMessage(raw);
       if (!parsed.ok) return send(ws, { type: "error", error: parsed.error });
       const client = clients.get(id);
+      if (!client) return;
       const msg = parsed.data;
 
       if (msg.type === "ping") {
-        send(ws, { type: "pong", at: msg.at ?? Date.now() });
+        send(ws, { type: "pong", at: msg.at ?? msg.t ?? Date.now() });
+        return;
       }
 
       if (msg.type === "auth.guest") {
-        const username =
-          sanitizeChat(msg.username || client.user.username).slice(0, 24) ||
-          client.user.username;
-        client.user = { ...client.user, username };
+        const username = normalizeUsername(
+          msg.username || client.user.username,
+          client.user.username,
+        );
+        client.user = {
+          ...client.user,
+          username,
+          age: msg.age === undefined ? undefined : Number(msg.age),
+          deviceId: msg.deviceId,
+          online: true,
+        };
         db.data.users[id] = client.user;
         db.save();
         send(ws, { type: "auth.ok", user: client.user });
+        send(ws, friendsSnapshot());
+        return;
       }
 
-      if (msg.type === "room.create" || msg.type === "queue.join") {
-        const size = [2, 4, 6].includes(Number(msg.size))
-          ? Number(msg.size)
-          : 2;
-        const room = {
-          id: randomUUID(),
-          code: makeCode(),
-          mode: msg.mode || "campaign",
-          size,
-          ranked: Boolean(msg.ranked),
-          players: new Set([id]),
-        };
+      if (msg.type === "room.create") {
+        const room = makeRoom(normalizeRoomOptions(msg), "private");
         rooms.set(room.id, room);
-        client.roomId = room.id;
-        send(ws, roomSnapshot(room));
+        joinRoom(id, room);
+        return;
+      }
+
+      if (msg.type === "queue.join") {
+        const options = normalizeRoomOptions(msg);
+        const room = findQueuedRoom(options) || makeRoom(options, "queue");
+        if (!rooms.has(room.id)) rooms.set(room.id, room);
+        send(ws, {
+          type: "queue.joined",
+          playlist: room.playlist,
+          teamSize: room.teamSize,
+          ranked: room.ranked,
+          botFill: room.botFill,
+        });
+        joinRoom(id, room);
+        return;
       }
 
       if (msg.type === "room.join") {
@@ -207,18 +280,16 @@ export function createInfernoServer(options = {}) {
             candidate.code === String(msg.code || "").toUpperCase(),
         );
         if (!room) return send(ws, { type: "error", error: "room_not_found" });
-        room.players.add(id);
-        client.roomId = room.id;
-        broadcast(room, roomSnapshot(room));
+        if (room.players.size >= room.size && !room.players.has(id)) {
+          return send(ws, { type: "error", error: "room_full" });
+        }
+        joinRoom(id, room);
+        return;
       }
 
       if (msg.type === "room.leave" || msg.type === "queue.cancel") {
-        const room = rooms.get(client.roomId);
-        room?.players.delete(id);
-        client.roomId = null;
-        if (room && room.players.size === 0) rooms.delete(room.id);
-        else if (room) broadcast(room, roomSnapshot(room));
-        send(ws, { type: "room.left" });
+        leaveRoom(id, { notify: true });
+        return;
       }
 
       if (msg.type === "chat.send" || msg.type === "quick.send") {
@@ -229,6 +300,13 @@ export function createInfernoServer(options = {}) {
           return send(ws, { type: "error", error: "rate_limited" });
         recent.push(now);
         rate.set(id, recent);
+        if (
+          msg.type === "chat.send" &&
+          Number.isInteger(client.user.age) &&
+          client.user.age < 13
+        ) {
+          return send(ws, { type: "error", error: "chat_requires_13_plus" });
+        }
         const text =
           msg.type === "quick.send" && QUICK_CHAT.has(msg.text)
             ? msg.text
@@ -243,40 +321,60 @@ export function createInfernoServer(options = {}) {
         };
         if (room) broadcast(room, payload);
         else send(ws, payload);
+        return;
       }
 
       if (msg.type === "input.frame") {
-        const speed = Math.abs(Number(msg.speed ?? 0));
-        if (speed > 420)
-          return send(ws, { type: "error", error: "speed_rejected" });
-        send(ws, { type: "input.accepted", tick: Number(msg.tick ?? 0) });
+        const input = {
+          tick: Number(msg.tick ?? msg.seq ?? 0),
+          x: Number(msg.x ?? msg.client?.x ?? 0),
+          z: Number(msg.z ?? msg.client?.z ?? 0),
+          speed: Number(msg.speed ?? msg.client?.speed ?? 0),
+          at: Date.now(),
+        };
+        client.latestInput = input;
+        send(ws, { type: "input.accepted", tick: input.tick });
+        const room = rooms.get(client.roomId);
+        if (room) {
+          broadcast(room, {
+            type: "match.snapshot",
+            players: [...room.players].map((playerId) => ({
+              id: clients.get(playerId)?.user.id,
+              username: clients.get(playerId)?.user.username,
+              input: clients.get(playerId)?.latestInput ?? null,
+            })),
+          });
+        }
+        return;
       }
 
       if (msg.type === "leaderboard.get") {
         send(ws, {
           type: "leaderboard.snapshot",
-          leaderboard: db.data.leaderboard.slice(0, 10),
+          leaderboard: leaderboardSnapshot(msg.playlist),
         });
+        return;
       }
 
-      if (msg.type === "friend.request" || msg.type === "friend.list") {
+      if (msg.type === "friend.request") {
         send(ws, {
-          type: "friends.snapshot",
-          friends: [],
-          recentPlayers: [...clients.values()].map((peer) => peer.user),
+          type: "friend.requested",
+          username: normalizeUsername(msg.username, msg.username),
+          status: "pending",
         });
+        send(ws, friendsSnapshot());
+        return;
+      }
+
+      if (msg.type === "friend.list") {
+        send(ws, friendsSnapshot());
       }
     });
 
     ws.on("close", () => {
-      const client = clients.get(id);
-      if (client?.roomId) {
-        const room = rooms.get(client.roomId);
-        room?.players.delete(id);
-        if (room && room.players.size === 0) rooms.delete(room.id);
-        else if (room) broadcast(room, roomSnapshot(room));
-      }
+      leaveRoom(id);
       clients.delete(id);
+      rate.delete(id);
     });
   });
 

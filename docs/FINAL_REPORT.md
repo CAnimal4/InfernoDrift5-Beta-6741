@@ -1,63 +1,53 @@
 # Final Report
 
-Status: implementation complete for the 2026-05-13/14 revamp pass. The static GitHub Pages game has been verified live; hosted backend verification is blocked until Cloudflare credentials are available.
+Status: current tree is a playable React/TypeScript/Three revamp with local test evidence. This report is still not a hosted-backend sign-off because no verified Cloudflare Worker URL or Cloudflare secrets are present.
 
 ## URLs
 
 - Repo: https://github.com/CAnimal4/InfernoDrift4
 - Pages target: https://canimal4.github.io/InfernoDrift4/
-- Starting commit for this pass: `bc965cf`
-- Verified implementation commit: `c6f0119cbb1db650d46a147e6be3e0ca450ec9de`
-- Headless-audio smoke cleanup commit: `7933408e66daecba08f1f84a958fda74ee7e60c5`
-- Final pushed `HEAD`: reported in the assistant response after the report commit.
+- Cloudflare Worker URL: not verified in the inspected docs/source.
 
-## Implementation Summary
+## Current Implementation Summary
 
-- Continued from the ID3-derived InfernoDrift4 static game, preserving the current game feel rather than returning to the rejected standalone monorepo.
-- Added uploaded favicon processing with `scripts/generate-icons.mjs`; generated `favicon.ico`, `icon.svg`, `icon-64.png`, `icon-192.png`, and `icon-512.png`.
-- Reworked HUD into compact objective/vehicle clusters, moved boost/shield into a lower non-interactive status strip, and fixed the status/menu hit-test overlap caught by browser smoke.
-- Replaced the old circular minimap with a clean forward-relative tactical radar. Top is in front of the player, left is car-left, right is car-right, and off-radar threats clamp to the edge. Radar state is exposed in `render_game_to_text()`.
-- Added mode objective state and markers for Tutorial, Campaign Survival, Race/Time Trial, Stunt Park, Hunter Tag, Boss Chase, Battle/Max Arena, and rotating minigames.
-- Expanded minigame rules for Ramp Rush, Boost Bowling, Lava Floor, King of the Zone, Trick Combo, and Bot Escape so each has distinct objective type/markers/scoring hooks.
-- Added real Online tab connection UI: server URL, guest username, connect/disconnect, create private room, join code, queue, bot fill, lobby chat, quick chat, room snapshot, leaderboard, friends, recent players, and backend-offline fallback.
-- Added Cloudflare Worker + Durable Object backend scaffold with per-room Durable Objects, WebSocket room coordination, chat validation, quick chat, room snapshots, leaderboard/friends/recent shell messages, and deployment workflow.
-- Hardened the local Node backend with exact origin allowlisting, stronger message validation, private room two-client tests, chat sanitizer/rate-limit behavior, ranked dev-flag rejection, and invalid speed/score/goal rejection.
-- Added phone landscape smoke coverage and a device-mode test hook; high-DPI radar canvas is generated for sharper mobile radar icons.
+- Active client source is now Vite/React in `client/`, not the older root static client.
+- The live playfield and garage preview use Three.js components in `client/src/game/`.
+- Core game state, modes, radar, objectives, bots, progression, car classes, save migration, and deterministic stepping are typed in `packages/game-core/src/index.ts`.
+- Shared TypeScript protocol/moderation lives in `packages/protocol/src/index.ts`.
+- Local Node backend and Cloudflare Worker/Durable Object backend remain in `apps/server` and `apps/worker`.
+- Protocol moderation has expanded to cover markup stripping, PII redaction, leet/obfuscation normalization, severe self-harm encouragement, harassment, hate, explicit sexual terms, slurs, and 13+ free-chat gating.
+- The Online tab includes server URL, guest username, age gate, connect/disconnect, private room create/join, queue, chat, quick chat, room list, leaderboard, and social shell UI.
+- Friends, blocks, reports, DMs, cloud saves, and live events are still shells without persistent D1/backing storage in the inspected runtime.
+- Audio sliders exist in the React UI, but no React Web Audio engine was found during inspection.
+- Keyboard remapping is explicitly deferred in the UI copy.
 
 ## Backend Status
 
-Worker-ready/local-only unless Cloudflare credentials are added. GitHub Pages can host the static client only. The client runs fully offline with bots and connects automatically when a reachable `ws://` or `wss://.../ws` backend is configured.
+Local backend is source-present, test-covered, and smoke-tested from the React Online tab. The client remains playable offline and can connect to a reachable `ws://` or `wss://.../ws` backend.
 
-Cloudflare deployment requires GitHub repository secrets:
+Cloudflare Worker live deployment is blocked until both are true:
 
-- `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are configured for deploy.
+- A concrete deployed `wss://.../ws` Worker endpoint is verified from the Pages client.
 
-## Tests Run
+## Tests
 
-- `npm run typecheck`: pass.
-- `npm run lint`: pass.
-- `npm test`: pass, 5 tests.
-- `npm run build`: pass.
-- `npm run format`: pass.
-- `npm run smoke`: pass.
-- `npm run test:e2e`: pass.
-- `npm run smoke:online-local`: pass against local Node backend.
-- `npm run worker:check`: pass.
-- `npm run worker:types`: pass.
-- Production Pages smoke: pass against `https://canimal4.github.io/InfernoDrift4/`.
-- `develop-web-game` Playwright client: first run timed out on `page.goto`; second run passed, screenshots and state JSON reviewed.
+Fresh parent verification for the current tree:
 
-Tests still required only when credentials become available:
+- `npm run typecheck`: passed.
+- `npm test`: passed, 18 total tests.
+- `npm run build`: passed; Vite reports one large Three/React chunk warning.
+- `npm run smoke`: passed; covers Max Arena, campaign return, replay, radar text state, and all major modes/minigames.
+- `npm run test:e2e`: passed; covers dev-mode and phone-landscape mobile layout/touch/radar checks.
+- `npm run smoke:online-local`: passed; local WebSocket backend connects from Online tab, creates a room, and sanitizes chat.
+- `npm run worker:check`: passed dry-run deploy for Worker/Durable Object binding.
+- `npm run worker:types`: passed.
+- `develop-web-game` Playwright loop: passed after fixing title/menu interception; screenshot/state artifacts are in `output/web-game/`.
 
-- hosted Worker verification only if Cloudflare secrets are available
+Known test noise: headless Chromium reports SwiftShader/WebGL `ReadPixels` performance warnings during screenshots; the app console stayed otherwise clean in the smoke outputs.
 
 ## Known Limitations
 
-- Hosted backend deployment is blocked until Cloudflare credentials/secrets are available and verified.
-- The game remains intentionally rooted in the current static ID3 codebase; deeper TypeScript/module migration is deferred behind proven gameplay parity and fun.
-- Headless Chromium emits WebGL/SwiftShader GPU stall warnings during screenshots; these are not application console errors.
-
-## Manual Steps If Needed
-
-If Pages does not deploy automatically after push, open GitHub repo Settings -> Pages and set Source to GitHub Actions, then rerun the Pages workflow. If online must be live, add the Cloudflare secrets listed above and run the Worker deployment workflow.
+- Hosted backend deployment is blocked without secrets and a verified Worker URL.
+- Pages deployment for the current React revamp is pending push/Actions verification.
+- Social persistence, cloud saves, blocks/reports, DMs, live events, audio runtime, keyboard remapping, multiple saved loadouts, and full hosted online are not complete product features in the inspected source.

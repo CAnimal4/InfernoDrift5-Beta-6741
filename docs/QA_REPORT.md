@@ -1,46 +1,65 @@
 # QA Report
 
-Updated for the InfernoDrift4 revamp pass on 2026-05-13.
+Updated on 2026-05-15 after the docs-only worker pass and parent verification run.
 
-## Local Automated Checks
+## Scope
 
-- `npm run typecheck`: passed.
-- `npm test`: passed, 5 Node backend/protocol tests.
-- `npm run smoke`: passed. It now asserts Max Arena settings, radar payload, offline backend status, forced replay/goal path, forced demolition path, campaign return, and all ID4 mode routes.
-- `npm run test:e2e`: passed. It covers dev-mode unlock plus phone landscape HUD/radar/touch-control layout.
-- `npm run lint`: passed.
-- `npm run build`: passed.
-- `npm run format`: passed.
-- `npm run worker:check`: passed with Wrangler dry-run deployment.
-- `npm run worker:types`: passed after generating Worker configuration types.
+This report covers the current React/TypeScript/Three revamp and the parent verification run performed after integration. Older static-client QA notes should not be treated as current proof unless they are repeated below.
 
-## Browser / Game Checks
+## Source Observed
 
-- `develop-web-game` Playwright client:
-  - First run timed out on `page.goto`.
-  - Second run passed against `http://127.0.0.1:4173/index.html`.
-  - Reviewed `output/web-game/shot-1.png`; gameplay rendered live with the compact HUD, forward radar, no menu overlay, and no app console error artifact.
-- Desktop smoke screenshot: `output/playwright/games-smoke.png`.
-  - Reviewed Boost Bowling/minigame view with cleaner HUD, readable radar, status strip below the menu button, and no overlap.
-- Mobile smoke screenshot: `output/playwright/mobile-landscape-smoke.png`.
-  - Reviewed phone landscape play with compact HUD/radar and no touch text selection.
+- React/Vite client in `client/`.
+- Three.js gameplay canvas in `client/src/game/GameCanvas.tsx`.
+- Three.js garage preview in `client/src/game/GaragePreview.tsx`.
+- Typed game loop and state model in `packages/game-core/src/index.ts`.
+- TypeScript protocol/moderation package in `packages/protocol/src/index.ts`.
+- Local Node backend in `apps/server/src/index.js`.
+- Cloudflare Worker/Durable Object backend in `apps/worker/src/index.js`.
+- Worker runtime protocol mirror in `apps/worker/src/protocol.js`.
+- Current tests in `tests/server.test.mjs`, `tests/game-core.test.ts`, and `tests/protocol.test.ts`.
 
-## Backend Checks
+## Verification Run
 
-- Local protocol accepts known messages and rejects unknown/admin messages.
-- Chat sanitizer strips markup and replaces blocked profanity.
-- Private room smoke covers guest auth, room creation, private join, snapshots, bot fill metadata, and sanitized chat broadcast.
-- Origin prefix spoofing is rejected with HTTP 403.
-- Worker validation dry-run passes through Wrangler.
-- `npm run smoke:online-local`: passed against the local Node backend. It connected through the actual Online tab, created a private room, showed bot fill, sent sanitized chat, and confirmed `render_game_to_text().online.status === "live"`.
+These checks passed against the current tree:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `npm run smoke`
+- `npm run test:e2e`
+- `npm run smoke:online-local`
+- `npm run worker:check`
+- `npm run worker:types`
+- `develop-web-game` Playwright action loop against `http://127.0.0.1:5173/InfernoDrift4/`
+
+Evidence highlights:
+
+- `npm test` passed 18 tests across backend/protocol/game-core.
+- `npm run smoke` passed and asserted Max Arena, campaign return, replay state, forced demo, forward-relative radar state, and all major mode/minigame route IDs.
+- `npm run test:e2e` passed and asserted dev-mode UI plus phone landscape HUD/radar/touch layout.
+- `npm run smoke:online-local` passed using a local WebSocket backend, private room creation, and sanitized chat.
+- `worker:check` passed a Wrangler dry-run with the Durable Object binding; `worker:types` passed.
+- The develop-web-game loop caught and then verified the fix for title/menu click interception. Final artifacts are `output/web-game/shot-*.png` and `output/web-game/state-*.json`.
+
+## Backend / Moderation Coverage To Verify
+
+The inspected tests now cover or intend to cover:
+
+- Known/unknown protocol message validation.
+- Admin/authoritative payload rejection.
+- Speed sanity rejection.
+- Ranked plus dev-mode rejection.
+- Expanded chat moderation for markup, soft profanity, PII, severe abuse, hate, harassment, and slurs.
+- 13+ free-chat gating while quick chat remains available.
+- Clark founder badge semantics without granting broad admin behavior.
+- Local WebSocket guest auth, room create/join, bot fill, sanitized chat broadcast, queue, quick chat, leaderboard, social shell, and exact-origin rejection.
 
 ## Deployment QA
 
-- Live Pages returned HTTP 200 at `https://canimal4.github.io/InfernoDrift4/`.
-- Production Pages smoke passed against the live URL with correct `/InfernoDrift4/` asset paths and nonblank gameplay state.
-- Live HTML includes the generated favicon/app-icon references and the upgraded Online tab controls.
-- Hosted Cloudflare Worker verification remains blocked until `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are configured as GitHub secrets. Until then, backend status is Worker-ready/local-only.
+- React Pages deploy: pending push/GitHub Actions verification for the current tree.
+- Cloudflare Worker live deploy: blocked until `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are configured and a concrete `wss://.../ws` Worker URL is verified from the deployed Pages client.
+- Local Node backend: tested by `npm test` and `npm run smoke:online-local`.
 
 ## Known Test Environment Noise
 
-Headless Chromium reports WebGL GPU stall warnings during screenshots. These are browser/SwiftShader performance warnings, not application console errors.
+Earlier browser runs reported headless Chromium WebGL/SwiftShader stall warnings during screenshots. Treat them as environment noise only if the application console remains otherwise clean in the current parent run.

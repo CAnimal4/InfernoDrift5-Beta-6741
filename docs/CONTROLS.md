@@ -9,12 +9,14 @@
 - Backflip: `C`
 - Restart: `R`
 - Menu: `Esc` or `M`
-- Max Arena ball cam: `L`
-- Max Arena target lunge: `Ctrl` / `Command`
 
 ## Touch
 
 Use landscape orientation. The left joystick drives and steers; the right action cluster exposes Drift, Boost, Jump, Backflip, and Max Arena actions where applicable. Touch controls keep text selection disabled so gameplay does not highlight UI.
+
+## Controller
+
+The React client reads the first browser Gamepad API pad for steering, throttle, brake/reverse, drift, boost, and jump. Keyboard remapping is not implemented yet; the current UI labels it as a future settings pass.
 
 ## Dev/Test Hooks
 

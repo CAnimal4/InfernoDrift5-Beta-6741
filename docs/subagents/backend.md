@@ -1,5 +1,6 @@
 # Multiplayer / Backend Subagent Report
 
-- Implemented `apps/server/src/index.js` as a local Node/WebSocket backend.
-- Features: health endpoint, guest auth, username persistence, private rooms, room snapshots, bot fill metadata, casual/ranked queue room creation, chat, quick chat, rate limits, sanitization, and speed validation.
-- Verified with local health and two-client WebSocket smoke. Backend is local-only until a real host is provided.
+- Local backend: `apps/server/src/index.js` provides `/health`, WebSocket rooms, guest auth, local JSON persistence, exact origin allowlisting, private rooms, queues, room snapshots, bot fill metadata, chat, quick chat, rate limits, leaderboard shell, friends/recent shell, and input snapshots.
+- Worker backend: `apps/worker/src/index.js` routes `/health` and `/ws` into an `InfernoRoom` Durable Object for room coordination.
+- Runtime protocol: `apps/worker/src/protocol.js` validates known message shapes, rejects admin/authoritative payloads, gates free chat at 13+, sanitizes chat, redacts PII, blocks severe moderation hits, and normalizes room options.
+- Current verification is pending parent test output. Hosted Cloudflare backend is blocked until secrets and a verified `wss://.../ws` Worker URL exist.

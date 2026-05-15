@@ -18,7 +18,8 @@ page.setDefaultTimeout(9000);
 page.on("console", (msg) => console.log("browser:", msg.type(), msg.text()));
 
 const smokeUrl = process.env.SMOKE_URL || "http://127.0.0.1:4173/index.html";
-await page.goto(smokeUrl, { waitUntil: "domcontentloaded", timeout: 18000 });
+await page.goto(smokeUrl, { waitUntil: "commit", timeout: 45000 });
+await waitForGameHook(page);
 await page.waitForTimeout(1800);
 await page.evaluate(() => {
   window.prompt = () => "ibelikesheesh";
@@ -26,17 +27,17 @@ await page.evaluate(() => {
 
 await page.locator("#start-btn").click({ force: true });
 await page.waitForTimeout(900);
-await page.keyboard.press("Escape");
-await page.evaluate(() => {
-  document.getElementById("dev-mode-toggle").click();
-});
+await page.locator("#menu-btn").click({ force: true });
+await page.locator('[data-tab="settings"]').click({ force: true });
+await page.locator("#dev-mode-toggle").click({ force: true });
 await page.waitForTimeout(350);
 
 const gamesVisible = !(await page.locator("#games-tab-btn").isHidden());
 await page.locator("#games-tab-btn").click({ force: true });
-await page.locator("#game-card-max1").click({ force: true });
-const gameHint = await page.locator("#game-mode-hint").textContent();
+await domClick(page, "#game-card-max1");
+await page.waitForTimeout(250);
 await page.locator("#menu-btn").click({ force: true });
+const gameHint = await page.locator("#game-mode-hint").textContent();
 await page.waitForTimeout(200);
 await page.locator('[data-tab="settings"]').click({ force: true });
 const maxDifficultyVisible = !(await page
@@ -85,9 +86,16 @@ const postDemoText = JSON.parse(
   await page.evaluate(() => window.render_game_to_text()),
 );
 
-await page.keyboard.press("Escape");
+await page.locator("#menu-btn").click({ force: true });
+await page.waitForTimeout(150);
 await page.locator("#games-tab-btn").click({ force: true });
-await page.locator("#game-card-id33").click({ force: true });
+await domClick(page, "#game-card-id33");
+await page.waitForTimeout(300);
+await page.waitForFunction(
+  () => JSON.parse(window.render_game_to_text()).id4Mode === "campaign",
+  undefined,
+  { timeout: 5000 },
+);
 await page.locator("#menu-btn").click({ force: true });
 await page.waitForTimeout(200);
 await page.locator('[data-tab="settings"]').click({ force: true });
@@ -121,14 +129,21 @@ for (const mode of [
   "tutorial",
   "campaign",
   "race",
+  "time-trial",
   "stunt",
   "hunter",
   "boss",
+  "drift-score",
   "battle",
-  "minigames",
+  "ramp-rush",
+  "boost-bowling",
+  "lava-floor",
+  "king-zone",
+  "trick-combo",
+  "bot-escape",
 ]) {
   await openGamesMenu();
-  await page.locator(`[data-id4-mode="${mode}"]`).click({ force: true });
+  await domClick(page, `[data-id4-mode="${mode}"]`);
   await page.waitForTimeout(160);
   await page.evaluate(() => window.advanceTime(360));
   const text = JSON.parse(
@@ -192,3 +207,24 @@ console.log(
   ),
 );
 await browser.close();
+
+async function waitForGameHook(page) {
+  for (let i = 0; i < 90; i += 1) {
+    const ready = await page
+      .evaluate(() => typeof window.render_game_to_text === "function")
+      .catch(() => false);
+    if (ready) return;
+    await page.waitForTimeout(500);
+  }
+  assert.fail("render_game_to_text did not initialize");
+}
+
+async function domClick(page, selector) {
+  await page.evaluate((targetSelector) => {
+    const target = document.querySelector(targetSelector);
+    if (!(target instanceof HTMLElement)) {
+      throw new Error(`Missing clickable target ${targetSelector}`);
+    }
+    target.click();
+  }, selector);
+}

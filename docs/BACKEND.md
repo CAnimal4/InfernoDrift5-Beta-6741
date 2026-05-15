@@ -5,7 +5,7 @@ InfernoDrift4 has two backend paths:
 - `apps/server`: local Node/WebSocket backend for development and non-Cloudflare hosting.
 - `apps/worker`: Cloudflare Worker + Durable Object backend for live room coordination.
 
-The GitHub Pages game remains fully playable offline. Online activates only when the Online tab is configured with a reachable `ws://` or `wss://` URL.
+The React client remains playable offline. Online activates only when the Online tab, `localStorage`, or `window.INFERNO_SERVER_URL` is configured with a reachable `ws://` or `wss://.../ws` URL.
 
 ## Local Node Backend
 
@@ -26,8 +26,10 @@ Local features:
 - Lobby chat and quick chat
 - Friends/recent-player shell data
 - Leaderboard snapshots
-- Sanitization, rate limits, message size checks, ranked dev-flag rejection, invalid speed/score/goal rejection
+- Sanitization, rate limits, message size checks, exact origin allowlisting, ranked dev-flag rejection, invalid speed/score/goal rejection
 - Local JSON persistence in `DATA_DIR`
+
+The local backend accepts WebSocket connections on the HTTP server. The documented `/ws` path is the client convention and matches the Worker route.
 
 ## Cloudflare Worker Backend
 
@@ -49,6 +51,8 @@ GitHub Actions deployment uses `.github/workflows/deploy-worker.yml` and require
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
 
+The workflow explicitly skips deploy when those secrets are absent. During this docs-only inspection there was no verified Worker URL recorded in the docs, so hosted Cloudflare online must remain blocked.
+
 ## Frontend Configuration
 
 Set the Online tab server URL to one of:
@@ -60,4 +64,9 @@ Bare host URLs are normalized to `/ws` by the client. If no server is configured
 
 ## Production Notes
 
-Do not claim online is live until a hosted `wss://` Worker or equivalent backend is verified from the Pages build. GitHub Pages cannot host WebSocket server code.
+Do not claim hosted online is live until both are true:
+
+- Cloudflare credentials/secrets exist for deployment.
+- A concrete `wss://.../ws` Worker endpoint has been verified from the deployed Pages build.
+
+GitHub Pages cannot host WebSocket server code.

@@ -1,6 +1,6 @@
 # Architecture / Build Subagent Report
 
-- Acceptance checks: install, typecheck, lint, test, build, smoke, e2e, Pages workflow.
-- Decision: restart from the current single-page InfernoDrift code and layer ID4 systems conservatively instead of reviving the rejected monorepo.
-- Build: `scripts/build-site.mjs` copies the static client into `dist/` with `.nojekyll` for GitHub Pages.
-- CI/Pages: workflows run from `main`, install with `npm ci`, validate, build, upload `dist/`, and deploy with official Pages actions.
+- Current architecture: Vite/React client in `client/`, typed game rules in `packages/game-core`, shared TypeScript protocol in `packages/protocol`, local Node backend in `apps/server`, and Cloudflare Worker/Durable Object backend in `apps/worker`.
+- Build: `scripts/build-site.mjs` runs Vite with `client/vite.config.ts`, emits `dist/`, copies static PWA/icon assets, and writes `.nojekyll`.
+- CI/Pages: workflows install with `npm ci`, run typecheck/tests/build, upload `dist/`, and deploy with official Pages actions.
+- Acceptance checks still needed for the current React tree: install, typecheck, test, build, smoke, e2e, worker dry-run/types, and Pages workflow verification.

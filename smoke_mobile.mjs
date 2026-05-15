@@ -23,10 +23,13 @@ page.setDefaultTimeout(9000);
 page.on("console", (msg) => console.log("browser:", msg.type(), msg.text()));
 
 const smokeUrl = process.env.SMOKE_URL || "http://127.0.0.1:4173/index.html";
-await page.goto(smokeUrl, { waitUntil: "domcontentloaded", timeout: 18000 });
+await page.goto(smokeUrl, { waitUntil: "commit", timeout: 45000 });
+await waitForGameHook(page);
 await page.waitForTimeout(1800);
-await page.evaluate(() => window.__infernodriftTestApi.setDeviceMode("phone"));
-await page.locator("#start-btn").click({ force: true });
+await page.evaluate(() => {
+  window.__infernodriftTestApi.setDeviceMode("phone");
+  window.__infernodriftTestApi.selectMode("campaign");
+});
 await page.waitForTimeout(700);
 await page.evaluate(() => window.advanceTime(900));
 await page.waitForTimeout(1200);
@@ -79,3 +82,14 @@ console.log(
   ),
 );
 await browser.close();
+
+async function waitForGameHook(page) {
+  for (let i = 0; i < 90; i += 1) {
+    const ready = await page
+      .evaluate(() => typeof window.render_game_to_text === "function")
+      .catch(() => false);
+    if (ready) return;
+    await page.waitForTimeout(500);
+  }
+  assert.fail("render_game_to_text did not initialize");
+}
