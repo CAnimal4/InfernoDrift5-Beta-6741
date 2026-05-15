@@ -39,3 +39,13 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - UI pass now presents the menu as a cockpit surface with Play/Garage/Progress/Online/Settings hierarchy, clearer mode cards, smaller HUD clusters, forward radar count, stronger garage preview controls, and better phone landscape scaling.
 - Visual QA screenshots reviewed: `output/web-game-audit2/shot-3.png` showed improved live driving scene with actual movement and cleaner radar/HUD; `output/web-game-audit2/title.png` and `menu-garage.png` showed improved title/garage hierarchy.
 - Validation after this pass: `npm run typecheck`, `npm test`, `npm run format`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run worker:check`, and `npm run worker:types` passed. Headless WebGL still logs expected SwiftShader `ReadPixels` warnings only.
+
+2026-05-15 ID3 rescue restore after user rejected the new-game direction:
+
+- Reverted the shipped playable surface back to the actual ID3 source files from `/Users/amandaalden/Downloads/Codex App Test`: `index.html`, `script.js`, and `style.css` were copied byte-for-byte into `InfernoDrift4`.
+- Kept the static GitHub Pages build wrapper (`scripts/build-site.mjs`) so Pages deploys the restored ID3 game instead of the rejected React/Three shell.
+- Preserved ID3 ground speed/reference lines, close third-person camera, old HUD/radar/menu composition, touch controls, Max Arena foundation, and test hooks.
+- Realigned `smoke_games.mjs` and `smoke_mobile.mjs` to the ID3 contract instead of the rejected ID4 mode shell.
+- Converted `smoke_online_local.mjs` into a backend WebSocket smoke so it does not fake an Online tab in the restored ID3 client; it still verifies guest auth, private room join, quick chat, 13+ free-chat gate, sanitizer, input snapshot, bot fill, and leaderboard.
+- Reviewed restored screenshots: `output/web-game/id3-restore/shot-3.png`, `output/web-game/id3-restore-moving/shot-1.png`, and `output/playwright/mobile-landscape-smoke.png`.
+- Validation after restore: `node --check script.js`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, and develop-web-game Playwright client passed. Headless WebGL emitted expected SwiftShader `ReadPixels` warnings only.

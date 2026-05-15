@@ -16,196 +16,97 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
 page.setDefaultTimeout(9000);
 page.on("console", (msg) => console.log("browser:", msg.type(), msg.text()));
+page.on("dialog", async (dialog) => {
+  await dialog.accept("ibelikesheesh");
+});
 
 const smokeUrl = process.env.SMOKE_URL || "http://127.0.0.1:4173/index.html";
 await page.goto(smokeUrl, { waitUntil: "commit", timeout: 45000 });
 await waitForGameHook(page);
-await page.waitForTimeout(1800);
-await page.evaluate(() => {
-  window.prompt = () => "ibelikesheesh";
-});
+await page.waitForTimeout(1200);
 
 await page.locator("#start-btn").click({ force: true });
-await page.waitForTimeout(900);
-await page.locator("#menu-btn").click({ force: true });
-await page.locator('[data-tab="settings"]').click({ force: true });
-await page.locator("#dev-mode-toggle").click({ force: true });
-await page.waitForTimeout(350);
+await page.waitForTimeout(800);
 
-const gamesVisible = !(await page.locator("#games-tab-btn").isHidden());
-await page.locator("#games-tab-btn").click({ force: true });
-await domClick(page, "#game-card-max1");
-await page.waitForTimeout(250);
-await page.locator("#menu-btn").click({ force: true });
-const gameHint = await page.locator("#game-mode-hint").textContent();
-await page.waitForTimeout(200);
-await page.locator('[data-tab="settings"]').click({ force: true });
-const maxDifficultyVisible = !(await page
-  .locator("#max-difficulty-field")
-  .isHidden());
-await page.selectOption("#max-difficulty-select", "brutal");
-await page.keyboard.press("Escape");
-await page.locator("#menu-btn").click({ force: true });
-await page.waitForTimeout(250);
-await page.keyboard.press("Escape");
-await page.waitForTimeout(1200);
-await page.evaluate(() => window.advanceTime(1200));
-
-const maxHud = {
-  blue: await page.locator("#hud-world").textContent(),
-  red: await page.locator("#hud-level").textContent(),
-  mode: await page.locator("#hud-score").textContent(),
-  speed: await page.locator("#hud-speed").textContent(),
-};
-const initialText = JSON.parse(
+const campaignState = JSON.parse(
   await page.evaluate(() => window.render_game_to_text()),
 );
+assert.equal(campaignState.mode, "infernodrift33");
+assert.equal(campaignState.running, true);
+assert.equal(campaignState.player.demolished, false);
+assert.ok(campaignState.bots.length >= 4);
+assert.match(await page.locator("#hud-world").textContent(), /\S/);
+assert.match(await page.locator("#hud-level").textContent(), /\S/);
+
+await openMenu(page);
+await page.locator('[data-tab="settings"]').click({ force: true });
+await page.locator("#dev-mode-toggle").click({ force: true });
+await page.waitForTimeout(300);
+assert.equal(await page.locator("#dev-mode-toggle").isChecked(), true);
+assert.match((await page.locator("#dev-mode-hint").textContent()) ?? "", /enabled/i);
+
+await page.locator("#games-tab-btn").click({ force: true });
+assert.equal(await page.locator("#games-tab-btn").isHidden(), false);
+await domClick(page, "#game-card-max1");
+await page.waitForTimeout(300);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(900);
+await page.evaluate(() => window.advanceTime(900));
+
+const maxState = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+assert.equal(maxState.mode, "infernodriftmax1");
+assert.ok(maxState.ball);
+assert.ok(maxState.bots.some((bot) => bot.team === "red"));
+assert.ok(maxState.bots.some((bot) => bot.team === "blue"));
+assert.match(await page.locator("#hud-world").textContent(), /\S/);
+assert.match(await page.locator("#hud-level").textContent(), /\S/);
+
 await page.evaluate(() => window.__infernodriftTestApi.forceMaxGoal("blue"));
 await page.waitForTimeout(150);
 await page.evaluate(() => window.advanceTime(1600));
-const replayState = await page.evaluate(() =>
-  window.__infernodriftTestApi.getReplayState(),
-);
 const matchStats = await page.evaluate(() =>
   window.__infernodriftTestApi.getMatchStats(),
 );
-const replayMeta = await page.locator("#match-panel-meta").textContent();
+assert.equal(matchStats.teams.blue.goals, 1);
 
-const riskHint = gameHint;
-const riskText = initialText;
-
-await page.locator("#menu-btn").click({ force: true });
-await page.waitForTimeout(250);
-await page.locator('[data-tab="settings"]').click({ force: true });
-await page.selectOption("#dev-max-boost-variant", "hyper");
-await page.click("#dev-force-demo");
-await page.waitForTimeout(150);
-await page.keyboard.press("Escape");
-await page.evaluate(() => window.advanceTime(2400));
-const postDemoText = JSON.parse(
-  await page.evaluate(() => window.render_game_to_text()),
-);
-
-await page.locator("#menu-btn").click({ force: true });
-await page.waitForTimeout(150);
+await openMenu(page);
 await page.locator("#games-tab-btn").click({ force: true });
 await domClick(page, "#game-card-id33");
-await page.waitForTimeout(300);
-await page.waitForFunction(
-  () => JSON.parse(window.render_game_to_text()).id4Mode === "campaign",
-  undefined,
-  { timeout: 5000 },
-);
-await page.locator("#menu-btn").click({ force: true });
-await page.waitForTimeout(200);
-await page.locator('[data-tab="settings"]').click({ force: true });
-const maxDifficultyHiddenInCampaign = await page
-  .locator("#max-difficulty-field")
-  .isHidden();
+await page.waitForTimeout(350);
 await page.keyboard.press("Escape");
-await page.locator("#menu-btn").click({ force: true });
-await page.waitForTimeout(250);
-await page.keyboard.press("Escape");
-await page.waitForTimeout(1000);
-
-const idHud = {
-  world: await page.locator("#hud-world").textContent(),
-  level: await page.locator("#hud-level").textContent(),
-};
-
-async function openGamesMenu() {
-  await page.evaluate(() => {
-    const menu = document.getElementById("menu");
-    if (!menu?.classList.contains("show")) {
-      document.getElementById("menu-btn")?.click();
-    }
-  });
-  await page.waitForTimeout(120);
-  await page.locator("#games-tab-btn").click({ force: true });
-}
-
-const modeChecks = [];
-for (const mode of [
-  "tutorial",
-  "campaign",
-  "race",
-  "time-trial",
-  "stunt",
-  "hunter",
-  "boss",
-  "drift-score",
-  "battle",
-  "ramp-rush",
-  "boost-bowling",
-  "lava-floor",
-  "king-zone",
-  "trick-combo",
-  "bot-escape",
-]) {
-  await openGamesMenu();
-  await domClick(page, `[data-id4-mode="${mode}"]`);
-  await page.waitForTimeout(160);
-  await page.evaluate(() => window.advanceTime(360));
-  const text = JSON.parse(
-    await page.evaluate(() => window.render_game_to_text()),
-  );
-  modeChecks.push({
-    selected: mode,
-    id4Mode: text.id4Mode,
-    gameMode: text.mode,
-    objective: text.objective,
-    objectiveState: text.objectiveState,
-  });
-  assert.equal(text.id4Mode, mode);
-  assert.match(text.objective, /\S/);
-  if (mode === "battle") assert.equal(text.mode, "infernodriftmax1");
-  else assert.equal(text.mode, "infernodrift33");
-}
-
-assert.equal(gamesVisible, true);
-assert.equal(maxDifficultyVisible, true);
-assert.equal(maxDifficultyHiddenInCampaign, true);
-assert.match(gameHint, /Battle Arena/);
-assert.equal(initialText.mode, "infernodriftmax1");
-assert.equal(initialText.id4Mode, "battle");
-assert.equal(initialText.online.status, "offline");
-assert.match(initialText.radar.coordinateSystem, /top\/front/);
-assert.ok(initialText.radar.entities.some((entity) => entity.kind === "ball"));
-assert.ok(
-  initialText.radar.entities.some((entity) => entity.sector === "front"),
+await page.waitForTimeout(700);
+const restoredState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
 );
-assert.match(replayMeta, /Replay/);
-assert.equal(matchStats.teams.blue.goals, 1);
-assert.ok(postDemoText.stats.player.demolitions >= 1);
-assert.match(idHud.world, /\S/);
+assert.equal(restoredState.mode, "infernodrift33");
+assert.equal(restoredState.ball, null);
 
 await page.screenshot({
   path: "output/playwright/games-smoke.png",
   fullPage: false,
   timeout: 30000,
 });
+
 console.log(
   JSON.stringify(
     {
-      gamesVisible,
-      gameHint,
-      maxDifficultyVisible,
-      maxDifficultyHiddenInCampaign,
-      maxHud,
-      initialText,
-      replayState,
-      replayMeta,
-      matchStats,
-      riskHint,
-      riskText,
-      postDemoText,
-      idHud,
-      modeChecks,
+      campaign: {
+        mode: campaignState.mode,
+        bots: campaignState.bots.length,
+        speed: campaignState.player.speed_mph,
+      },
+      max: {
+        mode: maxState.mode,
+        ball: Boolean(maxState.ball),
+        goals: matchStats.teams.blue.goals,
+      },
+      restored: { mode: restoredState.mode, running: restoredState.running },
     },
     null,
     2,
   ),
 );
+
 await browser.close();
 
 async function waitForGameHook(page) {
@@ -217,6 +118,16 @@ async function waitForGameHook(page) {
     await page.waitForTimeout(500);
   }
   assert.fail("render_game_to_text did not initialize");
+}
+
+async function openMenu(page) {
+  await page.evaluate(() => {
+    const menu = document.getElementById("menu");
+    if (!menu?.classList.contains("show")) {
+      document.getElementById("menu-btn")?.click();
+    }
+  });
+  await page.waitForTimeout(180);
 }
 
 async function domClick(page, selector) {

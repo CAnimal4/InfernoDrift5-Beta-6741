@@ -25,62 +25,57 @@ page.on("console", (msg) => console.log("browser:", msg.type(), msg.text()));
 const smokeUrl = process.env.SMOKE_URL || "http://127.0.0.1:4173/index.html";
 await page.goto(smokeUrl, { waitUntil: "commit", timeout: 45000 });
 await waitForGameHook(page);
-await page.waitForTimeout(1800);
+await page.waitForTimeout(1200);
 await page.evaluate(() => {
-  window.__infernodriftTestApi.setDeviceMode("phone");
-  window.__infernodriftTestApi.selectMode("campaign");
+  window.__infernodriftTestApi?.setDeviceMode?.("phone");
 });
+await page.locator("#start-btn").click({ force: true });
 await page.waitForTimeout(700);
 await page.evaluate(() => window.advanceTime(900));
-await page.waitForTimeout(1200);
+await page.waitForTimeout(700);
 
-const state = JSON.parse(
-  await page.evaluate(() => window.render_game_to_text()),
-);
+const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
 const overlayClass = await page.locator("#overlay").getAttribute("class");
 const hudBox = await page.locator(".hud").boundingBox();
 const radarBox = await page.locator(".minimap-wrap").boundingBox();
 const touchBox = await page.locator("#touch-controls").boundingBox();
-const menuUserSelect = await page
-  .locator("#touch-controls")
-  .evaluate((node) => {
-    const style = getComputedStyle(node);
-    return `${style.userSelect}/${style.webkitUserSelect}`;
-  });
+const touchUserSelect = await page.locator("#touch-controls").evaluate((node) => {
+  const style = getComputedStyle(node);
+  return `${style.userSelect}/${style.webkitUserSelect}`;
+});
 
 assert.equal(state.mode, "infernodrift33");
 assert.equal(state.running, true);
-assert.equal(state.online.status, "offline");
-assert.equal(state.device.type, "phone");
-assert.equal(state.device.touchActive, true);
+assert.equal(state.player.demolished, false);
 assert.equal(overlayClass, "overlay");
-assert.ok(state.radar.entities.length > 5);
-assert.ok(hudBox && hudBox.height < 92);
-assert.ok(radarBox && radarBox.width <= 150 && radarBox.height <= 170);
-assert.ok(touchBox && touchBox.y > 160);
-assert.match(menuUserSelect, /none/);
+assert.ok(hudBox && hudBox.height < 150);
+assert.ok(radarBox && radarBox.width <= 280 && radarBox.height <= 280);
+assert.ok(touchBox && touchBox.y > 150);
+assert.match(touchUserSelect, /none/);
 
 await page.screenshot({
   path: "output/playwright/mobile-landscape-smoke.png",
   fullPage: false,
   timeout: 30000,
 });
+
 console.log(
   JSON.stringify(
     {
       viewport: "844x390@2",
       mode: state.mode,
-      radarEntities: state.radar.entities.length,
+      running: state.running,
       hudBox,
       radarBox,
       touchBox,
-      menuUserSelect,
+      touchUserSelect,
       overlayClass,
     },
     null,
     2,
   ),
 );
+
 await browser.close();
 
 async function waitForGameHook(page) {

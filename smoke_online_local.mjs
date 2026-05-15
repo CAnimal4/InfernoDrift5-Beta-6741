@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
-import { chromium } from "playwright";
+import { WebSocket } from "ws";
 import { createInfernoServer } from "./apps/server/src/index.js";
 
 let app = null;
@@ -18,82 +18,153 @@ if (!serverUrl) {
   serverUrl = `ws://127.0.0.1:${port}`;
 }
 
-const browser = await chromium.launch({
-  headless: true,
-  args: [
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--ignore-gpu-blocklist",
-    "--use-gl=angle",
-  ],
-});
-const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
-const errors = [];
-page.on("console", (msg) => {
-  if (msg.type() === "error") errors.push(msg.text());
-});
-page.on("pageerror", (error) => errors.push(String(error)));
-
-const smokeUrl = process.env.SMOKE_URL || "http://127.0.0.1:4173/index.html";
-
 try {
-  await page.addInitScript((url) => {
-    localStorage.setItem("infernoDrift4.serverUrl", url);
-  }, serverUrl);
-  await page.goto(smokeUrl, { waitUntil: "commit", timeout: 45000 });
-  await waitForGameHook(page);
-  await page.waitForTimeout(1200);
-  await page.evaluate(() => {
-    const menu = document.getElementById("menu");
-    if (!menu?.classList.contains("show")) {
-      document.getElementById("menu-btn")?.click();
-    }
+  const host = await connectClient(serverUrl);
+  const guest = await connectClient(serverUrl);
+  const child = await connectClient(serverUrl);
+
+  host.send({ type: "auth.guest", username: "LocalSmokeHost", age: 13 });
+  guest.send({ type: "auth.guest", username: "LocalSmokeGuest", age: 13 });
+  child.send({ type: "auth.guest", username: "LocalSmokeChild", age: 12 });
+  await host.waitFor("auth.ok");
+  await guest.waitFor("auth.ok");
+  await child.waitFor("auth.ok");
+
+  host.send({
+    type: "room.create",
+    playlist: "casual",
+    teamSize: 2,
+    botFill: true,
+    private: true,
   });
-  await page.locator('[data-tab="online"]').click({ force: true });
-  await page.fill("#online-username", "LocalSmoke");
-  const ageInput = page.locator("#online-age");
-  if ((await ageInput.count()) > 0) await ageInput.fill("13");
-  await page.click("#online-connect", { force: true });
-  await page.waitForTimeout(600);
-  await page.click("#online-create-room", { force: true });
-  await page.waitForTimeout(600);
-  await page.fill("#online-chat-input", "<b>nice shit drift</b>");
-  await page.click("#online-chat-send", { force: true });
-  await page.waitForTimeout(600);
+  const firstRoom = await host.waitFor("room.snapshot");
+  const code = firstRoom.room.code;
+  assert.match(code, /^[A-Z0-9]{4,10}$/);
+  assert.equal(firstRoom.room.players.length, 1);
 
-  const result = await page.evaluate(() => ({
-    text: JSON.parse(window.render_game_to_text()),
-    statusText:
-      document.getElementById("online-status-card")?.textContent ?? "",
-    consoleText: document.getElementById("online-console")?.textContent ?? "",
-    roomText: document.getElementById("online-room-state")?.textContent ?? "",
-    chatText: document.getElementById("online-chat-log")?.textContent ?? "",
-  }));
+  guest.send({ type: "room.join", code });
+  const joinedHostRoom = await host.waitFor(
+    "room.snapshot",
+    (message) => message.room.players.length === 2,
+  );
+  const joinedGuestRoom = await guest.waitFor(
+    "room.snapshot",
+    (message) => message.room.players.length === 2,
+  );
+  assert.equal(joinedHostRoom.room.code, code);
+  assert.equal(joinedGuestRoom.room.code, code);
 
-  assert.deepEqual(errors, []);
-  assert.equal(result.text.online.status, "live");
-  assert.ok(result.text.online.roomCode);
-  assert.ok(result.text.online.players >= 1);
-  assert.match(`${result.statusText} ${result.consoleText}`, /connected/i);
-  assert.match(result.roomText, /Room/i);
-  assert.match(result.chatText, /nice boost drift/);
+  host.send({ type: "quick.send", text: "Nice drift!" });
+  const quick = await guest.waitFor("chat.message");
+  assert.equal(quick.quick, true);
+  assert.equal(quick.text, "Nice drift!");
 
-  console.log(JSON.stringify(result, null, 2));
+  guest.send({
+    type: "chat.send",
+    text: "<b>nice shit drift</b>",
+    channel: "lobby",
+  });
+  const chat = await host.waitFor(
+    "chat.message",
+    (message) => message.quick === false,
+  );
+  assert.equal(chat.quick, false);
+  assert.equal(chat.text, "nice boost drift");
+
+  child.send({
+    type: "chat.send",
+    text: "I should be quick chat only",
+    channel: "lobby",
+  });
+  const gated = await child.waitFor("error");
+  assert.equal(gated.error, "chat_requires_13_plus");
+
+  host.send({
+    type: "input.frame",
+    seq: 1,
+    dt: 0.016,
+    throttle: 1,
+    steer: 0.25,
+    drift: true,
+    boost: false,
+    jump: false,
+    client: { x: 4, z: -9, speed: 82 },
+  });
+  const inputAccepted = await host.waitFor("input.accepted");
+  assert.equal(inputAccepted.tick, 1);
+  const snapshot = await guest.waitFor("match.snapshot");
+  assert.ok(snapshot.players.some((player) => player.input?.speed === 82));
+
+  host.send({ type: "leaderboard.get", playlist: "casual" });
+  const leaderboard = await host.waitFor("leaderboard.snapshot");
+  assert.ok(leaderboard.leaderboard.length >= 1);
+
+  host.close();
+  guest.close();
+  child.close();
+
+  console.log(
+    JSON.stringify(
+      {
+        serverUrl,
+        roomCode: code,
+        players: joinedHostRoom.room.players.length,
+        bots: joinedHostRoom.room.bots,
+        sanitizedChat: chat.text,
+        childChatGate: gated.error,
+        leaderboardRows: leaderboard.leaderboard.length,
+      },
+      null,
+      2,
+    ),
+  );
 } finally {
-  await browser.close();
   await app?.close();
 }
 
-async function waitForGameHook(page) {
-  for (let i = 0; i < 90; i += 1) {
-    const ready = await page
-      .evaluate(() => typeof window.render_game_to_text === "function")
-      .catch(() => false);
-    if (ready) return;
-    if (errors.length > 0) {
-      assert.fail(`Browser failed before online smoke: ${errors.join(" | ")}`);
-    }
-    await page.waitForTimeout(500);
-  }
-  assert.fail("render_game_to_text did not initialize");
+function connectClient(url) {
+  const ws = new WebSocket(url);
+  const inbox = [];
+  const waiters = [];
+  ws.on("message", (raw) => {
+    const message = JSON.parse(String(raw));
+    inbox.push(message);
+    for (const waiter of [...waiters]) waiter.check();
+  });
+  return new Promise((resolve, reject) => {
+    ws.on("open", () => {
+      resolve({
+        send(payload) {
+          ws.send(JSON.stringify(payload));
+        },
+        close() {
+          ws.close();
+        },
+        waitFor(type, predicate = () => true, timeoutMs = 5000) {
+          return new Promise((waitResolve, waitReject) => {
+            const deadline = setTimeout(() => {
+              const index = waiters.findIndex((waiter) => waiter.check === check);
+              if (index >= 0) waiters.splice(index, 1);
+              waitReject(new Error(`Timed out waiting for ${type}`));
+            }, timeoutMs);
+            function check() {
+              const index = inbox.findIndex(
+                (message) => message.type === type && predicate(message),
+              );
+              if (index < 0) return;
+              clearTimeout(deadline);
+              const waiterIndex = waiters.findIndex(
+                (waiter) => waiter.check === check,
+              );
+              if (waiterIndex >= 0) waiters.splice(waiterIndex, 1);
+              waitResolve(inbox.splice(index, 1)[0]);
+            }
+            waiters.push({ check });
+            check();
+          });
+        },
+      });
+    });
+    ws.on("error", reject);
+  });
 }

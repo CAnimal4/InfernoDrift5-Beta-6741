@@ -6,6 +6,7 @@ packages/*/dist/
 *.tsbuildinfo
 data/
 output/playwright/
+output/rescue-core*/
 output/smoke/
 output/web-game/
 output/web-game-audit*/
