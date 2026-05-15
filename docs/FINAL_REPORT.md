@@ -5,7 +5,7 @@ Status: current tree is a playable React/TypeScript/Three revamp with local test
 ## URLs
 
 - Repo: https://github.com/CAnimal4/InfernoDrift4
-- Pages target: https://canimal4.github.io/InfernoDrift4/
+- Pages target: https://canimal4.github.io/InfernoDrift4/ (verified after GitHub Actions deploy)
 - Cloudflare Worker URL: not verified in the inspected docs/source.
 
 ## Current Implementation Summary
@@ -43,11 +43,12 @@ Fresh parent verification for the current tree:
 - `npm run worker:check`: passed dry-run deploy for Worker/Durable Object binding.
 - `npm run worker:types`: passed.
 - `develop-web-game` Playwright loop: passed after fixing title/menu interception; screenshot/state artifacts are in `output/web-game/`.
+- Production Pages smoke: passed at `https://canimal4.github.io/InfernoDrift4/` for desktop gameplay/mode routing and phone landscape HUD/radar/touch layout.
 
 Known test noise: headless Chromium reports SwiftShader/WebGL `ReadPixels` performance warnings during screenshots; the app console stayed otherwise clean in the smoke outputs.
 
 ## Known Limitations
 
 - Hosted backend deployment is blocked without secrets and a verified Worker URL.
-- Pages deployment for the current React revamp is pending push/Actions verification.
+- Pages deployment for the current React revamp is live and verified.
 - Social persistence, cloud saves, blocks/reports, DMs, live events, audio runtime, keyboard remapping, multiple saved loadouts, and full hosted online are not complete product features in the inspected source.
