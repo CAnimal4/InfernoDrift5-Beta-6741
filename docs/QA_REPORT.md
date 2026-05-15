@@ -40,7 +40,7 @@ Evidence highlights:
 - `npm run smoke:online-local` passed using a local WebSocket backend, private room creation, and sanitized chat.
 - `worker:check` passed a Wrangler dry-run with the Durable Object binding; `worker:types` passed.
 - The develop-web-game loop caught and then verified the fix for title/menu click interception. Final artifacts are `output/web-game/shot-*.png` and `output/web-game/state-*.json`.
-- Production Pages smoke passed at `https://canimal4.github.io/InfernoDrift4/` for desktop gameplay/mode routing and phone landscape HUD/radar/touch layout.
+- Production Pages smoke passed at `https://canimal4.github.io/InfernoDrift4/` for desktop gameplay/mode routing and phone landscape HUD/radar/touch layout. A later smoke caught that Pages was still serving the legacy branch-root shell in one deployment configuration; the build now publishes the React bundle to both `dist/` and the repository root and clears the old service-worker cache.
 
 ## Backend / Moderation Coverage To Verify
 
@@ -57,7 +57,7 @@ The inspected tests now cover or intend to cover:
 
 ## Deployment QA
 
-- React Pages deploy: GitHub Actions completed successfully and production browser smoke passed.
+- React Pages deploy: GitHub Actions completed successfully and production browser smoke passed after the root/Actions artifact compatibility fix.
 - Cloudflare Worker live deploy: blocked until `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are configured and a concrete `wss://.../ws` Worker URL is verified from the deployed Pages client.
 - Local Node backend: tested by `npm test` and `npm run smoke:online-local`.
 

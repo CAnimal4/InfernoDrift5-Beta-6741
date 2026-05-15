@@ -1,20 +1,7 @@
-const CACHE_NAME = "infernodrift4-shell-v1";
-const SHELL = [
-  "./",
-  "./index.html",
-  "./style.css",
-  "./script.js",
-  "./manifest.webmanifest",
-  "./icon.svg",
-];
-
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => cache.addAll(SHELL))
-      .catch(() => undefined),
-  );
+// InfernoDrift4 no longer uses the legacy single-file shell cache.
+// This kill-switch clears older caches and removes itself so GitHub Pages always
+// serves the current Vite bundle.
+self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
@@ -25,22 +12,15 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key !== CACHE_NAME)
+            .filter((key) => key.startsWith("infernodrift4-"))
             .map((key) => caches.delete(key)),
         ),
       )
+      .then(() => self.registration.unregister())
+      .then(() => self.clients.matchAll())
+      .then((clients) => {
+        for (const client of clients) client.navigate(client.url);
+      })
       .catch(() => undefined),
-  );
-  self.clients.claim();
-});
-
-self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
-  event.respondWith(
-    fetch(event.request).catch(() =>
-      caches
-        .match(event.request)
-        .then((match) => match || caches.match("./index.html")),
-    ),
   );
 });

@@ -11,6 +11,7 @@ Status: current tree is a playable React/TypeScript/Three revamp with local test
 ## Current Implementation Summary
 
 - Active client source is now Vite/React in `client/`, not the older root static client.
+- `npm run build:web` now publishes the Vite bundle to both `dist/` and the repository root so GitHub Pages works whether the repo is configured for Actions artifacts or branch-root serving.
 - The live playfield and garage preview use Three.js components in `client/src/game/`.
 - Core game state, modes, radar, objectives, bots, progression, car classes, save migration, and deterministic stepping are typed in `packages/game-core/src/index.ts`.
 - Shared TypeScript protocol/moderation lives in `packages/protocol/src/index.ts`.
@@ -43,12 +44,12 @@ Fresh parent verification for the current tree:
 - `npm run worker:check`: passed dry-run deploy for Worker/Durable Object binding.
 - `npm run worker:types`: passed.
 - `develop-web-game` Playwright loop: passed after fixing title/menu interception; screenshot/state artifacts are in `output/web-game/`.
-- Production Pages smoke: passed at `https://canimal4.github.io/InfernoDrift4/` for desktop gameplay/mode routing and phone landscape HUD/radar/touch layout.
+- Production Pages smoke: passed at `https://canimal4.github.io/InfernoDrift4/` for desktop gameplay/mode routing and phone landscape HUD/radar/touch layout. A follow-up deploy-root fix replaced the legacy root shell and added a service-worker cache kill switch; the final commit must be used for the current live artifact.
 
 Known test noise: headless Chromium reports SwiftShader/WebGL `ReadPixels` performance warnings during screenshots; the app console stayed otherwise clean in the smoke outputs.
 
 ## Known Limitations
 
 - Hosted backend deployment is blocked without secrets and a verified Worker URL.
-- Pages deployment for the current React revamp is live and verified.
+- Pages deployment for the current React revamp is live and verified after the root/Actions artifact compatibility fix.
 - Social persistence, cloud saves, blocks/reports, DMs, live events, audio runtime, keyboard remapping, multiple saved loadouts, and full hosted online are not complete product features in the inspected source.
