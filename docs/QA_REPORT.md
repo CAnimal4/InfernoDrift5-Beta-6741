@@ -40,7 +40,7 @@ Evidence highlights:
 - `npm run smoke:online-local` passed using a local WebSocket backend, private room creation, and sanitized chat.
 - `worker:check` passed a Wrangler dry-run with the Durable Object binding; `worker:types` passed.
 - The develop-web-game loop caught and then verified the fix for title/menu click interception. Final artifacts are `output/web-game/shot-*.png` and `output/web-game/state-*.json`.
-- Production Pages smoke passed at `https://canimal4.github.io/InfernoDrift4/` for desktop gameplay/mode routing and phone landscape HUD/radar/touch layout. A later smoke caught that Pages was still serving the legacy branch-root shell in one deployment configuration; the build now publishes the React bundle to both `dist/` and the repository root and clears the old service-worker cache.
+- Production Pages smoke passed at `https://canimal4.github.io/InfernoDrift4/?v=771883b` after the deploy-root fix. A prior smoke caught that Pages was still serving the legacy branch-root shell in one deployment configuration; the build now publishes the React bundle to both `dist/` and the repository root and clears the old service-worker cache. The final live check confirmed the HTML no longer references `script.js`, desktop mode routing passed, and phone landscape HUD/radar/touch layout passed.
 
 ## Backend / Moderation Coverage To Verify
 

@@ -44,7 +44,7 @@ Fresh parent verification for the current tree:
 - `npm run worker:check`: passed dry-run deploy for Worker/Durable Object binding.
 - `npm run worker:types`: passed.
 - `develop-web-game` Playwright loop: passed after fixing title/menu interception; screenshot/state artifacts are in `output/web-game/`.
-- Production Pages smoke: passed at `https://canimal4.github.io/InfernoDrift4/` for desktop gameplay/mode routing and phone landscape HUD/radar/touch layout. A follow-up deploy-root fix replaced the legacy root shell and added a service-worker cache kill switch; the final commit must be used for the current live artifact.
+- Production Pages smoke: passed at `https://canimal4.github.io/InfernoDrift4/?v=771883b` after the deploy-root fix. The live HTML now serves the Vite React bundle, the legacy `script.js` shell is no longer referenced, desktop gameplay/mode routing passed, and phone landscape HUD/radar/touch layout passed.
 
 Known test noise: headless Chromium reports SwiftShader/WebGL `ReadPixels` performance warnings during screenshots; the app console stayed otherwise clean in the smoke outputs.
 
