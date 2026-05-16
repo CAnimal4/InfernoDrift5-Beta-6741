@@ -6,7 +6,7 @@
 - Drift / handbrake: `Space`
 - Boost: `Shift`
 - Jump: `X`
-- Backflip: `B`
+- Backflip: tap `X` again while airborne
 - Restart: `R`
 - Menu / pause: `Esc` or `M`
 - Max Arena ball cam: `L`
@@ -16,7 +16,7 @@
 
 ## Touch
 
-Use landscape orientation. The left joystick drives and steers; the right action cluster exposes Drift, Boost, Jump, Backflip, and Max Arena actions where applicable. Touch controls disable text selection so gameplay does not highlight UI.
+Use landscape orientation. The left joystick drives and steers; the right action cluster exposes Drift, Boost, and Jump. Jump becomes the trick/backflip button while airborne. Max Arena adds its Target action where applicable. Touch controls disable text selection so gameplay does not highlight UI.
 
 ## Controller
 

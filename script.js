@@ -29,15 +29,13 @@ const hudScore = document.getElementById("hud-score");
 const hudSpeed = document.getElementById("hud-speed");
 const hudLives = document.getElementById("hud-lives");
 const hudHearts = document.getElementById("hud-hearts");
-const hudCombo = document.getElementById("hud-combo");
-const hudLabelNodes = document.querySelectorAll(".hud .pill .label");
+const hudLabelNodes = document.querySelectorAll(".hud > .pill .label");
 const hudWorldPill = hudWorld?.closest(".pill");
 const hudLevelPill = hudLevel?.closest(".pill");
 const hudTimePill = hudTime?.closest(".pill");
 const hudScorePill = hudScore?.closest(".pill");
 const hudSpeedPill = hudSpeed?.closest(".pill");
 const hudLivesPill = hudLives?.closest(".pill");
-const hudComboPill = hudCombo?.closest(".pill");
 const touchJump = document.getElementById("touch-jump");
 const touchDrift = document.getElementById("touch-drift");
 const touchBoost = document.getElementById("touch-boost");
@@ -184,8 +182,8 @@ const BOT_HIT_COOLDOWN_MS = 420;
 const POST_HIT_SAFE_FRAMES = 8;
 const SPEED_TO_MPH_MULT = 2.32;
 const PLAYER_MAX_SPEED = 64;
-const PLAYER_BOOST_SPEED_MULT = 1.32;
-const PLAYER_ACCEL_MULT = 1.16;
+const PLAYER_BOOST_SPEED_MULT = 1.36;
+const PLAYER_ACCEL_MULT = 1.2;
 const PAD_SPEED_BOOST_DURATION = 2.1;
 const PAD_SPEED_BOOST_MULT = 1.34;
 const AIRBORNE_CRUISE_MPH = 320;
@@ -200,6 +198,8 @@ const SAVE_STORAGE_KEY = "infernoDrift3.save.v1";
 const GAME_MODE_ID33 = "infernodrift33";
 const GAME_MODE_MAX1 = "infernodriftmax1";
 const GAME_MODE_RISK = "tryatyourownrisk";
+const CAMPAIGN_AI_NORMAL = "normal";
+const CAMPAIGN_AI_ADAPTIVE = "adaptive";
 const MAX_DIFFICULTY_SUPER_EASY = "super_easy";
 const MAX_DIFFICULTY_CASUAL = "casual";
 const MAX_DIFFICULTY_CLASSIC = "classic";
@@ -275,21 +275,21 @@ const RISK_MODE_RULES = {
 };
 const DRIVING_TUNING = {
   grounded: {
-    steerFilter: 10.2,
-    driftSteerFilter: 6.3,
-    turnAssistBase: 0.9,
-    turnAssistLowSpeedBonus: 0.52,
-    driftTurnMult: 1.28,
-    coastDragBase: 7.2,
-    coastDragSpeedMult: 4.6,
-    brakeMult: 1.08,
+    steerFilter: 11.4,
+    driftSteerFilter: 6.9,
+    turnAssistBase: 0.94,
+    turnAssistLowSpeedBonus: 0.62,
+    driftTurnMult: 1.34,
+    coastDragBase: 6.2,
+    coastDragSpeedMult: 4.1,
+    brakeMult: 1.12,
     touchSlipMult: 0.88,
   },
   airborne: {
-    steerMult: 0.68,
-    accelMult: 0.88,
-    boostAccelMult: 1.24,
-    carryCoastMult: 0.36,
+    steerMult: 0.74,
+    accelMult: 0.92,
+    boostAccelMult: 1.3,
+    carryCoastMult: 0.28,
   },
   maxMode: {
     speedMult: 0.78,
@@ -1379,7 +1379,7 @@ const input = {
 
 const settings = {
   difficulty: "classic",
-  campaignAiMode: "risk",
+  campaignAiMode: CAMPAIGN_AI_ADAPTIVE,
   maxDifficulty: "classic",
   invertSteer: true,
   cameraFocus: false,
@@ -1434,6 +1434,17 @@ const state = {
   padSpeedMult: 1,
   effectToast: "",
   effectToastTimer: 0,
+  lastEffectToast: "",
+  cameraShake: 0,
+  screenPulse: 0,
+  comboMilestone: 1,
+  bestCombo: 1,
+  bestNearMissStreak: 0,
+  nearMissStreak: 0,
+  nearMissCooldown: 0,
+  lastLandingGrade: "",
+  threatToastCooldown: 0,
+  lastFailReason: "",
   minimapHeading: 0,
   minimapDebugTimer: 0,
   radarSnapshot: {
@@ -1534,6 +1545,20 @@ function isRiskMode() {
   return isMaxMode();
 }
 
+function normalizeCampaignAiMode(value) {
+  if (value === "risk" || value === CAMPAIGN_AI_ADAPTIVE)
+    return CAMPAIGN_AI_ADAPTIVE;
+  return CAMPAIGN_AI_NORMAL;
+}
+
+function isAdaptiveCampaignAi() {
+  return settings.campaignAiMode === CAMPAIGN_AI_ADAPTIVE;
+}
+
+function getCampaignAiDisplayLabel() {
+  return isAdaptiveCampaignAi() ? "Adaptive" : "Normal";
+}
+
 function getMaxDifficultyProfile() {
   return (
     MAX_DIFFICULTY_PROFILES[settings.maxDifficulty] ??
@@ -1594,10 +1619,9 @@ function getActiveGameMeta() {
   return {
     id: GAME_MODE_ID33,
     title: "Campaign Survival",
-    subtitle:
-      settings.campaignAiMode === "risk"
-        ? "ID3.3 Risk Hunters"
-        : "ID3.3 Classic",
+    subtitle: isAdaptiveCampaignAi()
+      ? "ID3.3 Adaptive Hunters"
+      : "ID3.3 Classic",
   };
 }
 
@@ -2135,7 +2159,9 @@ function loadPersistentState() {
       if (typeof data.settings.difficulty === "string")
         settings.difficulty = data.settings.difficulty;
       if (typeof data.settings.campaignAiMode === "string")
-        settings.campaignAiMode = data.settings.campaignAiMode;
+        settings.campaignAiMode = normalizeCampaignAiMode(
+          data.settings.campaignAiMode,
+        );
       if (typeof data.settings.maxDifficulty === "string")
         settings.maxDifficulty = data.settings.maxDifficulty;
       if (typeof data.settings.invertSteer === "boolean")
@@ -2236,7 +2262,7 @@ function refreshDevModeUi() {
     touchJump.hidden = !input.touchEnabled;
   }
   if (touchBackflip) {
-    touchBackflip.hidden = !input.touchEnabled;
+    touchBackflip.hidden = !input.touchEnabled || !maxModeActive;
   }
   if (devTools) {
     devTools.hidden = !settings.devMode;
@@ -2484,15 +2510,15 @@ function refreshGamesUi() {
   if (startBtn) {
     startBtn.textContent = isMaxMode()
       ? "Start Max Arena"
-      : settings.campaignAiMode === "risk"
-        ? "Start Campaign Risk"
+      : isAdaptiveCampaignAi()
+        ? "Start Adaptive Campaign"
         : "Start Campaign";
   }
   if (overlaySubtitle) {
     overlaySubtitle.textContent = isMaxMode()
       ? `${maxProfile.label} arena rules. Slower cars, cleaner reads, stronger squad play, and smarter goal pressure.`
-      : settings.campaignAiMode === "risk"
-        ? "Free-roam survival racers. Risk hunters learn from escapes, collapse lanes faster, and coordinate pressure as a pack."
+      : isAdaptiveCampaignAi()
+        ? "Free-roam survival racers. Adaptive hunters learn your routes, collapse lanes faster, and coordinate pressure as a pack."
         : "Free-roam survival racers. Drift through neon arenas, grab powerups, launch off ramps, and stay ahead of relentless hunter bots.";
   }
   const maxModeActive = isMaxMode();
@@ -2516,7 +2542,7 @@ function refreshGamesUi() {
   if (modeSettingsHint) {
     modeSettingsHint.textContent = maxModeActive
       ? `Max settings: ${maxProfile.label} controls arena size, assist, camera, and enemy squad difficulty. Campaign hunter settings do not apply here.`
-      : `Campaign settings: hunter difficulty, ramp density, free-play options, and Hunter AI (${settings.campaignAiMode === "risk" ? "Risk" : "Normal"}).`;
+      : `Campaign settings: hunter difficulty, ramp density, free-play options, and Hunter AI (${getCampaignAiDisplayLabel()}).`;
   }
   if (devClearLevel) {
     devClearLevel.textContent = maxModeActive ? "Golden Goal" : "Clear Level";
@@ -2582,7 +2608,7 @@ function refreshModeCopy() {
         <div><span>Handbrake:</span> Space</div>
         <div><span>Boost:</span> Shift</div>
         <div><span>Jump:</span> X</div>
-        <div><span>Backflip:</span> B</div>
+        <div><span>Backflip:</span> X again while airborne</div>
         <div><span>Restart:</span> R</div>
         <div><span>Menu:</span> Esc</div>
         <div><span>Start / Next:</span> Enter</div>
@@ -2610,7 +2636,7 @@ function refreshModeCopy() {
         <li><strong>Handbrake:</strong> Space</li>
         <li><strong>Boost:</strong> Shift</li>
         <li><strong>Jump:</strong> X</li>
-        <li><strong>Backflip:</strong> B</li>
+        <li><strong>Backflip:</strong> X again while airborne</li>
         <li><strong>Restart:</strong> R</li>
         <li><strong>Menu:</strong> Esc</li>
       `;
@@ -2630,7 +2656,7 @@ function refreshModeCopy() {
         <li>Hunter bots will chase you — dodge or bait them wide.</li>
         <li>Hit neon ramps to launch and earn airtime bonus.</li>
         <li>Boost pads refill boost and sling you forward.</li>
-        <li>Use Jump and Backflip to set up trick landings and airborne recoveries.</li>
+        <li>Tap <strong>X</strong> to jump, then tap <strong>X</strong> again in the air for backflips and trick landings.</li>
         <li>Collect powerups: Boost, Shield, Life, or Slow.</li>
       `;
   }
@@ -2638,7 +2664,8 @@ function refreshModeCopy() {
     touchDrift.textContent = maxModeActive ? "Ball Lunge" : "Drift";
   }
   if (touchBackflip) {
-    touchBackflip.textContent = maxModeActive ? "Target" : "Backflip";
+    touchBackflip.textContent = maxModeActive ? "Target" : "Trick";
+    touchBackflip.hidden = !input.touchEnabled || !maxModeActive;
   }
 }
 
@@ -2679,11 +2706,11 @@ groundGrid.position.y = 0.01;
 if (Array.isArray(groundGrid.material)) {
   groundGrid.material.forEach((material) => {
     material.transparent = true;
-    material.opacity = 0;
+    material.opacity = 0.22;
   });
 } else {
   groundGrid.material.transparent = true;
-  groundGrid.material.opacity = 0;
+  groundGrid.material.opacity = 0.22;
 }
 scene.add(groundGrid);
 
@@ -3391,6 +3418,37 @@ function spawnFx(position, velocity, color, scale = 1, life = 0.45) {
   particle.maxLife = life;
 }
 
+function spawnBurst(
+  position,
+  color,
+  count = 10,
+  { scale = 0.48, life = 0.34, force = 3.2, lift = 1.2 } = {},
+) {
+  for (let i = 0; i < count; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 0.35 + Math.random() * force;
+    spawnFx(
+      position
+        .clone()
+        .add(
+          new THREE.Vector3(
+            (Math.random() - 0.5) * 0.6,
+            0.18 + Math.random() * 0.22,
+            (Math.random() - 0.5) * 0.6,
+          ),
+        ),
+      new THREE.Vector3(
+        Math.cos(angle) * radius,
+        lift + Math.random() * lift,
+        Math.sin(angle) * radius,
+      ),
+      color,
+      scale * (0.74 + Math.random() * 0.55),
+      life * (0.76 + Math.random() * 0.42),
+    );
+  }
+}
+
 function updateFx(dt) {
   for (const particle of fxPool) {
     if (particle.life <= 0) continue;
@@ -3431,9 +3489,12 @@ function makePowerup(type) {
   return mesh;
 }
 
-function setEffectToast(text) {
+function setEffectToast(text, { shake = 0, pulse = 0 } = {}) {
   state.effectToast = text;
+  state.lastEffectToast = text;
   state.effectToastTimer = 1.4;
+  state.cameraShake = Math.max(state.cameraShake, shake);
+  state.screenPulse = Math.max(state.screenPulse, pulse);
 }
 
 function makeRamp(kind = "normal") {
@@ -4420,6 +4481,17 @@ function resetLevel() {
   state.slowBotsTimer = 0;
   state.effectToast = "";
   state.effectToastTimer = 0;
+  state.lastEffectToast = "";
+  state.cameraShake = 0;
+  state.screenPulse = 0;
+  state.comboMilestone = 1;
+  state.bestCombo = 1;
+  state.nearMissStreak = 0;
+  state.bestNearMissStreak = 0;
+  state.nearMissCooldown = 0;
+  state.lastLandingGrade = "";
+  state.threatToastCooldown = 0;
+  state.lastFailReason = "";
   const level = getLevel();
   state.timeLeft = level.time;
   state.overtime = false;
@@ -5089,19 +5161,25 @@ function updatePowerups(dt) {
 
 function consumePowerup(powerup) {
   const type = powerup.userData.type;
+  const pickupColors = {
+    boost: 0x28d7ff,
+    shield: 0x7bff9d,
+    life: 0xff4d2d,
+    slow: 0xffc457,
+  };
   if (type === "boost") {
     state.boost = 1;
     state.padSpeedTimer = Math.max(state.padSpeedTimer, 1.2);
     state.padSpeedMult = Math.max(state.padSpeedMult, 1.12);
     state.score += 200;
-    setEffectToast("Boost Refilled");
+    setEffectToast("Boost Refilled", { pulse: 0.42 });
     debugLog("powerups", "boost_applied");
   }
   if (type === "shield") {
     state.shield = Math.min(1, state.shield + 0.75);
     state.shieldTimer = 7.5;
     state.score += 150;
-    setEffectToast("Shield Up");
+    setEffectToast("Shield Up", { pulse: 0.3 });
     debugLog("powerups", "shield_applied");
   }
   if (type === "life") {
@@ -5109,7 +5187,9 @@ function consumePowerup(powerup) {
     state.lives = Math.min(5, state.lives + 1);
     if (state.lives > previousLives) state.livesPulse = 1;
     state.score += 250;
-    setEffectToast(state.lives > previousLives ? "Extra Life" : "Life Maxed");
+    setEffectToast(state.lives > previousLives ? "Extra Life" : "Life Maxed", {
+      pulse: 0.34,
+    });
     debugLog("powerups", "life_applied", { lives: state.lives });
   }
   if (type === "slow") {
@@ -5124,9 +5204,16 @@ function consumePowerup(powerup) {
       state.campaignRisk.nearMisses - 0.8,
     );
     state.score += 120;
-    setEffectToast("Bots Slowed");
+    setEffectToast("Bots Slowed", { pulse: 0.28 });
     debugLog("powerups", "slow_applied");
   }
+
+  spawnBurst(
+    powerup.position.clone().add(new THREE.Vector3(0, 0.25, 0)),
+    pickupColors[type] ?? 0xffffff,
+    16,
+    { scale: 0.48, life: 0.36, force: 3.6, lift: 1.45 },
+  );
 
   powerup.position.set(
     THREE.MathUtils.randFloatSpread(HALF_WORLD * 1.85),
@@ -5136,14 +5223,7 @@ function consumePowerup(powerup) {
   powerup.userData.type = ["boost", "shield", "life", "slow"][
     Math.floor(Math.random() * 4)
   ];
-  powerup.material.color.setHex(
-    {
-      boost: 0x28d7ff,
-      shield: 0x7bff9d,
-      life: 0xff4d2d,
-      slow: 0xffc457,
-    }[powerup.userData.type],
-  );
+  powerup.material.color.setHex(pickupColors[powerup.userData.type]);
   powerup.material.emissive.setHex(powerup.material.color.getHex());
 }
 
@@ -5179,6 +5259,18 @@ function emitDrivingFx(dt, steer, driftActive, boostActive) {
       0.45 * intensity,
       0.34,
     );
+    if (Math.random() < 0.38 + intensity * 0.22) {
+      spawnFx(
+        rearCenter.clone().addScaledVector(right, (Math.random() - 0.5) * 1.8),
+        forward
+          .clone()
+          .multiplyScalar(-2.4 - speedAbs * 0.04)
+          .addScaledVector(right, (Math.random() - 0.5) * 3.2),
+        Math.random() < 0.5 ? 0xffd37a : 0xd8f6ff,
+        0.32 * intensity,
+        0.22,
+      );
+    }
   }
 
   if (boostActive && speedAbs > 8) {
@@ -5188,6 +5280,13 @@ function emitDrivingFx(dt, steer, driftActive, boostActive) {
     boostVel.z += (Math.random() - 0.5) * 1.2;
     boostVel.y += (Math.random() - 0.5) * 0.6;
     spawnFx(flameSpawn, boostVel, 0xff9f45, 0.62, 0.28);
+    spawnFx(
+      flameSpawn.clone().addScaledVector(right, (Math.random() - 0.5) * 0.9),
+      boostVel.clone().multiplyScalar(0.62),
+      0xff4d2d,
+      0.5,
+      0.2,
+    );
     if (Math.random() < 0.45) {
       spawnFx(
         flameSpawn,
@@ -5230,14 +5329,14 @@ function attemptBackflip() {
     player.position.y > 0.05 || Math.abs(player.verticalVel) > 0.08;
   if (!canFlipNow) {
     state.backflipQueueTimer = state.devJumpComboTimer > 0 ? 0.75 : 0.35;
-    setEffectToast("Backflip Primed");
+    setEffectToast("Backflip Primed", { pulse: 0.12 });
     return false;
   }
   player.triggerBackflip();
   state.backflipQueueTimer = 0;
   state.backflipChainCount += 1;
   state.score += 30 * state.combo;
-  setEffectToast("Backflip");
+  setEffectToast("Backflip", { pulse: 0.26 });
   for (let i = 0; i < 7; i += 1) {
     spawnFx(
       player.position
@@ -5271,7 +5370,7 @@ function attemptDevJump() {
   state.devJumpCarrySpeed = player.speed;
   state.backflipChainCount = 0;
   state.backflipQueueTimer = 0;
-  setEffectToast("Jump");
+  setEffectToast("Jump", { pulse: 0.2 });
   for (let i = 0; i < 5; i += 1) {
     spawnFx(
       player.position
@@ -5294,6 +5393,12 @@ function attemptDevJump() {
     );
   }
   return true;
+}
+
+function performJumpOrBackflip() {
+  if (isMaxMode()) return false;
+  if (isCarAirborne(player) || player.backflipActive) return attemptBackflip();
+  return attemptDevJump();
 }
 
 function updatePlayer(dt) {
@@ -5570,6 +5675,7 @@ function updatePlayer(dt) {
   emitDrivingFx(dt, maxSteer, drift, boostActive);
 
   if (boostActive) {
+    state.screenPulse = Math.max(state.screenPulse, 0.12);
     state.score += dt * 6 * state.combo;
   }
 }
@@ -5602,10 +5708,26 @@ function updateVerticalPhysics(car, dt) {
       if (!car.isBot && state.wasAirborne) {
         const bonus = Math.min(2.5, state.airTime);
         if (bonus > 0.2) {
+          const landingGrade =
+            state.backflipChainCount > 1
+              ? "Inferno Landing"
+              : state.backflipChainCount === 1 || bonus > 1.4
+                ? "Great Landing"
+                : "Clean Landing";
+          state.lastLandingGrade = landingGrade;
           state.score += Math.round(120 * bonus);
           state.boost = Math.min(
             1,
             state.boost + bonus * (0.15 + (loadoutStats?.landingBoost ?? 0)),
+          );
+          setEffectToast(`${landingGrade} +${Math.round(120 * bonus)}`, {
+            pulse: 0.24 + Math.min(0.28, bonus * 0.1),
+          });
+          spawnBurst(
+            player.position.clone().add(new THREE.Vector3(0, 0.12, 0)),
+            landingGrade === "Inferno Landing" ? 0xffd37a : 0x9fe7ff,
+            landingGrade === "Clean Landing" ? 10 : 18,
+            { scale: 0.42, life: 0.32, force: 3.8, lift: 0.7 },
           );
         }
         if (state.backflipChainCount > 0) {
@@ -5630,6 +5752,7 @@ function updateVerticalPhysics(car, dt) {
             state.backflipChainCount > 1
               ? `Flip x${state.backflipChainCount} Boost`
               : "Flip Boost",
+            { pulse: 0.42, shake: 0.14 },
           );
           for (let i = 0; i < 28; i += 1) {
             spawnFx(
@@ -5789,16 +5912,22 @@ function updateVerticalPhysics(car, dt) {
           inwardApproachDotPrev,
         });
         if (!car.isBot) {
-          spawnFx(
-            car.position.clone().add(new THREE.Vector3(0, 0.4, 0)),
-            new THREE.Vector3(
-              (Math.random() - 0.5) * 2.5,
-              2.4,
-              (Math.random() - 0.5) * 2.5,
-            ),
-            ramp.userData.kind === "titan" ? 0xffc46e : 0xff9c66,
-            ramp.userData.kind === "titan" ? 0.75 : 0.52,
-            0.28,
+          const rampColor =
+            ramp.userData.kind === "titan" ? 0xffc46e : 0xff9c66;
+          spawnBurst(
+            car.position.clone().add(new THREE.Vector3(0, 0.35, 0)),
+            rampColor,
+            ramp.userData.kind === "titan" ? 18 : 10,
+            {
+              scale: ramp.userData.kind === "titan" ? 0.58 : 0.42,
+              life: 0.3,
+              force: 3.4,
+              lift: 1.8,
+            },
+          );
+          setEffectToast(
+            ramp.userData.kind === "titan" ? "Titan Launch" : "Ramp Launch",
+            { pulse: 0.2 },
           );
         }
         if (!car.isBot)
@@ -6745,7 +6874,7 @@ function updateBots(dt) {
     deviceAssist.botSpeedMult *
     (settings.devMode ? devTuning.botSpeedMult : 1);
   if (bots.length === 0) return;
-  const riskAiActive = settings.campaignAiMode === "risk";
+  const riskAiActive = isAdaptiveCampaignAi();
 
   const closestBotDistance = bots.reduce(
     (best, bot) => Math.min(best, bot.position.distanceTo(player.position)),
@@ -7033,6 +7162,7 @@ function updateBots(dt) {
           6,
           state.campaignRisk.nearMisses + 0.18,
         );
+      registerNearMiss("Air Dodge", 1.25);
       debugLog("hits", "rejected_vertical_overlap", {
         botId: bot.botId,
         playerY: player.position.y,
@@ -7049,6 +7179,7 @@ function updateBots(dt) {
           6,
           state.campaignRisk.nearMisses + 0.12,
         );
+      registerNearMiss("Near Miss", 1);
     }
   });
 }
@@ -7158,20 +7289,15 @@ function updateBoostPads(dt = 0.016) {
       pad.userData.cooldown = isMaxMode() ? 0.9 : 0.4;
       if (pad.userData.ring) pad.userData.ring.scale.setScalar(1.24);
       state.score += 40;
-      setEffectToast(isMaxMode() ? maxBoostVariant.name : "Pad Surge");
-      if (Math.random() < 0.55) {
-        spawnFx(
-          player.position.clone().add(new THREE.Vector3(0, 0.35, 0)),
-          new THREE.Vector3(
-            (Math.random() - 0.5) * 2.1,
-            2 + Math.random() * 1.4,
-            (Math.random() - 0.5) * 2.1,
-          ),
-          0x5feaff,
-          0.55,
-          0.24,
-        );
-      }
+      setEffectToast(isMaxMode() ? maxBoostVariant.name : "Pad Surge", {
+        pulse: 0.36,
+      });
+      spawnBurst(
+        player.position.clone().add(new THREE.Vector3(0, 0.25, 0)),
+        0x5feaff,
+        14,
+        { scale: 0.5, life: 0.28, force: 4.2, lift: 1.6 },
+      );
     }
   });
 }
@@ -7215,6 +7341,11 @@ function updateCamera(dt) {
     0,
     Math.cos(headingForCamera),
   );
+  const right = new THREE.Vector3(
+    Math.cos(headingForCamera),
+    0,
+    -Math.sin(headingForCamera),
+  );
   const speedDistance =
     CAMERA_BACK_DISTANCE + speedRatio * CAMERA_SPEED_DISTANCE_GAIN;
   const speedHeight = CAMERA_HEIGHT + speedRatio * CAMERA_SPEED_HEIGHT_GAIN;
@@ -7230,6 +7361,10 @@ function updateCamera(dt) {
     CAMERA_SPEED_LOOKAHEAD *
     (0.28 + speedRatio * 0.72) *
     (ballCamActive ? 0.55 : 1);
+  const driftLean =
+    input.drift && !isMaxMode()
+      ? THREE.MathUtils.clamp(state.steerSmoothed * speedRatio * 3.2, -2.4, 2.4)
+      : 0;
   const desired = cameraTarget
     .clone()
     .add(back)
@@ -7243,7 +7378,8 @@ function updateCamera(dt) {
         0,
       ),
     )
-    .addScaledVector(forward, CAMERA_PLAYER_SCREEN_BIAS);
+    .addScaledVector(forward, CAMERA_PLAYER_SCREEN_BIAS)
+    .addScaledVector(right, driftLean);
 
   if (input.focusCamera || settings.cameraFocus) {
     desired.add(new THREE.Vector3(0, 4 * deviceAssist.cameraHeightMult, 0));
@@ -7262,7 +7398,22 @@ function updateCamera(dt) {
         .clone()
         .add(new THREE.Vector3(0, CAMERA_LOOK_HEIGHT + speedRatio * 0.2, 0))
         .addScaledVector(forward, lookAhead);
+  if (state.cameraShake > 0 && !deviceAssist.reducedMotion) {
+    const shake = state.cameraShake * (isMaxMode() ? 0.45 : 0.62);
+    camera.position.x += (Math.random() - 0.5) * shake;
+    camera.position.y += (Math.random() - 0.5) * shake * 0.42;
+    camera.position.z += (Math.random() - 0.5) * shake;
+  }
   camera.lookAt(lookTarget);
+  const targetFov =
+    62 +
+    speedRatio * 1.7 +
+    (input.boost && state.boost > 0.05 ? 2.4 : 0) +
+    state.screenPulse * 3.8;
+  if (Math.abs(camera.fov - targetFov) > 0.02) {
+    camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, dt * 5.8);
+    camera.updateProjectionMatrix();
+  }
   state.cameraTelemetry.distance =
     speedDistance * deviceAssist.cameraDistanceMult * gameDistanceMult;
   state.cameraTelemetry.height =
@@ -7275,14 +7426,38 @@ function updatePlayfieldReadability(dt) {
   groundGrid.position.x = 0;
   groundGrid.position.z = 0;
   groundGrid.rotation.y = 0;
+  const targetOpacity = isMaxMode()
+    ? 0.16
+    : state.deviceProfile.compactHud
+      ? 0.18
+      : 0.23;
+  const materials = Array.isArray(groundGrid.material)
+    ? groundGrid.material
+    : [groundGrid.material];
+  materials.forEach((material) => {
+    material.opacity = THREE.MathUtils.lerp(
+      material.opacity,
+      targetOpacity,
+      Math.min(1, dt * 3),
+    );
+  });
 }
 
 function updateCombo(dt, steer) {
   if (input.drift && Math.abs(steer) > 0.2 && Math.abs(player.speed) > 12) {
     state.combo = Math.min(6, state.combo + dt * 0.94);
+    state.bestCombo = Math.max(state.bestCombo, state.combo);
     state.score += dt * 12 * state.combo;
+    const milestone = Math.floor(state.combo);
+    if (milestone > state.comboMilestone && milestone >= 2) {
+      state.comboMilestone = milestone;
+      setEffectToast(`Drift Chain x${milestone}`, { pulse: 0.22 });
+    }
   } else {
     state.combo = Math.max(1, state.combo - dt * 0.4);
+    if (state.combo < state.comboMilestone - 0.35) {
+      state.comboMilestone = Math.max(1, Math.floor(state.combo));
+    }
   }
 }
 
@@ -7306,6 +7481,13 @@ function updateDifficulty(dt) {
     state.effectToastTimer = Math.max(0, state.effectToastTimer - dt);
     if (state.effectToastTimer === 0) state.effectToast = "";
   }
+}
+
+function updateTransientEffects(dt) {
+  state.cameraShake = Math.max(0, state.cameraShake - dt * 2.8);
+  state.screenPulse = Math.max(0, state.screenPulse - dt * 2.4);
+  state.threatToastCooldown = Math.max(0, state.threatToastCooldown - dt);
+  state.nearMissCooldown = Math.max(0, state.nearMissCooldown - dt);
 }
 
 function stepGame(dt) {
@@ -7332,9 +7514,11 @@ function stepGame(dt) {
     if (state.postHitSafeFrames > 0) state.postHitSafeFrames -= 1;
     state.timeLeft = Math.max(0, state.timeLeft - dt);
     updateDifficulty(dt);
+    updateTransientEffects(dt);
 
     updatePlayer(dt);
     updateBots(dt);
+    updateHunterThreatFeedback();
     if (isMaxMode()) {
       updateMaxBall(dt);
       resolveMaxBumps();
@@ -7415,6 +7599,7 @@ function stepGame(dt) {
     }
   } else {
     updateFx(dt);
+    updateTransientEffects(dt);
   }
 
   updatePlayfieldReadability(dt);
@@ -7901,14 +8086,13 @@ function updateHud() {
       statusLabelNodes[0].textContent = "Boost";
       statusLabelNodes[1].textContent = "Health";
     }
-    if (hudLabelNodes.length >= 7) {
+    if (hudLabelNodes.length >= 6) {
       hudLabelNodes[0].textContent = "Score";
       hudLabelNodes[1].textContent = "Preset";
       hudLabelNodes[2].textContent = "Clock";
       hudLabelNodes[3].textContent = "State";
       hudLabelNodes[4].textContent = "Speed";
       hudLabelNodes[5].textContent = "Team";
-      hudLabelNodes[6].textContent = "Status";
     }
     hudWorld.textContent = `${maxMode.blueScore}-${maxMode.redScore}`;
     hudLevel.textContent = getMaxDifficultyProfile().label;
@@ -7922,9 +8106,7 @@ function updateHud() {
     hudSpeed.textContent = `${Math.round(Math.abs(player.speed) * SPEED_TO_MPH_MULT)} MPH`;
     hudHearts.innerHTML = "";
     hudLives.textContent = "Blue";
-    hudCombo.textContent = state.effectToast || "Ready";
     if (hudLivesPill) hudLivesPill.hidden = true;
-    if (hudComboPill) hudComboPill.hidden = true;
     if (hudLevelPill) hudLevelPill.hidden = false;
     if (hudWorldPill) hudWorldPill.hidden = false;
     if (hudTimePill) hudTimePill.hidden = false;
@@ -7935,27 +8117,23 @@ function updateHud() {
       statusLabelNodes[0].textContent = "Boost";
       statusLabelNodes[1].textContent = "Shield";
     }
-    if (hudLabelNodes.length >= 7) {
+    if (hudLabelNodes.length >= 6) {
       hudLabelNodes[0].textContent = "World";
       hudLabelNodes[1].textContent = "Level";
       hudLabelNodes[2].textContent = "Time";
       hudLabelNodes[3].textContent = "Score";
       hudLabelNodes[4].textContent = "Speed";
       hudLabelNodes[5].textContent = "Lives";
-      hudLabelNodes[6].textContent = "Drift";
     }
     hudWorld.textContent = getWorld().name;
-    const levelLabel =
-      settings.campaignAiMode === "risk" ? `${level.name} [Risk]` : level.name;
+    const levelLabel = level.name;
     hudLevel.textContent = state.effectToast
       ? `${levelLabel} - ${state.effectToast}`
       : levelLabel;
     hudScore.textContent = Math.floor(state.score).toString();
     hudSpeed.textContent = `${Math.round(Math.abs(player.speed) * SPEED_TO_MPH_MULT)} MPH`;
     renderLivesHud();
-    hudCombo.textContent = `x${state.combo.toFixed(1)}`;
     if (hudLivesPill) hudLivesPill.hidden = false;
-    if (hudComboPill) hudComboPill.hidden = false;
     if (hudLevelPill) hudLevelPill.hidden = false;
     if (hudWorldPill) hudWorldPill.hidden = false;
     if (hudTimePill) hudTimePill.hidden = false;
@@ -8057,6 +8235,9 @@ function handlePlayerHit(sourceBotId = -1) {
   state.lastHitAt = now;
   state.lastHitByBotId = sourceBotId;
   state.hitCount += 1;
+  state.nearMissStreak = 0;
+  state.cameraShake = Math.max(state.cameraShake, 0.62);
+  state.screenPulse = Math.max(state.screenPulse, 0.35);
   state.campaignRisk.recentHits = Math.min(
     6,
     state.campaignRisk.recentHits + 1.25,
@@ -8072,10 +8253,20 @@ function handlePlayerHit(sourceBotId = -1) {
       0,
       state.shield - (0.3 - loadoutStats.shieldRetention),
     );
+    setEffectToast("Shield Hit", { shake: 0.28, pulse: 0.2 });
   } else {
     loseLife();
+    state.lastFailReason =
+      "A hunter clipped your line. Brake late, drift wider, or grab Shield before the pack closes.";
+    setEffectToast("Hunter Hit - Life Lost", { shake: 0.62, pulse: 0.36 });
     debugLog("hits", "life_decremented", { lives: state.lives });
   }
+  spawnBurst(
+    player.position.clone().add(new THREE.Vector3(0, 0.28, 0)),
+    state.shield > 0 ? 0x56e9ff : 0xff4d2d,
+    20,
+    { scale: 0.48, life: 0.34, force: 5.2, lift: 1.1 },
+  );
   state.invincible = loadoutStats.invincibleDuration;
   state.postHitSafeFrames = POST_HIT_SAFE_FRAMES;
 
@@ -8089,6 +8280,52 @@ function handlePlayerHit(sourceBotId = -1) {
   if (state.lives <= 0) {
     dispatchGameAction("retry");
     debugLog("hits", "restart_triggered");
+  }
+}
+
+function registerNearMiss(label = "Near Miss", strength = 1) {
+  if (isMaxMode() || !state.running) return;
+  if (state.nearMissCooldown > 0) return;
+  state.nearMissCooldown = 0.38;
+  const reward = Math.round(32 * strength * state.combo);
+  state.nearMissStreak = Math.min(99, state.nearMissStreak + 1);
+  state.bestNearMissStreak = Math.max(
+    state.bestNearMissStreak,
+    state.nearMissStreak,
+  );
+  state.score += reward;
+  state.boost = Math.min(1, state.boost + 0.018 * strength);
+  if (state.effectToastTimer < 0.25 || state.nearMissStreak % 3 === 0) {
+    setEffectToast(
+      state.nearMissStreak > 1
+        ? `${label} x${state.nearMissStreak} +${reward}`
+        : `${label} +${reward}`,
+      { pulse: 0.18 },
+    );
+  }
+}
+
+function updateHunterThreatFeedback() {
+  if (isMaxMode() || !state.running || bots.length === 0) return;
+  let closest = Infinity;
+  let closing = false;
+  for (const bot of bots) {
+    const dx = player.position.x - bot.position.x;
+    const dz = player.position.z - bot.position.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < closest) closest = dist;
+    const closingSpeed =
+      ((bot.velocity.x - player.velocity.x) * dx +
+        (bot.velocity.z - player.velocity.z) * dz) /
+      Math.max(1, dist);
+    if (dist < 42 && closingSpeed > 12) closing = true;
+  }
+  if (closest < 26 && state.threatToastCooldown <= 0) {
+    setEffectToast(closing ? "Hunter Closing" : "Hunter Close", {
+      pulse: 0.16,
+      shake: 0.08,
+    });
+    state.threatToastCooldown = 1.35;
   }
 }
 
@@ -8138,9 +8375,12 @@ function startRun(resetLives = false) {
 
 function dispatchGameAction(action) {
   if (action === "retry") {
+    const score = Math.floor(state.score);
+    const combo = state.bestCombo.toFixed(1);
+    const nearMiss = state.bestNearMissStreak;
     showMessage(
       "System Critical",
-      "The hunters caught you. Press Enter to retry.",
+      `${state.lastFailReason || "The hunters caught you."} Score ${score}. Best chain x${combo}. Near-miss streak ${nearMiss}. Press Enter to retry fast.`,
       "Retry",
       "retry",
     );
@@ -8224,24 +8464,25 @@ function completeLevel() {
     debugLog("menu", "save_failed", error?.message || error);
   }
   const isLastLevel = state.levelIndex === world.levels.length - 1;
+  const runSummary = `Score ${Math.floor(state.score)}. Best chain x${state.bestCombo.toFixed(1)}. Near-miss streak ${state.bestNearMissStreak}. ${state.lastLandingGrade ? `${state.lastLandingGrade}. ` : ""}Press Enter for the next heat.`;
   if (isLastLevel) {
     const isLastWorld = state.worldIndex === worldData.length - 1;
     if (isLastWorld) {
       showMessage(
         "Champion Crowned",
-        "You outran every hunter. Press Enter to restart.",
+        `You outran every hunter. ${runSummary}`,
         "Restart Saga",
       );
     } else {
       showMessage(
         `World Cleared: ${world.name}`,
-        "New realm unlocked. Press Enter to ignite.",
+        `New realm unlocked. ${runSummary}`,
       );
     }
   } else {
     showMessage(
       `Level Cleared: ${level.name}`,
-      "Momentum locked. Press Enter for the next heat.",
+      `Momentum locked. ${runSummary}`,
     );
   }
 }
@@ -8297,7 +8538,6 @@ window.addEventListener("keydown", (event) => {
   ) {
     event.preventDefault();
   }
-  if (event.code === "KeyB") event.preventDefault();
   if (event.code === "KeyX") event.preventDefault();
   if (event.code === "ArrowLeft" || event.code === "KeyA") input.left = true;
   if (event.code === "ArrowRight" || event.code === "KeyD") input.right = true;
@@ -8317,9 +8557,10 @@ window.addEventListener("keydown", (event) => {
   ) {
     if (isMaxMode() && !event.repeat) performMaxBotLunge();
   }
-  if (event.code === "KeyB") input.backflip = true;
-  if (event.code === "KeyX") attemptDevJump();
-  if (event.code === "KeyB") attemptBackflip();
+  if (event.code === "KeyX" && !isMaxMode()) {
+    if (isCarAirborne(player) || player.backflipActive) input.backflip = true;
+    if (!event.repeat) performJumpOrBackflip();
+  }
   if (event.code === "KeyC" && !event.repeat)
     setEffectToast("Online chat needs backend");
   if (event.code === "KeyL" && isMaxMode() && !event.repeat) {
@@ -8358,7 +8599,7 @@ window.addEventListener("keyup", (event) => {
   if (event.code === "Space" && !isMaxMode()) input.drift = false;
   if (event.code === "ShiftLeft" || event.code === "ShiftRight")
     input.boost = false;
-  if (event.code === "KeyB") input.backflip = false;
+  if (event.code === "KeyX") input.backflip = false;
   debugLog("input", "keyup", event.code);
 });
 
@@ -8486,7 +8727,7 @@ function initTouchControls() {
     bindPressAction(touchJump, () => {
       if (input.touchEnabled) {
         updateAutoInputMode("touch");
-        attemptDevJump();
+        performJumpOrBackflip();
       }
     });
   }
@@ -8497,8 +8738,7 @@ function initTouchControls() {
       if (isMaxMode()) {
         performMaxBotLunge();
       } else {
-        input.backflip = true;
-        attemptBackflip();
+        performJumpOrBackflip();
       }
     });
     const clearBackflip = () => {
@@ -8573,9 +8813,10 @@ difficultySelect.addEventListener("change", (event) => {
 });
 
 campaignAiSelect?.addEventListener("change", (event) => {
-  settings.campaignAiMode = event.target.value === "risk" ? "risk" : "normal";
+  settings.campaignAiMode = normalizeCampaignAiMode(event.target.value);
   resetCampaignRiskMemory();
   refreshDevModeUi();
+  refreshGamesUi();
   savePersistentState();
 });
 
@@ -9002,9 +9243,32 @@ window.render_game_to_text = () => {
     hud: {
       time: Number(state.timeLeft.toFixed(2)),
       effect: state.effectToast || "",
+      combo: Number(state.combo.toFixed(2)),
+      driftActive: Boolean(input.drift && !isMaxMode()),
+      boost: Number(state.boost.toFixed(2)),
+      shield: Number(
+        (isMaxMode()
+          ? (player.maxHealth ?? MAX_HEALTH_MAX) / MAX_HEALTH_MAX
+          : state.shield
+        ).toFixed(2),
+      ),
       score: isMaxMode()
         ? { blue: maxMode.blueScore, red: maxMode.redScore }
         : Math.floor(state.score),
+    },
+    effects: {
+      lastToast: state.lastEffectToast || state.effectToast || "",
+      activeToast: state.effectToast || "",
+      shake: Number(state.cameraShake.toFixed(3)),
+      pulse: Number(state.screenPulse.toFixed(3)),
+      lastLandingGrade: state.lastLandingGrade,
+      bestCombo: Number(state.bestCombo.toFixed(2)),
+      bestNearMissStreak: state.bestNearMissStreak,
+    },
+    controls: {
+      jumpTrickKey: "X",
+      backflipKey: "X",
+      reservedChatKey: "C",
     },
     radar: radarSnapshot,
     camera: {
@@ -9050,11 +9314,11 @@ window.render_game_to_text = () => {
           },
           player: player.matchStats,
           latest: maxMode.stats?.events?.[0] ?? null,
-          risk: maxMode.riskMemory,
+          adaptiveMemory: maxMode.riskMemory,
         }
       : {
-          mode: settings.campaignAiMode,
-          campaignRisk: state.campaignRisk,
+          hunterAi: getCampaignAiDisplayLabel(),
+          adaptiveHunters: state.campaignRisk,
         },
     progression: {
       saveKey: SAVE_STORAGE_KEY,
@@ -9127,6 +9391,18 @@ window.__infernodriftTestApi = {
       opacity: remote.tag.style.opacity || "",
       screen: remote.screen ?? null,
     })),
+  setDeviceMode: (mode = "auto") => {
+    settings.deviceMode =
+      DEVICE_PROFILES[mode] || mode === "auto" ? mode : "auto";
+    state.deviceInputMode =
+      settings.deviceMode === "auto"
+        ? "auto"
+        : settings.deviceMode === "desktop"
+          ? "desktop"
+          : "touch";
+    applyDeviceProfile();
+    return { ...state.deviceProfile };
+  },
 };
 
 loadPersistentState();

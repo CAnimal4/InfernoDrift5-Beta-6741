@@ -26,6 +26,18 @@ Latest rescue verification, run on 2026-05-16:
 - `npm run worker:check`: passed dry-run with Durable Object binding.
 - `npm run worker:types`: passed.
 
+Phase 1 completion verification, run on 2026-05-16:
+
+- Legacy hunter naming removed; old saved hunter-AI values migrate to Adaptive Hunters.
+- Persistent Drift HUD pill removed; combo remains available through transient feedback and `render_game_to_text().hud.combo`.
+- Boost and Shield/Health meters align inside the main HUD row.
+- `X` is the launch/trick key: grounded `X` jumps, airborne `X` backflips.
+- Ground speed/reference lines are visible again at low opacity.
+- Fresh local screenshots captured:
+  - `output/playwright/phase1-live-campaign.png`
+  - `output/playwright/phase1-live-max.png`
+  - `output/playwright/mobile-landscape-smoke.png`
+
 Latest Pages smoke, run on 2026-05-16:
 
 - `https://canimal4.github.io/InfernoDrift4/?v=f5e23a7`: HTTP 200.
@@ -35,7 +47,7 @@ Latest Pages smoke, run on 2026-05-16:
 ## Browser QA Checklist
 
 - Title screen uses InfernoDrift4 identity.
-- Campaign Survival starts, drives, boosts, drifts, jumps, backflips with `B`, restarts, pauses, and shows results/fail messages.
+- Campaign Survival starts, drives, boosts, drifts, jumps, backflips with `X`, restarts, pauses, and shows results/fail messages.
 - Ground speed/reference lines remain visible during normal driving.
 - Radar is forward-relative: top/front, left/car-left, right/car-right, bottom/behind.
 - Radar uses the full box, has no heavy grid clutter, and shows clean icons plus edge arrows.

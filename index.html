@@ -44,22 +44,17 @@
           <div id="hud-hearts" class="hearts" aria-label="Lives"></div>
           <strong id="hud-lives" class="lives-count">3/5</strong>
         </div>
-        <div class="pill">
-          <span class="label">Drift</span>
-          <strong id="hud-combo">x1</strong>
+        <div class="status">
+          <div class="pill meter-pill">
+            <div class="label">Boost</div>
+            <div class="bar"><span id="boost-bar"></span></div>
+          </div>
+          <div class="pill meter-pill">
+            <div class="label">Shield</div>
+            <div class="bar"><span id="shield-bar"></span></div>
+          </div>
         </div>
         <button class="pill menu-btn" id="menu-btn" type="button">Menu</button>
-      </div>
-
-      <div class="status">
-        <div class="pill">
-          <div class="label">Boost</div>
-          <div class="bar"><span id="boost-bar"></span></div>
-        </div>
-        <div class="pill">
-          <div class="label">Shield</div>
-          <div class="bar"><span id="shield-bar"></span></div>
-        </div>
       </div>
 
       <div class="debug-hud" id="debug-hud" hidden></div>
@@ -85,7 +80,7 @@
           <button id="touch-jump" class="ghost">Jump</button>
           <button id="touch-drift">Drift</button>
           <button id="touch-boost" class="primary">Boost</button>
-          <button id="touch-backflip" class="ghost">Backflip</button>
+          <button id="touch-backflip" class="ghost" hidden>Target</button>
         </div>
       </div>
 
@@ -181,7 +176,7 @@
                   <span>Hunter AI</span>
                 <select id="campaign-ai-select">
                   <option value="normal">Normal</option>
-                  <option value="risk">Risk</option>
+                  <option value="adaptive">Adaptive</option>
                 </select>
               </label>
               <label class="field" id="max-difficulty-field" hidden>
