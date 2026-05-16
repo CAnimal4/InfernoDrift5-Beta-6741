@@ -13,13 +13,24 @@ The React/Vite client is not current launch proof.
 
 ## Required Local Gates
 
-- `node --check script.js`
-- `npm run typecheck`
-- `npm test`
-- `npm run build`
-- `npm run smoke`
-- `npm run test:e2e`
-- `npm run smoke:online-local`
+Latest rescue verification, run on 2026-05-16:
+
+- `node --check script.js`: passed.
+- `npm run typecheck`: passed.
+- `npm test`: passed, 22 tests.
+- `npm run build`: passed, static site built to `dist/`.
+- `npm run smoke`: passed, including Campaign Survival, Max Arena, name tags, and radar projection probes.
+- `npm run test:e2e`: passed, including dev-mode and phone landscape/touch layout.
+- `npm run smoke:online-local`: passed, including two clients, private room, bot fill, sanitized chat, 13+ free-chat gate, and leaderboard shell.
+- `npm run format`: passed.
+- `npm run worker:check`: passed dry-run with Durable Object binding.
+- `npm run worker:types`: passed.
+
+Latest Pages smoke, run on 2026-05-16:
+
+- `https://canimal4.github.io/InfernoDrift4/?v=f5e23a7`: HTTP 200.
+- Served root static game with `script.js`; no React/Vite bundle detected.
+- Browser play smoke started Campaign Survival, `running: true`, `product: InfernoDrift4`, `radarMode: forward-relative`, `online: offline-static`, and no page errors.
 
 ## Browser QA Checklist
 

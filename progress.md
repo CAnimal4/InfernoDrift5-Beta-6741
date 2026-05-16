@@ -60,3 +60,6 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Rebuilt the radar renderer as a clean forward-relative tactical box with top/front, left/car-left, right/car-right, minimal boundary, no heavy grid, edge arrows, and clean player/bot/human/ball/ramp/powerup icons.
 - Expanded `render_game_to_text()` with `ui`, `radar`, `progression`, and honest `online.status = "offline-static"` data so tests can verify the current static launch truth.
 - Updated README and docs to stop overclaiming the rejected React/Vite build as the active launch surface and to keep hosted online explicitly blocked until Cloudflare deployment is verified.
+- Fixed the radar projection sign so objects in front of the car report as front/top, then added smoke assertions for front and car-left projections.
+- Verification passed: `node --check script.js`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run format`, `npm run worker:check`, and `npm run worker:types`.
+- Pushed rescue commit `f5e23a7`; GitHub Actions CI, Pages deploy, and Pages build/deployment completed successfully. Production smoke at `https://canimal4.github.io/InfernoDrift4/?v=f5e23a7` served the static game and started Campaign Survival with no page errors.

@@ -27,17 +27,24 @@ Status: active work is the ID3-first static launch rescue. The current shipped g
 
 ## Required Verification Before Release Sign-Off
 
-Run and record:
+Latest verification run on 2026-05-16:
 
-```bash
-node --check script.js
-npm run typecheck
-npm test
-npm run build
-npm run smoke
-npm run test:e2e
-npm run smoke:online-local
-```
+- `node --check script.js`: passed.
+- `npm run typecheck`: passed.
+- `npm test`: passed, 22 tests.
+- `npm run build`: passed.
+- `npm run smoke`: passed.
+- `npm run test:e2e`: passed.
+- `npm run smoke:online-local`: passed.
+- `npm run format`: passed.
+- `npm run worker:check`: passed dry-run.
+- `npm run worker:types`: passed.
+
+Latest Pages smoke:
+
+- `https://canimal4.github.io/InfernoDrift4/?v=f5e23a7`: HTTP 200.
+- Served the static ID3-first game with `script.js`; no React/Vite bundle detected.
+- Browser smoke started Campaign Survival, confirmed `running: true`, `product: InfernoDrift4`, `radarMode: forward-relative`, `online: offline-static`, and no page errors.
 
 For Cloudflare work:
 
