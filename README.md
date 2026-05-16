@@ -1,17 +1,27 @@
 # InfernoDrift4
 
-InfernoDrift4 is the current InfernoDrift game evolved instead of replaced: neon survival drifting, Risk hunters, Max Arena, touch controls, customization, deterministic smoke hooks, local progression, cleaner HUD/radar, stronger effects, and optional online rooms.
+InfernoDrift4 is the ID3-first launch rescue: the shipped game is the root static `index.html`, `script.js`, and `style.css` experience, built from the proven InfernoDrift 3.3 feel instead of the rejected React rewrite.
 
 Play: https://canimal4.github.io/InfernoDrift4/
 
-## What Changed In This Pass
+## Current Launch Surface
 
-- Rebuilt on the ID3-derived `index.html`, `script.js`, and `style.css` foundation instead of the rejected standalone monorepo.
-- Added a compact, cleaner HUD and a forward-relative tactical radar where top means in front of the car, left means car-left, and edge icons clamp off-radar threats.
-- Generated favicon/PWA icons from the uploaded flame-wheel image: `favicon.ico`, `icon.svg`, `icon-64.png`, `icon-192.png`, and `icon-512.png`.
-- Expanded mode objectives for Tutorial, Campaign Survival, Race, Stunt Park, Hunter Tag, Boss Chase, Battle Arena, Max Arena, and rotating minigames.
-- Added real WebSocket client controls for guest auth, rooms, private codes, queues, bot fill, chat, quick chat, leaderboards, friends/recent-player shell, and backend-offline fallback.
-- Added Cloudflare Workers + Durable Objects backend scaffold alongside the existing local Node backend.
+- Static client: `index.html`, `script.js`, `style.css`
+- Build output: `npm run build:web` copies the static game and icons into `dist/`
+- React/Vite code in `client/` remains reference/scaffolding only until it passes a future parity gate
+- Local backend and Cloudflare Worker code exist, but hosted online is not live until a real Worker URL is verified
+
+## Implemented In The Rescue Surface
+
+- ID4 visible identity over the ID3-derived survival game
+- Campaign Survival mode using the ID3.3 hunter/ramp/powerup loop
+- Max Arena mode with ball, teams, bot roles, goal replay, ball cam, and local match stats
+- Preserved ground speed/reference lines for speed readability
+- Cleaner, lower-chrome HUD while driving
+- Forward-relative radar: top is in front, left is car-left, right is car-right, edge icons show off-radar threats
+- Local garage/customization loadout system with instant car changes and unlock previews
+- Touch controls, phone/tablet layout tuning, deterministic smoke hooks, and local saves
+- Local WebSocket backend smoke coverage for rooms, bot fill, quick chat, age-gated free chat, sanitizer, input snapshots, and leaderboard shell
 
 ## Run Locally
 
@@ -20,16 +30,17 @@ npm ci
 npm run dev:web
 ```
 
-Open `http://127.0.0.1:5173/index.html`.
+Open `http://127.0.0.1:4173/index.html`.
 
-The static game works offline with bots and local saves. To run the local backend:
+To run the local backend:
 
 ```bash
 cp .env.example .env
 npm run dev:server
+curl http://127.0.0.1:8787/health
 ```
 
-Set the Online tab server URL to `ws://127.0.0.1:8787/ws`, then connect.
+The static game is fully playable offline. Live online requires a separate backend and must not be described as live until verified.
 
 ## Controls
 
@@ -37,32 +48,39 @@ Set the Online tab server URL to `ws://127.0.0.1:8787/ws`, then connect.
 - Drift: `Space`
 - Boost: `Shift`
 - Jump: `X`
-- Backflip: `C`
+- Backflip: `B`
 - Restart: `R`
 - Menu: `Esc` or `M`
 - Max Arena ball cam: `L`
+- Online chat: `C` is reserved for the backend-backed chat phase
 - Touch: landscape joystick plus Drift/Boost/Jump/Backflip buttons
 
-## Development
+## Development Checks
 
 ```bash
+node --check script.js
 npm run typecheck
 npm run lint
 npm test
 npm run build
 npm run smoke
 npm run test:e2e
+npm run smoke:online-local
+```
+
+Cloudflare backend checks, when working on online:
+
+```bash
 npm run worker:check
 npm run worker:types
 ```
 
 GitHub Pages deploys the `dist/` artifact produced by `npm run build:web`.
 
-## Backend Deployment
+## Online Status
 
-GitHub Pages hosts only the static client. Live online requires a deployed WebSocket backend. The Cloudflare Worker deployment workflow expects these GitHub repository secrets:
+GitHub Pages hosts only the static client. Cloudflare Workers + Durable Objects are the intended hosted backend, but hosted online remains blocked until:
 
-- `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_API_TOKEN`
-
-After the Worker is live, configure the client with a `wss://.../ws` URL in the Online tab or through `window.INFERNO_SERVER_URL`.
+- GitHub secrets `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are configured.
+- A concrete `wss://.../ws` Worker endpoint passes `INFERNO_ONLINE_SMOKE_URL=wss://.../ws node smoke_online_local.mjs`.
+- The deployed Pages game is tested with that endpoint in a two-client browser flow.

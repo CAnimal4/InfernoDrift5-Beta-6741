@@ -2,10 +2,10 @@
 
 ## GitHub Pages Frontend
 
-Frontend deployment uses GitHub Pages Actions. The current frontend build is Vite/React from `client/`, produced by `npm run build:web` through `scripts/build-site.mjs`.
+The current frontend build is the ID3-derived static root game. `npm run build:web` copies `index.html`, `script.js`, `style.css`, icons, manifest, service-worker reset file, and static card art into `dist/`.
 
 1. Push `main`.
-2. Ensure Settings -> Pages -> Source is GitHub Actions.
+2. Ensure GitHub Pages source is GitHub Actions.
 3. Wait for `Deploy GitHub Pages`.
 4. Open https://canimal4.github.io/InfernoDrift4/.
 
@@ -13,35 +13,34 @@ The Pages workflow runs `npm ci`, `npm run typecheck`, `npm run test`, `npm run 
 
 ## Cloudflare Worker Backend
 
-The live online backend is separate from GitHub Pages. The Worker is configured in `wrangler.jsonc` with one Durable Object class, `InfernoRoom`, for room coordination.
+The live online backend is separate from GitHub Pages. Worker source exists in `apps/worker` and is configured by `wrangler.jsonc`.
 
-Required GitHub secrets for `.github/workflows/deploy-worker.yml`:
+Required GitHub secrets:
 
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
 
-Manual deploy:
+Dry checks:
 
 ```bash
 npm run worker:check
 npm run worker:types
+```
+
+Manual deploy is allowed only when credentials are available and safe:
+
+```bash
 CLOUDFLARE_ACCOUNT_ID=... CLOUDFLARE_API_TOKEN=... npm run deploy:worker
 ```
 
-After deployment, configure the Pages client Online tab with `wss://<worker-url>/ws` and verify `/health` plus a WebSocket room connection.
+Do not mark hosted online as live until a concrete `wss://.../ws` endpoint passes:
 
-Current deployment status for this docs pass:
+```bash
+INFERNO_ONLINE_SMOKE_URL=wss://<verified-worker>/ws node smoke_online_local.mjs
+```
 
-- Pages deployment for the React revamp is pending parent/CI verification unless a newer Actions result is supplied.
-- Cloudflare Worker live deployment is blocked because no verified Worker URL is recorded here and deploy secrets are not visible in the repo.
+Then verify a two-client room flow from the deployed Pages game.
 
-## Manual Fallback
+## Manual UI Work
 
-If GitHub UI access is needed because `gh` is unavailable:
-
-1. Open https://github.com/CAnimal4/InfernoDrift4/settings/pages.
-2. Set Source to GitHub Actions.
-3. Open Actions and rerun `Deploy GitHub Pages` if the workflow did not run automatically.
-4. Add Cloudflare secrets at Settings -> Secrets and variables -> Actions if backend deployment is required.
-
-Do not mark hosted online as live until a `wss://.../ws` endpoint is verified from the deployed Pages game.
+Use Safari + Computer Use for Cloudflare or GitHub dashboard inspection/configuration when needed. Ask before billing changes, risky DNS changes, deletion, secret rotation, domain transfers, or irreversible account-level settings.

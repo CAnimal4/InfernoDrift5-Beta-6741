@@ -1,9 +1,10 @@
 # QA / Security Subagent Report
 
-Acceptance checks for the current React/TypeScript revamp:
+Acceptance checks for the active static rescue:
 
 - Verify `window.render_game_to_text()`, `window.advanceTime(ms)`, and `window.__infernodriftTestApi`.
-- Run `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run worker:check`, and `npm run worker:types`.
-- Validate protocol message types, moderation expansion, PII redaction, 13+ free-chat gating, quick chat, rate limiting, room creation/join, exact origin rejection, and speed/authoritative payload rejection.
-- Verify current desktop/mobile screenshots and do not reuse older static-pass screenshots as current React proof.
+- Run `node --check script.js`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, and `npm run smoke:online-local`.
+- Verify desktop gameplay, title overlay, live radar, garage/menu, Max Arena, and mobile landscape screenshots from the static root game.
 - Treat Cloudflare live online as blocked until credentials and a verified Worker WebSocket URL are available.
+
+Security posture remains: validate backend protocol messages, keep hosted online honest, never trust client-submitted scores/ranks/unlocks, and never commit secrets.

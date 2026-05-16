@@ -1,7 +1,11 @@
 # UI / Mobile / Visuals Subagent Report
 
-- UI direction remains neon arcade cockpit, now implemented in React under `client/src/App.tsx` and `client/src/styles/app.css`.
-- Current menu surfaces: Play, Garage, Progress, Online, Settings, and How To.
-- Current visuals: Three playfield, Three garage preview, HUD objective/vehicle clusters, radar panel, replay/toast stack, online panels, and settings controls.
-- Current mobile support: touch steering pad, Jump/Drift/Boost/Backflip buttons, responsive CSS, and browser Gamepad API input.
-- Current caveat: audio volume sliders exist, but this docs pass did not find a React Web Audio runtime. Treat dynamic/procedural audio as pending for the React tree.
+Current UI/visual direction is the static ID3 cockpit surface, cleaned without replacing the game:
+
+- Active HUD, radar, menu, garage, and touch controls live in root `index.html`, `style.css`, and `script.js`.
+- HUD should stay compact while driving and keep the center playfield clear.
+- Radar must be forward-relative, use the box efficiently, and avoid grid clutter.
+- Garage keeps current loadout customization and should evolve toward a stronger preview bay without breaking instant cosmetic application.
+- Mobile landscape remains first-class: smaller HUD/radar, no selectable touch text, readable buttons, and preserved touch controls.
+
+The React UI files are not current launch proof.

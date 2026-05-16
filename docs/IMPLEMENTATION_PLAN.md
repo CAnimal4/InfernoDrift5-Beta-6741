@@ -2,29 +2,28 @@
 
 ## Direction
 
-InfernoDrift4 has moved from the earlier static-root pass into a React/TypeScript/Three revamp. The current active path is:
+InfernoDrift4 launch now follows the ID3-first rescue path. The active shipped game is the root static build:
 
-- `client/` for Vite/React UI and Three renderers
-- `packages/game-core/` for deterministic game state and rules
-- `packages/protocol/` for shared TypeScript protocol/moderation
-- `apps/server/` for local Node/WebSocket development backend
-- `apps/worker/` for Cloudflare Worker/Durable Object online backend
+- `index.html`
+- `script.js`
+- `style.css`
+- `scripts/build-site.mjs`
+
+The React/Vite code in `client/` and typed packages in `packages/` remain reference/scaffolding only until a future visual and gameplay parity gate proves they are better than the static ID3-derived game.
 
 ## Phases
 
-1. Keep the React client as the active frontend and stop describing the root static files as the primary implementation.
-2. Keep moving simulation, objectives, radar, progression, and save migration into `packages/game-core` with tests.
-3. Keep protocol and moderation behavior aligned between `packages/protocol/src/index.ts` and `apps/worker/src/protocol.js`.
-4. Verify local Node online through `npm run smoke:online-local`.
-5. Verify browser play, mobile layout, and automation hooks through `npm run smoke` and `npm run test:e2e`.
-6. Verify Cloudflare Worker/Durable Object config through `npm run worker:check` and `npm run worker:types`.
-7. Deploy Pages only after parent CI passes for the current React tree.
-8. Deploy Worker only after Cloudflare secrets exist; mark live online only after a real `wss://.../ws` URL works from Pages.
+1. Keep the root static game as the launch surface and keep `npm run build:web` copying it into `dist/`.
+2. Stabilize existing ID3-style gameplay before broad feature work: driving, drift, boost, ramps, hunters, Max Arena, touch controls, and saves.
+3. Clean the active static HUD, radar, menu, and garage without changing the recognizable ID3 playfield feel.
+4. Add offline modes, progression, replay/highlight, and minigame depth only after the static core stays fun and screenshot-reviewed.
+5. Keep online honest: local backend is real/local, hosted Cloudflare online is blocked until a verified Worker URL passes health, WebSocket smoke, and Pages two-client testing.
 
 ## Acceptance
 
-- The React app builds and deploys through Vite to `dist/`.
+- Static launch game starts from `index.html` and builds to `dist/`.
 - `window.advanceTime(ms)`, `window.render_game_to_text()`, and `window.__infernodriftTestApi` remain stable.
-- Tutorial, campaign, Max Arena, minigames, radar, progression, garage, online shell, touch layout, and deterministic test hooks work in current smokes.
-- Local backend runs and passes protocol/WebSocket tests.
-- Hosted Cloudflare online is blocked unless secrets and a verified Worker WebSocket URL are available.
+- Campaign Survival and Max Arena preserve ID3 readability and improve feedback.
+- Radar is forward-relative: top is front, left is car-left, right is car-right, bottom is behind.
+- Docs and reports do not claim the React/Vite tree is the active shipped game.
+- Hosted online is not called live until Cloudflare deployment and verification actually succeed.

@@ -34,15 +34,19 @@ await page.waitForTimeout(700);
 await page.evaluate(() => window.advanceTime(900));
 await page.waitForTimeout(700);
 
-const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+const state = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
 const overlayClass = await page.locator("#overlay").getAttribute("class");
 const hudBox = await page.locator(".hud").boundingBox();
 const radarBox = await page.locator(".minimap-wrap").boundingBox();
 const touchBox = await page.locator("#touch-controls").boundingBox();
-const touchUserSelect = await page.locator("#touch-controls").evaluate((node) => {
-  const style = getComputedStyle(node);
-  return `${style.userSelect}/${style.webkitUserSelect}`;
-});
+const touchUserSelect = await page
+  .locator("#touch-controls")
+  .evaluate((node) => {
+    const style = getComputedStyle(node);
+    return `${style.userSelect}/${style.webkitUserSelect}`;
+  });
 
 assert.equal(state.mode, "infernodrift33");
 assert.equal(state.running, true);

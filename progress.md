@@ -51,3 +51,12 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Validation after restore: `node --check script.js`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, and develop-web-game Playwright client passed. Headless WebGL emitted expected SwiftShader `ReadPixels` warnings only.
 - Added unobtrusive username tags for real remote/human players only. The tag system creates lightweight remote car visuals, clamps/hides tags that would overlap the HUD, sanitizes usernames, exposes `humanPlayers` in `render_game_to_text()`, and adds `setRemoteHumanPlayers()` / `getRemoteNameTags()` test hooks. Bots remain unlabeled.
 - Verified the nametag visually with `output/playwright/name-tag-smoke.png`; focused validation after the tag change: `npm run typecheck`, `npm run build`, and `npm run smoke` passed.
+
+2026-05-16 ID3-first launch rescue implementation pass:
+
+- Reconfirmed the root static files are the launch surface and changed `npm run dev:web` to serve the static game from `http://127.0.0.1:4173/index.html`; `npm run dev:react` now preserves the old Vite client for reference only.
+- Updated visible product identity from `InfernoDrift 3` to `InfernoDrift4` while keeping the ID3.3 Classic/Campaign Survival and Max Arena mode identities.
+- Reassigned keyboard backflip from `C` to `B`; `C` is now reserved for the future backend-backed chat phase.
+- Rebuilt the radar renderer as a clean forward-relative tactical box with top/front, left/car-left, right/car-right, minimal boundary, no heavy grid, edge arrows, and clean player/bot/human/ball/ramp/powerup icons.
+- Expanded `render_game_to_text()` with `ui`, `radar`, `progression`, and honest `online.status = "offline-static"` data so tests can verify the current static launch truth.
+- Updated README and docs to stop overclaiming the rejected React/Vite build as the active launch surface and to keep hosted online explicitly blocked until Cloudflare deployment is verified.

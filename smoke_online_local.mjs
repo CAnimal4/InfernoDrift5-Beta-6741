@@ -143,7 +143,9 @@ function connectClient(url) {
         waitFor(type, predicate = () => true, timeoutMs = 5000) {
           return new Promise((waitResolve, waitReject) => {
             const deadline = setTimeout(() => {
-              const index = waiters.findIndex((waiter) => waiter.check === check);
+              const index = waiters.findIndex(
+                (waiter) => waiter.check === check,
+              );
               if (index >= 0) waiters.splice(index, 1);
               waitReject(new Error(`Timed out waiting for ${type}`));
             }, timeoutMs);

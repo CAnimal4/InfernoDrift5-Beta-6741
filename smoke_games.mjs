@@ -64,13 +64,62 @@ const campaignWithFriend = JSON.parse(
 );
 assert.equal(campaignWithFriend.humanPlayers[0].username, "Clark");
 assert.equal(campaignWithFriend.humanPlayers[0].nameTagVisible, true);
+const friendRadar = campaignWithFriend.radar.entities.find(
+  (entity) => entity.kind === "human" && entity.label === "Clark",
+);
+assert.ok(friendRadar);
+
+await page.evaluate(() => {
+  const state = JSON.parse(window.render_game_to_text());
+  window.__infernodriftTestApi.setRemoteHumanPlayers([
+    {
+      id: "radar-front",
+      username: "FrontProbe",
+      team: "blue",
+      x: state.player.x,
+      y: 0,
+      z: state.player.z + 80,
+      heading: 0,
+      speed: 0,
+    },
+    {
+      id: "radar-left",
+      username: "LeftProbe",
+      team: "blue",
+      x: state.player.x - 80,
+      y: 0,
+      z: state.player.z,
+      heading: 0,
+      speed: 0,
+    },
+  ]);
+});
+await page.evaluate(() => window.advanceTime(120));
+const radarProbeState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
+const frontProbe = radarProbeState.radar.entities.find(
+  (entity) => entity.kind === "human" && entity.label === "FrontProbe",
+);
+const leftProbe = radarProbeState.radar.entities.find(
+  (entity) => entity.kind === "human" && entity.label === "LeftProbe",
+);
+assert.equal(frontProbe.sector, "front");
+assert.ok(frontProbe.forward > 0);
+assert.ok(frontProbe.screenY < 0.5);
+assert.equal(leftProbe.sector, "left");
+assert.ok(leftProbe.right < 0);
+assert.ok(leftProbe.screenX < 0.5);
 
 await openMenu(page);
 await page.locator('[data-tab="settings"]').click({ force: true });
 await page.locator("#dev-mode-toggle").click({ force: true });
 await page.waitForTimeout(300);
 assert.equal(await page.locator("#dev-mode-toggle").isChecked(), true);
-assert.match((await page.locator("#dev-mode-hint").textContent()) ?? "", /enabled/i);
+assert.match(
+  (await page.locator("#dev-mode-hint").textContent()) ?? "",
+  /enabled/i,
+);
 
 await page.locator("#games-tab-btn").click({ force: true });
 assert.equal(await page.locator("#games-tab-btn").isHidden(), false);
@@ -80,7 +129,9 @@ await page.keyboard.press("Escape");
 await page.waitForTimeout(900);
 await page.evaluate(() => window.advanceTime(900));
 
-const maxState = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+const maxState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
 assert.equal(maxState.mode, "infernodriftmax1");
 assert.ok(maxState.ball);
 assert.ok(maxState.bots.some((bot) => bot.team === "red"));

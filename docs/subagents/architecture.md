@@ -1,6 +1,11 @@
 # Architecture / Build Subagent Report
 
-- Current architecture: Vite/React client in `client/`, typed game rules in `packages/game-core`, shared TypeScript protocol in `packages/protocol`, local Node backend in `apps/server`, and Cloudflare Worker/Durable Object backend in `apps/worker`.
-- Build: `scripts/build-site.mjs` runs Vite with `client/vite.config.ts`, emits `dist/`, copies static PWA/icon assets, and writes `.nojekyll`.
-- CI/Pages: workflows install with `npm ci`, run typecheck/tests/build, upload `dist/`, and deploy with official Pages actions.
-- Acceptance checks still needed for the current React tree: install, typecheck, test, build, smoke, e2e, worker dry-run/types, and Pages workflow verification.
+Current launch architecture is the ID3-first static game:
+
+- Active shipped client: root `index.html`, `script.js`, and `style.css`.
+- Build: `scripts/build-site.mjs` copies root static assets into `dist/` and writes `.nojekyll`.
+- Local development: `npm run dev:web` serves the root static game on `127.0.0.1:4173`.
+- React/Vite: `client/` is retained as reference/scaffolding and is available through `npm run dev:react`, but it is not the launch surface.
+- Backend: `apps/server` and `apps/worker` remain backend tracks for later online work.
+
+Acceptance checks for this rescue path: `node --check script.js`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run worker:check`, and `npm run worker:types`.

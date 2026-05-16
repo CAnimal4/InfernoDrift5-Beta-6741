@@ -6,7 +6,8 @@
   "description": "InfernoDrift4, evolved from the current InfernoDrift game.",
   "scripts": {
     "dev": "npm run dev:web",
-    "dev:web": "vite --config client/vite.config.ts --host 127.0.0.1",
+    "dev:web": "http-server . -a 127.0.0.1 -p 4173 -c-1",
+    "dev:react": "vite --config client/vite.config.ts --host 127.0.0.1",
     "dev:server": "node apps/server/src/index.js",
     "build": "npm run build:web && npm run build:server",
     "build:web": "node scripts/build-site.mjs",

@@ -1,6 +1,10 @@
 # Game Engine / Physics Subagent Report
 
-- Current engine lives in `packages/game-core/src/index.ts` with typed machine state, modes, car classes, bot personalities, input frames, objective markers, radar entities, progression, save migration, and deterministic `startGame` / `stepGame`.
-- Current renderer lives in `client/src/game/GameCanvas.tsx` and draws the arena, player car, bots, ball, markers, trails, camera follow, fog, grid, and lights with Three.js.
-- Current automation hooks remain in `client/src/App.tsx`: `advanceTime(ms)`, `render_game_to_text()`, and `__infernodriftTestApi`.
-- Verification needed: game-core tests plus current browser smoke. Do not rely on older static-pass smoke output as proof for this React tree.
+The active engine for launch is the root static `script.js` game loop. Current rescue focus:
+
+- Preserve ID3 driving feel, close camera, ground reference lines, boost pads, ramps, hunters, powerups, Max Arena, and touch controls.
+- Tune only the existing loop first: `updatePlayer`, vertical physics, bots, collisions, boost pads, ramps, backflip, landing, near miss, and feedback.
+- Keep public hooks stable: `window.advanceTime(ms)`, `window.render_game_to_text()`, and `window.__infernodriftTestApi`.
+- Keep radar projection in the static runtime and smoke coverage, especially top equals front and left equals car-left.
+
+The typed `packages/game-core` path is not the active launch engine in this rescue pass.

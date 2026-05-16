@@ -3,23 +3,27 @@
 ## Keyboard
 
 - Drive: `WASD` or arrow keys
-- Drift: `Space`
+- Drift / handbrake: `Space`
 - Boost: `Shift`
 - Jump: `X`
-- Backflip: `C`
+- Backflip: `B`
 - Restart: `R`
-- Menu: `Esc` or `M`
+- Menu / pause: `Esc` or `M`
+- Max Arena ball cam: `L`
+- Max Arena ball lunge: `Space`
+- Max Arena target lunge: `Ctrl` or `Command`
+- Online chat: `C` is reserved for the backend-backed chat phase
 
 ## Touch
 
-Use landscape orientation. The left joystick drives and steers; the right action cluster exposes Drift, Boost, Jump, Backflip, and Max Arena actions where applicable. Touch controls keep text selection disabled so gameplay does not highlight UI.
+Use landscape orientation. The left joystick drives and steers; the right action cluster exposes Drift, Boost, Jump, Backflip, and Max Arena actions where applicable. Touch controls disable text selection so gameplay does not highlight UI.
 
 ## Controller
 
-The React client reads the first browser Gamepad API pad for steering, throttle, brake/reverse, drift, boost, and jump. Keyboard remapping is not implemented yet; the current UI labels it as a future settings pass.
+Controller support is still a later rescue pass for the static launch surface. The old React scaffold had a Gamepad API path, but that is not current launch proof.
 
 ## Dev/Test Hooks
 
 - `window.advanceTime(ms)` advances deterministic simulation time for smoke tests.
 - `window.render_game_to_text()` returns a structured text snapshot for automation.
-- `window.__infernodriftTestApi` exposes focused debug/test helpers such as forced Max goals.
+- `window.__infernodriftTestApi` exposes focused debug/test helpers such as forced Max goals, radar/name-tag state, and device-mode forcing.
