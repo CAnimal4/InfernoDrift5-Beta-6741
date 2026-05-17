@@ -80,10 +80,25 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 
 - Kept the root static InfernoDrift4 game as the shipped product and layered Phase 3 on top of the existing driving runtime instead of changing the launch architecture.
 - Added a visible Play mode board with Campaign, Arena, Speed, Tricks, Chase, and Minigames groups; every required offline mode/minigame has a card, objective, run length, reward preview, medal data, and one-click start through the existing menu flow.
-- Added local mode controllers for Campaign Survival, Max Arena, Race, Time Trial, Stunt Park, Hunter Tag, Boss Chase, Drift Score Attack, Battle Arena, Ramp Rush, Boost Bowling, Lava Floor, King of the Zone, Trick Combo, and Bot Escape.
+- Added local mode controllers for Campaign Survival, Max Arena, Race, Time Trial, Stunt Park, Hunter Tag, Battle Arena, Ramp Rush, Boost Bowling, Lava Floor, King of the Zone, plus experimental entries that were later removed from the public Play board.
 - Added mode-specific scene objects and rules: checkpoint tracks and ghost samples, stunt/ramp gates, drift zones, Hunter Tag role switching, boss phases, safe zones, king zones, boosted bowling targets, and kid-friendly battle pickups.
 - Added `progressionV2` local progression with XP, levels, medals, personal bests, ghost samples, daily/weekly challenge seeds, reward log, save migration defaults, and a Progress "Run Board".
 - Extended `render_game_to_text()` and `__infernodriftTestApi` with public mode ids, mode catalog helpers, mode start/complete/fail helpers, progression snapshots, markers, track, ghost, battle pickup, hunter tag, and boss state.
 - Cleaned visible wording so public UI/docs/test state use `InfernoDrift4`, Campaign Survival, and Max Arena naming; old mode ids remain internal aliases only for save/test-selector compatibility.
 - Visual QA screenshots reviewed: `output/playwright/phase3-play-board.png`, `output/playwright/phase3-results.png`, and `output/playwright/mobile-landscape-smoke.png`.
 - Validation after Phase 3: `npm run format`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run worker:check`, and `npm run worker:types` passed. Production smoke also passed against `https://canimal4.github.io/InfernoDrift4/?v=eea9193b`. Headless WebGL emitted expected SwiftShader `ReadPixels` warnings only.
+
+2026-05-17 Phase 3 repair pass:
+
+- Repaired the public Phase 3 mode set by removing four experimental entries from the Play board/catalog/tests/docs while leaving legacy save data harmless.
+- Rebuilt Battle Arena as a blue-vs-red laser-tag mode with split floor, team-colored temporary skins, solid cover, ammo/health, F-key lasers, reload/shield/speed pickups, KO scoring, and battle bot roles that seek cover/reload/advance.
+- Reworked Stunt Park and Ramp Rush as solo modes with no bots, visible ramp/loop/ring layouts, barrel-roll/trick state, loop volumes, ramp/ring scoring, and landing-chain feedback.
+- Reworked Lava Floor with actual rising lava, elevated safe platforms and ramps, bot safe-zone targeting, and stronger car-to-car bumping.
+- Reworked Boost Bowling as a bounded ten-pin lane with countdown launch, steering-only roll, pin setup/reset, scoring state, and smoke helpers.
+- Reworked Race/Time Trial around bounded winding tracks, rival-only bumping in Race, no bots in Time Trial, checkpoint state, and ghost samples; toned down track guardrails so they read as dark rails plus narrow neon curbs instead of oversized colored slabs.
+- Polished Max Arena goal replay with longer slow-motion replay settings, goal explosion burst, screen pulse, and replay ring/vignette state.
+- Added H-key mode help and result-screen Help access with objective/controls/scoring/win tips for every remaining public mode.
+- Fixed thumbnail/card sizing so mode art uses square cells without stretch/crop and updated public smokes to assert removed modes are absent.
+- Visual QA reviewed latest screenshots: `output/playwright/phase3-play-board.png`, `phase3-battle-arena.png`, `phase3-race.png`, `phase3-stunt-park.png`, `phase3-ramp-rush.png`, `phase3-lava-floor.png`, `phase3-boost-bowling.png`, and `output/web-game/phase3-repair/shot-2.png`.
+- Validation after repair: `node --check script.js`, `node --check smoke_games.mjs`, `npm run format`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run worker:check`, `npm run worker:types`, and the shared `develop-web-game` Playwright client passed. Headless WebGL emitted expected SwiftShader `ReadPixels` warnings only.
+- Remaining recommendation before Phase 4: do one live Pages smoke after push/deploy, then only start online/Cloudflare once the deployed offline build is confirmed.

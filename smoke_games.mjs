@@ -194,15 +194,11 @@ const requiredModes = [
   "time-trial",
   "stunt-park",
   "hunter-tag",
-  "boss-chase",
-  "drift-score",
   "battle-arena",
   "ramp-rush",
   "boost-bowling",
   "lava-floor",
   "king-zone",
-  "trick-combo",
-  "bot-escape",
 ];
 const catalog = await page.evaluate(() =>
   window.__infernodriftTestApi.getModeCatalog(),
@@ -211,6 +207,18 @@ assert.deepEqual(
   requiredModes.every((modeId) => catalog.some((mode) => mode.id === modeId)),
   true,
 );
+for (const removedModeId of [
+  "boss-chase",
+  "drift-score",
+  "trick-combo",
+  "bot-escape",
+]) {
+  assert.equal(
+    catalog.some((mode) => mode.id === removedModeId),
+    false,
+    `${removedModeId} should not be public in the Play board catalog`,
+  );
+}
 
 for (const modeId of requiredModes) {
   const state = await page.evaluate((id) => {
@@ -224,15 +232,58 @@ for (const modeId of requiredModes) {
   assert.ok(state.modeInfo.objective);
   assert.ok(state.modeInfo.rewardPreview);
   assert.ok(state.progression.levelNumber >= 1);
+  if (
+    [
+      "race",
+      "time-trial",
+      "stunt-park",
+      "battle-arena",
+      "ramp-rush",
+      "boost-bowling",
+      "lava-floor",
+    ].includes(modeId)
+  ) {
+    await page.screenshot({
+      path: `output/playwright/phase3-${modeId}.png`,
+      fullPage: false,
+      timeout: 30000,
+    });
+  }
+  const helpState = await page.evaluate(() =>
+    window.__infernodriftTestApi.openModeHelp(),
+  );
+  assert.equal(helpState.visible, true);
+  assert.ok(helpState.title);
+  assert.ok(helpState.objective);
   if (modeId === "race") {
     assert.equal(state.modeInfo.scene, "track");
-    assert.equal(state.track.checkpoints, 8);
+    assert.ok(state.track.checkpoints >= 9);
+    assert.equal(
+      typeof (state.race?.trackBounded ?? state.track.trackBounded),
+      "boolean",
+    );
     assert.ok(state.bots.some((bot) => String(bot.role).startsWith("rival")));
   }
   if (modeId === "time-trial") {
     assert.equal(state.modeInfo.scene, "track");
-    assert.equal(state.track.checkpoints, 8);
+    assert.ok(state.track.checkpoints >= 9);
     assert.equal(state.bots.length, 0);
+  }
+  if (modeId === "stunt-park") {
+    assert.equal(state.bots.length, 0);
+    assert.ok(state.markers.some((marker) => marker.kind === "loop"));
+    assert.equal(typeof state.stunt.combo, "number");
+  }
+  if (modeId === "ramp-rush") {
+    assert.equal(state.bots.length, 0);
+    assert.ok(
+      state.markers.filter((marker) => marker.kind === "ring").length >= 8,
+    );
+  }
+  if (modeId === "lava-floor") {
+    assert.equal(state.modeInfo.scene, "lava");
+    assert.ok(state.lava.platformHeight > 0);
+    assert.ok(state.bots.length >= 1);
   }
   if (modeId === "boost-bowling") {
     assert.equal(state.modeInfo.scene, "bowling");
@@ -240,12 +291,17 @@ for (const modeId of requiredModes) {
       state.markers.filter((marker) => marker.kind === "pin").length,
       10,
     );
+    assert.equal(state.bowling.frame, 1);
+    assert.equal(state.bowling.pinsStanding, 10);
     assert.equal(state.battlePickups.length, 0);
   }
   if (modeId === "battle-arena") {
     assert.equal(state.modeInfo.scene, "battle");
+    assert.equal(state.battle.team, "blue");
+    assert.equal(state.battle.health, 100);
+    assert.ok(state.battle.ammo > 0);
     assert.ok(state.battlePickups.length >= 5);
-    assert.ok(state.bots.some((bot) => String(bot.role).startsWith("bumper")));
+    assert.ok(state.bots.some((bot) => bot.team === "red"));
   }
   if (modeId !== "campaign-survival" && modeId !== "max-arena") {
     assert.ok(
@@ -254,6 +310,29 @@ for (const modeId of requiredModes) {
     );
   }
 }
+
+const battleProbe = await page.evaluate(() => {
+  window.__infernodriftTestApi.startMode("battle-arena");
+  window.__infernodriftTestApi.setBattleAmmo(3);
+  const fired = window.__infernodriftTestApi.fireBattleLaser();
+  window.advanceTime(120);
+  const state = JSON.parse(window.render_game_to_text());
+  return {
+    fired,
+    ammo: state.battle.ammo,
+    cooldown: state.battle.laserCooldown,
+  };
+});
+assert.ok(battleProbe.ammo <= 2);
+assert.ok(battleProbe.cooldown > 0);
+
+const bowlingProbe = await page.evaluate(() => {
+  window.__infernodriftTestApi.startMode("boost-bowling");
+  window.__infernodriftTestApi.forceBowlingRollComplete(10);
+  return window.__infernodriftTestApi.getBowlingState();
+});
+assert.equal(bowlingProbe.rolls[0], 10);
+assert.equal(bowlingProbe.frame, 2);
 
 const phase3Result = await page.evaluate(() => {
   window.__infernodriftTestApi.startMode("race");

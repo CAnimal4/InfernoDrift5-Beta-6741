@@ -86,17 +86,6 @@ test("Max Arena only blue goals advance the objective, while red can fail the ma
   assert.match(red.objective.failReason ?? "", /red team/i);
 });
 
-test("drift-score mode wins from banked drift points instead of checkpoint count", () => {
-  const state = playing("drift-score");
-  state.player.driftScore = state.objective.target;
-
-  stepGame(state, input(), 0.05);
-
-  assert.equal(state.machine, "results");
-  assert.equal(state.objective.complete, true);
-  assert.ok(state.progression.medals["drift-score"]);
-});
-
 test("landing grades add boost, landing push, score, and stunt progress", () => {
   const state = playing("stunt");
   state.player.y = 0.1;
@@ -146,23 +135,6 @@ test("near misses are discrete scoring events with boost rewards and cooldown", 
   assert.ok(scoreAfterFirstMiss > scoreBefore);
   assert.equal(state.score, scoreAfterFirstMiss);
   assert.ok(state.player.boost > 0);
-});
-
-test("drift-score near misses scale with combo and feed the drift target", () => {
-  const state = playing("drift-score");
-  const bot = state.bots[0];
-  bot.x = state.player.x + 27;
-  bot.z = state.player.z;
-  bot.speed = 0;
-  state.player.speed = 72;
-  state.player.driftCombo = 4;
-
-  stepGame(state, input(), 0.05);
-
-  assert.equal(state.stats.nearMisses, 1);
-  assert.ok(state.score > 160);
-  assert.ok(state.player.driftScore > 160);
-  assert.ok(state.objective.progress > 160);
 });
 
 test("Boost Bowling only clears pins from boosted or high-speed hits", () => {

@@ -19,11 +19,11 @@ This matrix tracks the current InfernoDrift4 static launch surface. Anything tha
 | Controller path                                 | expanded     | Gamepad API polling                          | Controls tab reports controller state; browser support required         |
 | Human username tags                             | implemented  | remote player test API                       | Add Clark remote player and verify unobtrusive tag                      |
 | Touch/mobile layout                             | implemented  | `style.css`, touch presets/scale             | Phone landscape smoke                                                   |
-| Phase 3 mode board                              | implemented  | `MODE_CATALOG`, `renderModeBoard()`          | Smoke verifies all required modes are visible/startable                 |
-| Race / Time Trial                               | implemented  | track markers, ghost samples                 | Start mode, checkpoint state, complete Race result                      |
-| Stunt / Drift modes                             | implemented  | stunt gates, drift zones, scoring hooks      | Start Stunt Park, Ramp Rush, Trick Combo, Drift Score Attack            |
-| Chase modes                                     | implemented  | Hunter Tag, Boss Chase state                 | Smoke exposes hunter tag state and boss phase                           |
-| Battle / arcade minigames                       | implemented  | battle pickups, bowling/safe/zone markers    | Smoke exposes pickups and local objectives                              |
+| Phase 3 mode board                              | implemented  | `MODE_CATALOG`, `renderModeBoard()`          | Smoke verifies remaining required modes are visible/startable           |
+| Race / Time Trial                               | expanded     | bounded track markers, ghost samples         | Start mode, verify winding track, rivals/solo split, complete result    |
+| Stunt / Ramp modes                              | expanded     | stunt loops, air rings, ramp gauntlet hooks  | Start Stunt Park/Ramp Rush, verify no bots and trick/ring state         |
+| Chase modes                                     | expanded     | Hunter Tag role state                        | Smoke exposes evader/it state and tag-back objective                    |
+| Battle / arcade minigames                       | expanded     | battle lasers, bowling/safe/zone markers     | Smoke exposes lasers, ammo/health, bowling, lava, and local objectives  |
 | Local progression V2                            | implemented  | `progressionV2`, Progress Run Board          | Complete Race, verify XP and personal best                              |
 | Local backend smoke                             | implemented  | `apps/server`, `smoke_online_local.mjs`      | Guest auth, private room, quick/free chat, sanitizer                    |
 | Cloudflare Worker scaffold                      | blocked-live | `apps/worker`, `wrangler.jsonc`              | Dry-run only until secrets and Worker URL exist                         |

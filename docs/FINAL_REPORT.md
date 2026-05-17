@@ -21,8 +21,8 @@ Status: active work is the InfernoDrift4 static launch rescue. The current shipp
 - Controls Phase 2 is active: `X` remains jump/in-air trick, `B` is the alternate backflip/trick key, keyboard remapping persists, touch presets/scale are configurable, controller status is visible, and standard Gamepad API controls are mapped.
 - `C` is reserved for backend-backed chat.
 - Remote human username tags are available through the test/API layer for real players only and remain unobtrusive.
-- Phase 3 offline expansion is active: the Play board exposes Campaign, Arena, Speed, Tricks, Chase, and Minigames groups with Campaign Survival, Max Arena, Race, Time Trial, Stunt Park, Hunter Tag, Boss Chase, Drift Score Attack, Battle Arena, Ramp Rush, Boost Bowling, Lava Floor, King of the Zone, Trick Combo, and Bot Escape.
-- Mode runs now use local objectives and scene objects: checkpoint tracks, ghost samples, stunt/ramp gates, drift zones, Hunter Tag role switching, boss phases, safe zones, king zones, boosted bowling targets, and kid-friendly battle pickups.
+- Phase 3 repair is active: the Play board exposes Campaign, Arena, Speed, Tricks, Chase, and Minigames groups with Campaign Survival, Max Arena, Race, Time Trial, Stunt Park, Hunter Tag, Battle Arena, Ramp Rush, Boost Bowling, Lava Floor, and King of the Zone.
+- Mode runs now use distinct local rules and scene objects: bounded winding race tracks, solo stunt loops/rings, Hunter Tag role switching, red-vs-blue laser battle, rising lava platforms, king zones, and ten-pin Boost Bowling.
 - Local progression now uses `progressionV2` with XP, levels, medals, personal bests, ghost samples, daily/weekly challenge seeds, reward log, save migration defaults, and a Progress "Run Board".
 
 ## Backend Status
