@@ -31,5 +31,16 @@ for (const file of ["infernodrift33-card.svg", "infernodriftmax1-card.svg"]) {
   }
 }
 
+const assetsDir = path.join(root, "assets");
+const distAssetsDir = path.join(dist, "assets");
+if (fs.existsSync(assetsDir)) {
+  fs.mkdirSync(distAssetsDir, { recursive: true });
+  for (const file of fs.readdirSync(assetsDir)) {
+    const source = path.join(assetsDir, file);
+    const target = path.join(distAssetsDir, file);
+    if (fs.statSync(source).isFile()) fs.copyFileSync(source, target);
+  }
+}
+
 fs.writeFileSync(path.join(dist, ".nojekyll"), "");
 console.log("Built InfernoDrift4 static site to dist/");

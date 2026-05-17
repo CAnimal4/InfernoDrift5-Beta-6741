@@ -130,7 +130,7 @@ await page.screenshot({
 });
 await domClick(page, "#game-card-max1");
 await page.waitForTimeout(300);
-await page.keyboard.press("Escape");
+await page.evaluate(() => window.__infernodriftTestApi.startMode("max-arena"));
 await page.waitForTimeout(900);
 await page.evaluate(() => window.advanceTime(900));
 
@@ -143,6 +143,29 @@ assert.ok(maxState.bots.some((bot) => bot.team === "red"));
 assert.ok(maxState.bots.some((bot) => bot.team === "blue"));
 assert.match(await page.locator("#hud-world").textContent(), /\S/);
 assert.match(await page.locator("#hud-level").textContent(), /\S/);
+
+await page.keyboard.down("w");
+await page.evaluate(() => window.advanceTime(1400));
+await page.keyboard.up("w");
+const maxSpeedState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
+assert.ok(
+  maxSpeedState.player.speed_mph >= 38,
+  `Max Arena acceleration should feel lively, got ${maxSpeedState.player.speed_mph} mph`,
+);
+await page.keyboard.press("x");
+await page.evaluate(() => window.advanceTime(220));
+const maxJumpState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
+assert.ok(maxJumpState.player.y > 0.12);
+await page.keyboard.press("x");
+await page.evaluate(() => window.advanceTime(180));
+const maxFlipState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
+assert.match(maxFlipState.effects.lastToast, /Backflip|Jump/i);
 
 await page.evaluate(() => window.__infernodriftTestApi.forceMaxGoal("blue"));
 await page.waitForTimeout(150);
@@ -201,6 +224,29 @@ for (const modeId of requiredModes) {
   assert.ok(state.modeInfo.objective);
   assert.ok(state.modeInfo.rewardPreview);
   assert.ok(state.progression.levelNumber >= 1);
+  if (modeId === "race") {
+    assert.equal(state.modeInfo.scene, "track");
+    assert.equal(state.track.checkpoints, 8);
+    assert.ok(state.bots.some((bot) => String(bot.role).startsWith("rival")));
+  }
+  if (modeId === "time-trial") {
+    assert.equal(state.modeInfo.scene, "track");
+    assert.equal(state.track.checkpoints, 8);
+    assert.equal(state.bots.length, 0);
+  }
+  if (modeId === "boost-bowling") {
+    assert.equal(state.modeInfo.scene, "bowling");
+    assert.equal(
+      state.markers.filter((marker) => marker.kind === "pin").length,
+      10,
+    );
+    assert.equal(state.battlePickups.length, 0);
+  }
+  if (modeId === "battle-arena") {
+    assert.equal(state.modeInfo.scene, "battle");
+    assert.ok(state.battlePickups.length >= 5);
+    assert.ok(state.bots.some((bot) => String(bot.role).startsWith("bumper")));
+  }
   if (modeId !== "campaign-survival" && modeId !== "max-arena") {
     assert.ok(
       state.markers.length > 0 || state.battlePickups.length > 0,

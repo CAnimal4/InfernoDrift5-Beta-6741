@@ -258,8 +258,8 @@ const MAX_BALL_RADIUS = 4.2;
 const MAX_BALL_DRAG = 0.996;
 const MAX_BALL_BOUNCE = 0.78;
 const MAX_CAR_BUMP_FORCE = 16;
-const MAX_MODE_SPEED_MULT = 0.9;
-const MAX_MODE_TURN_MULT = 0.98;
+const MAX_MODE_SPEED_MULT = 1.02;
+const MAX_MODE_TURN_MULT = 1.06;
 const MAX_HEALTH_MAX = 100;
 const MAX_STUN_DURATION = 1.15;
 const MAX_HEALTH_REFILL_RATE = 18;
@@ -353,7 +353,12 @@ const CONTROL_ACTIONS = [
   { id: "brake", label: "Reverse", help: "Brake or reverse" },
   { id: "left", label: "Left", help: "Steer left" },
   { id: "right", label: "Right", help: "Steer right" },
-  { id: "drift", label: "Handbrake", help: "Drift, or ball lunge in Max" },
+  { id: "drift", label: "Handbrake", help: "Drift in every mode" },
+  {
+    id: "targetLunge",
+    label: "Arena Lunge",
+    help: "Ctrl / Command lunges in Max Arena",
+  },
   { id: "boost", label: "Boost", help: "Hold for surge" },
   {
     id: "jumpTrick",
@@ -573,7 +578,7 @@ const MODE_CATALOG = [
     label: "Boost Bowling",
     category: "minigames",
     base: "campaign",
-    scene: "battle",
+    scene: "bowling",
     time: 80,
     target: 10,
     botCount: 0,
@@ -648,6 +653,23 @@ const MODE_CATALOG = [
 const MODE_BY_ID = Object.fromEntries(
   MODE_CATALOG.map((mode) => [mode.id, mode]),
 );
+const MODE_THUMBNAIL_POSITIONS = {
+  [GAME_MODE_ID33]: "0% 0%",
+  [GAME_MODE_MAX1]: "25% 0%",
+  [GAME_MODE_RACE]: "50% 0%",
+  [GAME_MODE_TIME_TRIAL]: "75% 0%",
+  [GAME_MODE_STUNT]: "100% 0%",
+  [GAME_MODE_HUNTER_TAG]: "0% 50%",
+  [GAME_MODE_BOSS]: "25% 50%",
+  [GAME_MODE_DRIFT_SCORE]: "50% 50%",
+  [GAME_MODE_BATTLE]: "75% 50%",
+  [GAME_MODE_RAMP_RUSH]: "100% 50%",
+  [GAME_MODE_BOOST_BOWLING]: "0% 100%",
+  [GAME_MODE_LAVA_FLOOR]: "25% 100%",
+  [GAME_MODE_KING_ZONE]: "50% 100%",
+  [GAME_MODE_TRICK_COMBO]: "75% 100%",
+  [GAME_MODE_BOT_ESCAPE]: "100% 100%",
+};
 const MODE_ID_ALIASES = {
   [GAME_MODE_RISK]: GAME_MODE_MAX1,
   [PUBLIC_MODE_CAMPAIGN]: GAME_MODE_ID33,
@@ -680,14 +702,14 @@ const DRIVING_TUNING = {
     carryCoastMult: 0.28,
   },
   maxMode: {
-    speedMult: 0.78,
+    speedMult: 1.08,
     steerFilter: 6.8,
-    turnMult: 0.86,
-    capMult: 0.96,
+    turnMult: 1.04,
+    capMult: 1.18,
     turnAssistBase: 1.08,
     turnAssistLowSpeedBonus: 0.56,
-    coastDragBase: 5.8,
-    coastDragSpeedMult: 3.2,
+    coastDragBase: 3.7,
+    coastDragSpeedMult: 2.05,
     roadSlipMult: 0.4,
     driftTurnMult: 1.16,
   },
@@ -870,10 +892,10 @@ const MAX_DIFFICULTY_PROFILES = {
     label: "Super Easy",
     arenaScale: 0.76,
     player: {
-      speedMult: 0.7,
-      accelMult: 0.82,
+      speedMult: 0.96,
+      accelMult: 1.06,
       steerFilter: 4.6,
-      turnMult: 0.64,
+      turnMult: 0.9,
       turnAssistBase: 0.84,
       turnAssistLowSpeedBonus: 0.26,
       moveHeadingLerp: 0.92,
@@ -925,10 +947,10 @@ const MAX_DIFFICULTY_PROFILES = {
     label: "Casual",
     arenaScale: 0.88,
     player: {
-      speedMult: 0.75,
-      accelMult: 0.88,
+      speedMult: 1.02,
+      accelMult: 1.12,
       steerFilter: 5.1,
-      turnMult: 0.7,
+      turnMult: 0.95,
       turnAssistBase: 0.9,
       turnAssistLowSpeedBonus: 0.32,
       moveHeadingLerp: 0.98,
@@ -980,10 +1002,10 @@ const MAX_DIFFICULTY_PROFILES = {
     label: "Classic",
     arenaScale: 0.98,
     player: {
-      speedMult: 0.8,
-      accelMult: 0.94,
+      speedMult: 1.08,
+      accelMult: 1.18,
       steerFilter: 5.6,
-      turnMult: 0.78,
+      turnMult: 1.02,
       turnAssistBase: 0.98,
       turnAssistLowSpeedBonus: 0.4,
       moveHeadingLerp: 1.02,
@@ -1035,10 +1057,10 @@ const MAX_DIFFICULTY_PROFILES = {
     label: "Brutal",
     arenaScale: 1.12,
     player: {
-      speedMult: 0.82,
-      accelMult: 0.98,
+      speedMult: 1.14,
+      accelMult: 1.22,
       steerFilter: 6.1,
-      turnMult: 0.8,
+      turnMult: 1.06,
       turnAssistBase: 1,
       turnAssistLowSpeedBonus: 0.44,
       moveHeadingLerp: 1.06,
@@ -3085,7 +3107,7 @@ function refreshDevModeUi() {
     touchJump.hidden = !input.touchEnabled;
   }
   if (touchBackflip) {
-    touchBackflip.hidden = !input.touchEnabled || !maxModeActive;
+    touchBackflip.hidden = !input.touchEnabled;
   }
   if (devTools) {
     devTools.hidden = !settings.devMode;
@@ -3247,7 +3269,7 @@ function performMaxBallLunge(actor = player) {
   actor.maxBallLungeTimer = 0.18;
   if (actor === player) {
     state.ballLungeCooldown = MAX_BALL_LUNGE_COOLDOWN;
-    setEffectToast("Ball Lunge");
+    setEffectToast("Arena Lunge");
   }
   return true;
 }
@@ -3340,6 +3362,8 @@ function renderModeBoard() {
                 const medal = state.progressionV2.medals[mode.id] ?? "New";
                 const length =
                   mode.time > 0 ? `${mode.time}s run` : "Campaign heat";
+                const thumbPosition =
+                  MODE_THUMBNAIL_POSITIONS[mode.id] ?? "50% 50%";
                 const legacyId =
                   mode.id === GAME_MODE_ID33
                     ? ` id="game-card-id33"`
@@ -3348,7 +3372,7 @@ function renderModeBoard() {
                       : "";
                 return `
                   <button${legacyId} class="game-card mode-card ${activeId === mode.id ? "active" : ""}" data-game-mode="${mode.id}" type="button">
-                    <div class="mode-card-art" data-scene="${mode.scene}" aria-hidden="true"></div>
+                    <div class="mode-card-art" data-scene="${mode.scene}" data-thumb="generated" style="--thumb-position: ${thumbPosition};" aria-hidden="true"></div>
                     <div class="game-card-copy">
                       <strong>${mode.label}</strong>
                       <span>${mode.objective}</span>
@@ -3378,7 +3402,7 @@ function refreshGamesUi() {
   }
   if (overlaySubtitle) {
     overlaySubtitle.textContent = isMaxMode()
-      ? `${maxProfile.label} arena rules. Slower cars, cleaner reads, stronger squad play, and smarter goal pressure.`
+      ? `${maxProfile.label} arena rules. Faster cars, cleaner reads, stronger squad play, and smarter goal pressure.`
       : `${activeMode.objective} Every run keeps the current InfernoDrift4 driving base: drift, boost, jump, recover, and restart fast.`;
   }
   const maxModeActive = isMaxMode();
@@ -3457,8 +3481,10 @@ function refreshModeCopy() {
         <div><span>Left:</span> A / Arrow Left</div>
         <div><span>Right:</span> D / Arrow Right</div>
         <div><span>Reverse:</span> S / Arrow Down</div>
-        <div><span>Ball Lunge:</span> Space (close to ball)</div>
-        <div><span>Target Lunge:</span> Ctrl / Command (close to enemy)</div>
+        <div><span>Handbrake:</span> Space</div>
+        <div><span>Jump / Trick:</span> ${formatCodeLabel(controlBindings.jumpTrick[0])}</div>
+        <div><span>Backflip:</span> ${formatCodeLabel(controlBindings.jumpTrick[0])} in air or ${formatCodeLabel(controlBindings.altTrick[0])}</div>
+        <div><span>Arena Lunge:</span> Ctrl / Command near the ball or a rival</div>
         <div><span>Boost:</span> Shift</div>
         <div><span>Ball Cam:</span> L</div>
         <div><span>Restart:</span> R</div>
@@ -3482,8 +3508,8 @@ function refreshModeCopy() {
     howtoList.innerHTML = maxModeActive
       ? `
         <li>Score by driving or striking the ball into the red goal.</li>
-        <li>Use <strong>Space</strong> when semi-close to the ball to lunge into a play.</li>
-        <li>Use <strong>Ctrl</strong> or <strong>Command</strong> near enemy bots to slam them and cut off rotations.</li>
+        <li>Use <strong>Space</strong> to drift, and <strong>${formatCodeLabel(controlBindings.jumpTrick[0])}</strong> to jump or flip just like the other modes.</li>
+        <li>Use <strong>Ctrl</strong> or <strong>Command</strong> near the ball or enemy bots for a special arena lunge.</li>
         <li>Your <strong>Health</strong> starts full, drops on enemy impacts, and a zero bar causes a short stun before refilling.</li>
         <li>Boost pads and Ball Cam help you recover faster and stay on the play.</li>
         <li>Blue is your team. Protect your goal, pressure theirs, and let the goalie recover behind you.</li>
@@ -3498,11 +3524,11 @@ function refreshModeCopy() {
       `;
   }
   if (touchDrift) {
-    touchDrift.textContent = maxModeActive ? "Ball Lunge" : "Drift";
+    touchDrift.textContent = "Drift";
   }
   if (touchBackflip) {
-    touchBackflip.textContent = maxModeActive ? "Target" : "Trick";
-    touchBackflip.hidden = !input.touchEnabled || !maxModeActive;
+    touchBackflip.textContent = "Trick";
+    touchBackflip.hidden = !input.touchEnabled;
   }
 }
 
@@ -4881,6 +4907,116 @@ function spawnRampLayout(config) {
   });
 }
 
+function spawnModeRampLayout(mode) {
+  ramps.length = 0;
+  const layouts = {
+    track:
+      mode.id === GAME_MODE_RACE
+        ? [
+            { x: -118, z: -20, kind: "normal" },
+            { x: 118, z: 26, kind: "normal" },
+          ]
+        : [],
+    stunt: [
+      { x: 0, z: 92, kind: "titan" },
+      { x: -72, z: 24, kind: "normal" },
+      { x: 82, z: -36, kind: "mega" },
+      { x: -118, z: -88, kind: "normal" },
+      { x: 124, z: 82, kind: "mega" },
+      { x: 0, z: -122, kind: "mega" },
+    ],
+    chase: [
+      { x: -96, z: 66, kind: "normal" },
+      { x: 92, z: -72, kind: "normal" },
+    ],
+    boss: [{ x: 0, z: 88, kind: "mega" }],
+    drift: [
+      { x: -88, z: -42, kind: "normal" },
+      { x: 88, z: 44, kind: "normal" },
+    ],
+    lava: [
+      { x: -100, z: 16, kind: "normal" },
+      { x: 100, z: -16, kind: "normal" },
+    ],
+    zone: [{ x: 0, z: 0, kind: "normal" }],
+    bowling: [],
+    battle: [],
+  };
+  const rampPoints = layouts[mode.scene] ?? layouts.chase;
+  rampPoints.forEach(({ x, z, kind }) => {
+    const ramp = makeRamp(kind);
+    ramp.position.set(x, 0, z);
+    ramps.push(ramp);
+  });
+}
+
+function getModeBoostPadPoints(mode) {
+  if (isCampaignSurvivalMode()) return null;
+  const tables = {
+    track:
+      mode.id === GAME_MODE_TIME_TRIAL
+        ? [
+            { x: 0, z: -112 },
+            { x: -96, z: -28 },
+            { x: 96, z: 34 },
+            { x: 0, z: 116 },
+          ]
+        : [
+            { x: 0, z: -122 },
+            { x: -104, z: -48 },
+            { x: 104, z: -44 },
+            { x: -106, z: 46 },
+            { x: 106, z: 50 },
+            { x: 0, z: 122 },
+          ],
+    stunt: [
+      { x: -40, z: -100 },
+      { x: 40, z: -100 },
+      { x: -86, z: 50 },
+      { x: 86, z: 50 },
+      { x: 0, z: 128 },
+    ],
+    chase: [
+      { x: 0, z: -118 },
+      { x: -112, z: -18 },
+      { x: 112, z: 20 },
+      { x: 0, z: 126 },
+    ],
+    boss: [
+      { x: 0, z: -126 },
+      { x: -92, z: 16 },
+      { x: 92, z: 16 },
+      { x: 0, z: 126 },
+    ],
+    drift: [
+      { x: -72, z: -72 },
+      { x: 72, z: -72 },
+      { x: -72, z: 72 },
+      { x: 72, z: 72 },
+    ],
+    battle: [
+      { x: -52, z: 0 },
+      { x: 52, z: 0 },
+      { x: 0, z: -52 },
+      { x: 0, z: 52 },
+    ],
+    lava: [
+      { x: -72, z: -92 },
+      { x: 72, z: -92 },
+      { x: -72, z: 92 },
+      { x: 72, z: 92 },
+    ],
+    zone: [
+      { x: 0, z: -86 },
+      { x: -86, z: 0 },
+      { x: 86, z: 0 },
+      { x: 0, z: 86 },
+    ],
+    bowling: [],
+  };
+  return tables[mode.scene] ?? tables.chase;
+}
+
 function makeNeonBeacon(x, z, height, color) {
   const group = new THREE.Group();
   const stem = new THREE.Mesh(
@@ -5050,14 +5186,129 @@ function makeBattlePickup({ id, label, x, z, color }) {
   return pickup;
 }
 
-function trackPoints(count = 8, radiusX = 138, radiusZ = 116) {
+function trackPoints(count = 8, radiusX = 138, radiusZ = 116, startAngle = 0) {
   return Array.from({ length: count }, (_, index) => {
-    const angle = (index / count) * Math.PI * 2;
+    const angle = startAngle + (index / count) * Math.PI * 2;
     return {
       x: Math.sin(angle) * radiusX,
       z: Math.cos(angle) * radiusZ,
     };
   });
+}
+
+function makeTrackSegment(a, b, width = 28, color = 0x56e9ff) {
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const length = Math.max(1, Math.hypot(dx, dz));
+  const segment = new THREE.Mesh(
+    new THREE.BoxGeometry(width, 0.08, length),
+    new THREE.MeshStandardMaterial({
+      color: 0x172c39,
+      emissive: color,
+      emissiveIntensity: 0.16,
+      roughness: 0.72,
+      transparent: true,
+      opacity: 0.94,
+    }),
+  );
+  segment.position.set((a.x + b.x) * 0.5, 0.045, (a.z + b.z) * 0.5);
+  segment.rotation.y = Math.atan2(dx, dz);
+  scene.add(segment);
+  modeDecor.push(segment);
+  const stripe = new THREE.Mesh(
+    new THREE.BoxGeometry(1.6, 0.1, length),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.34,
+      roughness: 0.4,
+      transparent: true,
+      opacity: 0.56,
+    }),
+  );
+  stripe.position.copy(segment.position);
+  stripe.position.y = 0.11;
+  stripe.rotation.y = segment.rotation.y;
+  scene.add(stripe);
+  modeDecor.push(stripe);
+  const edgeMat = new THREE.MeshStandardMaterial({
+    color,
+    emissive: color,
+    emissiveIntensity: 0.42,
+    roughness: 0.38,
+    transparent: true,
+    opacity: 0.48,
+  });
+  [-1, 1].forEach((side) => {
+    const edge = new THREE.Mesh(
+      new THREE.BoxGeometry(1.1, 0.11, length),
+      edgeMat,
+    );
+    edge.position.copy(segment.position);
+    edge.position.x += Math.cos(segment.rotation.y) * width * 0.43 * side;
+    edge.position.z += -Math.sin(segment.rotation.y) * width * 0.43 * side;
+    edge.position.y = 0.12;
+    edge.rotation.y = segment.rotation.y;
+    scene.add(edge);
+    modeDecor.push(edge);
+  });
+  return segment;
+}
+
+function makeModeBumper(x, z, radius = 5, color = 0xffc457) {
+  const bumper = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius, radius, 1.6, 24),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.25,
+      roughness: 0.32,
+    }),
+  );
+  bumper.position.set(x, 0.8, z);
+  scene.add(bumper);
+  modeDecor.push(bumper);
+  obstacles.push({
+    mesh: bumper,
+    size: new THREE.Vector3(radius * 1.45, 1.6, radius * 1.45),
+  });
+  return bumper;
+}
+
+function makeBowlingPin(x, z, color = 0xffc457) {
+  const group = new THREE.Group();
+  const pinMaterial = new THREE.MeshStandardMaterial({
+    color: 0xf8fbff,
+    emissive: color,
+    emissiveIntensity: 0.1,
+    roughness: 0.28,
+  });
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.35, 0.95, 4.2, 18),
+    pinMaterial,
+  );
+  const crown = new THREE.Mesh(
+    new THREE.SphereGeometry(1.18, 18, 12),
+    pinMaterial,
+  );
+  const band = new THREE.Mesh(
+    new THREE.TorusGeometry(1.5, 0.16, 8, 24),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.62,
+      roughness: 0.22,
+    }),
+  );
+  body.position.y = 2.8;
+  crown.position.y = 5.08;
+  band.position.y = 4.1;
+  band.rotation.x = Math.PI / 2;
+  group.add(body, crown, band);
+  group.position.set(x, 0, z);
+  scene.add(group);
+  modeDecor.push(group);
+  return group;
 }
 
 function setupModeSceneObjects() {
@@ -5066,7 +5317,28 @@ function setupModeSceneObjects() {
   const [primary, secondary] = getWorld().accents;
 
   if (mode.scene === "track") {
-    const points = trackPoints(mode.target, 142, 112);
+    const points =
+      mode.id === GAME_MODE_TIME_TRIAL
+        ? trackPoints(mode.target, 114, 150, Math.PI)
+        : trackPoints(mode.target, 146, 106, Math.PI);
+    points.forEach((point, index) => {
+      const next = points[(index + 1) % points.length];
+      makeTrackSegment(
+        point,
+        next,
+        mode.id === GAME_MODE_TIME_TRIAL ? 24 : 32,
+        index % 2 ? secondary : primary,
+      );
+    });
+    makeTrackSegment(
+      {
+        x: 0,
+        z: mode.id === GAME_MODE_TIME_TRIAL ? -178 : -152,
+      },
+      points[0],
+      mode.id === GAME_MODE_TIME_TRIAL ? 28 : 38,
+      secondary,
+    );
     points.forEach((point, index) => {
       makeModeMarker({
         id: `${mode.id}-checkpoint-${index + 1}`,
@@ -5074,30 +5346,22 @@ function setupModeSceneObjects() {
         kind: "checkpoint",
         x: point.x,
         z: point.z,
-        radius: 13,
+        radius: mode.id === GAME_MODE_TIME_TRIAL ? 11 : 14,
         color: index === 0 ? secondary : primary,
         active: index === 0,
       });
     });
-    [-1, 1].forEach((side) => {
-      makeModeRail(0, side * 132, 292, 2.2, primary);
-      makeModeRail(side * 164, 0, 2.2, 232, secondary);
-    });
+    makeModeRail(0, -166, 240, 2.2, primary);
+    makeModeRail(0, 166, 240, 2.2, primary);
+    makeModeRail(-170, 0, 2.2, 236, secondary);
+    makeModeRail(170, 0, 2.2, 236, secondary);
+    if (mode.id === GAME_MODE_RACE) {
+      [-62, 62].forEach((x) => makeModeRail(x, -136, 30, 1.6, secondary));
+    }
     return;
   }
 
   if (mode.scene === "stunt") {
-    [
-      [0, 92, "mega"],
-      [-72, 24, "normal"],
-      [82, -36, "mega"],
-      [-118, -88, "normal"],
-      [124, 82, "mega"],
-    ].forEach(([x, z, kind]) => {
-      const ramp = makeRamp(kind);
-      ramp.position.set(x, 0, z);
-      ramps.push(ramp);
-    });
     trackPoints(mode.target, 128, 104).forEach((point, index) => {
       makeModeMarker({
         id: `${mode.id}-stunt-${index + 1}`,
@@ -5149,24 +5413,69 @@ function setupModeSceneObjects() {
     return;
   }
 
+  if (mode.scene === "bowling") {
+    makeModeRail(-46, 0, 2.5, 286, primary);
+    makeModeRail(46, 0, 2.5, 286, primary);
+    makeModeRail(0, -148, 92, 4.5, secondary);
+    makeModeRail(0, 148, 92, 4.5, secondary);
+    makeTrackSegment({ x: 0, z: -132 }, { x: 0, z: 122 }, 74, primary);
+    const spacing = 12;
+    const pinRows = [
+      [0, 132],
+      [-spacing * 0.5, 118],
+      [spacing * 0.5, 118],
+      [-spacing, 104],
+      [0, 104],
+      [spacing, 104],
+      [-spacing * 1.5, 90],
+      [-spacing * 0.5, 90],
+      [spacing * 0.5, 90],
+      [spacing * 1.5, 90],
+    ];
+    pinRows.forEach(([x, z], index) => {
+      const marker = makeModeMarker({
+        id: `${mode.id}-pin-${index + 1}`,
+        label: `Pin ${index + 1}`,
+        kind: "pin",
+        x,
+        z,
+        radius: 7.2,
+        color: index % 2 === 0 ? primary : secondary,
+        active: true,
+      });
+      marker.decor = [
+        makeBowlingPin(x, z, index % 2 === 0 ? primary : secondary),
+      ];
+    });
+    [-28, 0, 28].forEach((x) => {
+      const pad = makeBoostPad();
+      pad.position.set(x, 0, -106);
+      boostPads.push(pad);
+    });
+    return;
+  }
+
   if (mode.scene === "battle") {
-    trackPoints(
-      mode.id === GAME_MODE_BOOST_BOWLING ? mode.target : 5,
-      112,
-      90,
-    ).forEach((point, index) => {
+    makeModeRail(0, -112, 228, 2.5, primary);
+    makeModeRail(0, 112, 228, 2.5, primary);
+    makeModeRail(-112, 0, 2.5, 228, secondary);
+    makeModeRail(112, 0, 2.5, 228, secondary);
+    [
+      [-72, -72],
+      [72, -72],
+      [-72, 72],
+      [72, 72],
+    ].forEach(([x, z]) => makeModeBumper(x, z, 6, primary));
+    trackPoints(5, 72, 72, Math.PI / 5).forEach((point, index) => {
       makeModeMarker({
         id: `${mode.id}-target-${index + 1}`,
-        label:
-          mode.id === GAME_MODE_BOOST_BOWLING
-            ? `Pin ${index + 1}`
-            : `Hit ${index + 1}`,
+        label: `Hit ${index + 1}`,
         kind: "target",
         x: point.x,
         z: point.z,
-        radius: mode.id === GAME_MODE_BOOST_BOWLING ? 9 : 12,
+        radius: 12,
         color: index % 2 === 0 ? primary : secondary,
-        active: mode.id === GAME_MODE_BOOST_BOWLING || index === 0,
+        active: index === 0,
       });
     });
     [
@@ -5810,32 +6119,29 @@ function buildWorld() {
     groundMaterial.color.setHex(world.ground);
 
     const mode = getModeDefinition();
-    const rampConfig = getRampDensityConfig(
-      isCampaignSurvivalMode()
-        ? settings.rampDensity
-        : mode.scene === "stunt"
-          ? "high"
-          : mode.scene === "track"
-            ? "low"
-            : "normal",
-    );
-    spawnRampLayout(rampConfig);
+    const rampConfig = getRampDensityConfig(settings.rampDensity);
+    if (isCampaignSurvivalMode()) spawnRampLayout(rampConfig);
+    else spawnModeRampLayout(mode);
 
     boostPads.length = 0;
-    const padPoints = generateSpacedPolarPoints(14, 105, HALF_WORLD - 52, 64);
+    const modePadPoints = getModeBoostPadPoints(mode);
+    const padPoints =
+      modePadPoints ?? generateSpacedPolarPoints(14, 105, HALF_WORLD - 52, 64);
     padPoints.forEach(({ x, z }) => {
       const pad = makeBoostPad();
       pad.position.set(x, 0, z);
       boostPads.push(pad);
     });
-    [
-      { x: 20, z: 20 },
-      { x: -20, z: 35 },
-    ].forEach(({ x, z }) => {
-      const pad = makeBoostPad();
-      pad.position.set(x, 0, z);
-      boostPads.push(pad);
-    });
+    if (isCampaignSurvivalMode()) {
+      [
+        { x: 20, z: 20 },
+        { x: -20, z: 35 },
+      ].forEach(({ x, z }) => {
+        const pad = makeBoostPad();
+        pad.position.set(x, 0, z);
+        boostPads.push(pad);
+      });
+    }
     if (isCampaignSurvivalMode()) applyLevelIdentity(world);
     setupModeSceneObjects();
     state.buildCount += 1;
@@ -5893,6 +6199,13 @@ function getModeWorldDefinition(mode = getModeDefinition()) {
       sky: 0x442044,
       ground: 0x29182b,
       accents: [0xff7bd7, 0x56e9ff],
+    },
+    bowling: {
+      name: "Boost Bowl",
+      fog: 0x1f1827,
+      sky: 0x302342,
+      ground: 0x211a2c,
+      accents: [0xffc457, 0x56e9ff],
     },
     lava: {
       name: "Magma Grid",
@@ -5977,6 +6290,35 @@ function resetModeRunState() {
   };
 }
 
+function getModeSpawn() {
+  if (isMaxMode()) {
+    const [x, z] = getTeamSpawnSlots("blue")[0];
+    return { x, y: getMaxSurfaceHeight(x, z), z, heading: 0 };
+  }
+  const mode = getModeDefinition();
+  const spawns = {
+    [GAME_MODE_RACE]: { x: 0, z: -142, heading: 0 },
+    [GAME_MODE_TIME_TRIAL]: { x: 0, z: -176, heading: 0 },
+    [GAME_MODE_STUNT]: { x: -118, z: -118, heading: Math.PI * 0.22 },
+    [GAME_MODE_RAMP_RUSH]: { x: -118, z: -118, heading: Math.PI * 0.22 },
+    [GAME_MODE_BOOST_BOWLING]: { x: 0, z: -142, heading: 0 },
+    [GAME_MODE_BATTLE]: { x: 0, z: 0, heading: 0 },
+    [GAME_MODE_HUNTER_TAG]: { x: 0, z: -128, heading: 0 },
+    [GAME_MODE_BOT_ESCAPE]: { x: 0, z: -128, heading: 0 },
+    [GAME_MODE_BOSS]: { x: 0, z: -132, heading: 0 },
+    [GAME_MODE_DRIFT_SCORE]: { x: 0, z: -104, heading: 0 },
+    [GAME_MODE_LAVA_FLOOR]: { x: 0, z: -104, heading: 0 },
+    [GAME_MODE_KING_ZONE]: { x: 0, z: -104, heading: 0 },
+    [GAME_MODE_TRICK_COMBO]: { x: -118, z: -118, heading: Math.PI * 0.22 },
+  };
+  const spawn = spawns[mode.id] ?? {
+    x: PLAYER_SPAWN_X,
+    z: PLAYER_SPAWN_Z,
+    heading: 0,
+  };
+  return { ...spawn, y: 0 };
+}
+
 function resetLevel() {
   state.combo = 1;
   state.boost = 1;
@@ -6012,17 +6354,12 @@ function resetLevel() {
   state.overtime = false;
   resetModeRunState();
 
-  const spawnX = isMaxMode() ? 0 : PLAYER_SPAWN_X;
-  const spawnZ = isMaxMode() ? getTeamSpawnSlots("blue")[0][1] : PLAYER_SPAWN_Z;
+  const spawn = getModeSpawn();
   player.setDemolished(false);
-  player.setPosition(
-    spawnX,
-    isMaxMode() ? getMaxSurfaceHeight(spawnX, spawnZ) : 0,
-    spawnZ,
-  );
+  player.setPosition(spawn.x, spawn.y, spawn.z);
   player.velocity.set(0, 0, 0);
   player.speed = 0;
-  player.heading = isMaxMode() ? 0 : 0;
+  player.heading = spawn.heading;
   player.moveHeading = player.heading;
   state.minimapHeading = player.heading;
   state.minimapDebugTimer = 0;
@@ -6552,17 +6889,33 @@ function spawnBots() {
 function spawnPowerups() {
   powerups.forEach((powerup) => scene.remove(powerup));
   powerups.splice(0, powerups.length);
-  const types = ["boost", "shield", "life", "slow"];
-  for (let i = 0; i < 6; i += 1) {
-    const type = types[Math.floor(Math.random() * types.length)];
+  const mode = getModeDefinition();
+  if (mode.id === GAME_MODE_BOOST_BOWLING) return;
+  const modePowerups = {
+    [GAME_MODE_RACE]: ["boost", "shield", "boost", "boost"],
+    [GAME_MODE_TIME_TRIAL]: ["boost", "boost", "boost"],
+    [GAME_MODE_STUNT]: ["boost", "shield", "boost", "life"],
+    [GAME_MODE_RAMP_RUSH]: ["boost", "boost", "shield"],
+    [GAME_MODE_TRICK_COMBO]: ["boost", "shield", "boost"],
+    [GAME_MODE_BATTLE]: ["shield", "boost", "slow", "shield"],
+    [GAME_MODE_LAVA_FLOOR]: ["shield", "life", "shield"],
+    [GAME_MODE_KING_ZONE]: ["boost", "shield", "slow"],
+    [GAME_MODE_BOSS]: ["shield", "boost", "life"],
+  };
+  const typePool = modePowerups[mode.id] ?? ["boost", "shield", "life", "slow"];
+  const points =
+    mode.scene === "track"
+      ? trackPoints(typePool.length, 104, 88, Math.PI / 4)
+      : generateSpacedPolarPoints(typePool.length + 2, 82, HALF_WORLD - 70, 70);
+  typePool.forEach((type, index) => {
     const powerup = makePowerup(type);
-    powerup.position.set(
-      THREE.MathUtils.randFloatSpread(HALF_WORLD * 1.85),
-      1.8,
-      THREE.MathUtils.randFloatSpread(HALF_WORLD * 1.85),
-    );
+    const point = points[index] ?? {
+      x: THREE.MathUtils.randFloatSpread(HALF_WORLD * 1.6),
+      z: THREE.MathUtils.randFloatSpread(HALF_WORLD * 1.6),
+    };
+    powerup.position.set(point.x, 1.8, point.z);
     powerups.push(powerup);
-  }
+  });
 }
 
 function renderCustomizationOptions(selectEl, options, selectedId, progress) {
@@ -6942,7 +7295,6 @@ function attemptDevJump() {
 }
 
 function performJumpOrBackflip() {
-  if (isMaxMode()) return false;
   if (isCarAirborne(player) || player.backflipActive) return attemptBackflip();
   return attemptDevJump();
 }
@@ -8412,6 +8764,8 @@ function updateBots(dt) {
   const level = getLevel();
   const profile = getDifficultyProfile();
   const deviceAssist = getDeviceAssistTuning();
+  const mode = getModeDefinition();
+  const raceModeActive = mode.id === GAME_MODE_RACE;
   const slowMultiplier = state.slowBotsTimer > 0 ? 0.72 : 1;
   const targetSpeed =
     (level.botSpeed + state.heat * 8 * profile.heatRamp) *
@@ -8503,44 +8857,56 @@ function updateBots(dt) {
         profile.teamwork * 10 -
         (riskAiActive ? state.campaignRisk.recentEscapes * 2.4 : 0),
     );
-    if (role === "intercept")
-      roleTarget.addScaledVector(
-        playerForward,
-        11 + (riskAiActive ? state.campaignRisk.recentEscapes * 2.2 : 0),
+    if (raceModeActive && modeMarkers.length > 0) {
+      const marker =
+        modeMarkers[
+          (state.modeRun.markerIndex + index + 1) % modeMarkers.length
+        ];
+      roleTarget.set(
+        marker.group.position.x + (index % 2 === 0 ? -11 : 11),
+        0,
+        marker.group.position.z + (index % 3 === 0 ? 7 : -7),
       );
-    if (role === "left_flank")
-      roleTarget
-        .addScaledVector(playerRight, -flankOffset)
-        .addScaledVector(
+    } else {
+      if (role === "intercept")
+        roleTarget.addScaledVector(
           playerForward,
-          4 + (riskAiActive ? state.campaignRisk.recentHits * 0.8 : 0),
+          11 + (riskAiActive ? state.campaignRisk.recentEscapes * 2.2 : 0),
         );
-    if (role === "right_flank")
-      roleTarget
-        .addScaledVector(playerRight, flankOffset)
-        .addScaledVector(
+      if (role === "left_flank")
+        roleTarget
+          .addScaledVector(playerRight, -flankOffset)
+          .addScaledVector(
+            playerForward,
+            4 + (riskAiActive ? state.campaignRisk.recentHits * 0.8 : 0),
+          );
+      if (role === "right_flank")
+        roleTarget
+          .addScaledVector(playerRight, flankOffset)
+          .addScaledVector(
+            playerForward,
+            4 + (riskAiActive ? state.campaignRisk.recentHits * 0.8 : 0),
+          );
+      if (role === "cutoff")
+        roleTarget.addScaledVector(
           playerForward,
-          4 + (riskAiActive ? state.campaignRisk.recentHits * 0.8 : 0),
+          18 +
+            Math.abs(player.speed) *
+              (0.24 +
+                (riskAiActive ? state.campaignRisk.recentEscapes * 0.03 : 0)),
         );
-    if (role === "cutoff")
-      roleTarget.addScaledVector(
-        playerForward,
-        18 +
-          Math.abs(player.speed) *
-            (0.24 +
-              (riskAiActive ? state.campaignRisk.recentEscapes * 0.03 : 0)),
-      );
-    if (role === "pressure")
-      roleTarget.addScaledVector(
-        playerForward,
-        6 + (riskAiActive ? state.campaignRisk.nearMisses * 0.9 : 0),
-      );
+      if (role === "pressure")
+        roleTarget.addScaledVector(
+          playerForward,
+          6 + (riskAiActive ? state.campaignRisk.nearMisses * 0.9 : 0),
+        );
 
-    // Team convergence keeps bots coordinated into a moving net on classic/brutal.
-    roleTarget.addScaledVector(
-      tempVectorC.copy(packCenter).sub(bot.position),
-      profile.teamwork * 0.18 * adaptivePressure,
-    );
+      // Team convergence keeps bots coordinated into a moving net on classic/brutal.
+      roleTarget.addScaledVector(
+        tempVectorC.copy(packCenter).sub(bot.position),
+        profile.teamwork * 0.18 * adaptivePressure,
+      );
+    }
 
     const toTarget = tempVectorC.copy(roleTarget).sub(bot.position);
     const distance = toTarget.length();
@@ -8699,7 +9065,14 @@ function updateBots(dt) {
     const hitDistance = Math.min(segmentDistance, nowDistance);
     const hitEval = isValidBotHit(player, bot, hitDistance);
     if (hitEval.valid) {
-      handlePlayerHit(bot.botId);
+      if (raceModeActive) {
+        player.speed *= 0.86;
+        bot.speed *= 0.74;
+        state.cameraShake = Math.max(state.cameraShake, 0.12);
+        setEffectToast("Rival Bump", { shake: 0.12, pulse: 0.08 });
+      } else {
+        handlePlayerHit(bot.botId);
+      }
       bot.speed *= 0.65;
     } else if (hitEval.horizontalTouch && !hitEval.verticalTouch) {
       state.missedVerticalHitSamples += 1;
@@ -8740,7 +9113,15 @@ function updateObstacles(entity) {
     ) {
       const pushX = entity.position.x - mesh.position.x;
       const pushZ = entity.position.z - mesh.position.z;
-      const push = new THREE.Vector3(pushX, 0, pushZ).normalize();
+      const pushLength = Math.hypot(pushX, pushZ);
+      const push =
+        pushLength > 0.001
+          ? new THREE.Vector3(pushX / pushLength, 0, pushZ / pushLength)
+          : new THREE.Vector3(
+              Math.sin(entity.heading || 0),
+              0,
+              Math.cos(entity.heading || 0),
+            );
       entity.position.addScaledVector(push, 2.4);
       entity.speed *= 0.5;
     }
@@ -8783,6 +9164,9 @@ function completeModeMarker(marker, amount = 1, score = 260) {
   marker.complete = true;
   marker.active = false;
   marker.group.visible = false;
+  marker.decor?.forEach((object) => {
+    object.visible = false;
+  });
   state.modeRun.progress = Math.min(
     state.modeRun.target,
     state.modeRun.progress + amount,
@@ -9071,10 +9455,11 @@ function updateNonCampaignMode(dt) {
       ) {
         bot.aiBurstCooldown = 1.4;
         bot.speed *= 0.2;
-        bot.position.addScaledVector(
-          tempVector.copy(bot.position).sub(player.position).normalize(),
-          8,
-        );
+        tempVector.copy(bot.position).sub(player.position);
+        if (tempVector.lengthSq() < 0.001)
+          tempVector.set(Math.sin(player.heading), 0, Math.cos(player.heading));
+        else tempVector.normalize();
+        bot.position.addScaledVector(tempVector, 8);
         completeModeMarker(
           modeMarkers.find((marker) => marker.active) ??
             modeMarkers[state.modeRun.markerIndex],
@@ -10224,7 +10609,8 @@ function loseLife() {
   state.lives -= 1;
   state.livesPulse = -1;
   state.score = Math.max(0, state.score - 200);
-  player.setPosition(PLAYER_SPAWN_X, 0, PLAYER_SPAWN_Z);
+  const spawn = getModeSpawn();
+  player.setPosition(spawn.x, spawn.y, spawn.z);
   player.speed = 0;
   player.velocity.set(0, 0, 0);
   player.verticalVel = 0;
@@ -10236,8 +10622,8 @@ function loseLife() {
   player.backflipActive = false;
   player.backflipProgress = 0;
   player.backflipRecovery = 0;
-  player.heading = 0;
-  player.moveHeading = 0;
+  player.heading = spawn.heading;
+  player.moveHeading = spawn.heading;
   player.prevPosition.copy(player.position);
   input.backflip = false;
   state.campaignRisk.recentEscapes = Math.max(
@@ -10647,18 +11033,15 @@ window.addEventListener("keydown", (event) => {
   if (isActionCode(event.code, "right")) input.right = true;
   if (isActionCode(event.code, "throttle")) input.throttle = true;
   if (isActionCode(event.code, "brake")) input.brake = true;
-  if (isActionCode(event.code, "drift")) {
-    if (isMaxMode()) performMaxBallLunge();
-    else input.drift = true;
-  }
+  if (isActionCode(event.code, "drift")) input.drift = true;
   if (isActionCode(event.code, "boost")) input.boost = true;
   if (isActionCode(event.code, "targetLunge")) {
-    if (isMaxMode() && !event.repeat) performMaxBotLunge();
+    if (isMaxMode() && !event.repeat)
+      performMaxBallLunge() || performMaxBotLunge();
   }
   if (
-    (isActionCode(event.code, "jumpTrick") ||
-      isActionCode(event.code, "altTrick")) &&
-    !isMaxMode()
+    isActionCode(event.code, "jumpTrick") ||
+    isActionCode(event.code, "altTrick")
   ) {
     if (isCarAirborne(player) || player.backflipActive) input.backflip = true;
     if (!event.repeat) performJumpOrBackflip();
@@ -10696,7 +11079,7 @@ window.addEventListener("keyup", (event) => {
   if (isActionCode(event.code, "right")) input.right = false;
   if (isActionCode(event.code, "throttle")) input.throttle = false;
   if (isActionCode(event.code, "brake")) input.brake = false;
-  if (isActionCode(event.code, "drift") && !isMaxMode()) input.drift = false;
+  if (isActionCode(event.code, "drift")) input.drift = false;
   if (isActionCode(event.code, "boost")) input.boost = false;
   if (
     isActionCode(event.code, "jumpTrick") ||
@@ -10805,8 +11188,9 @@ function updateGamepadInput() {
   gamepadState.buttons = Object.fromEntries(
     pad.buttons.map((button, index) => [index, Boolean(button.pressed)]),
   );
-  if (wasGamepadPressed(0) && !isMaxMode()) performJumpOrBackflip();
-  if (wasGamepadPressed(2) && isMaxMode()) performMaxBallLunge();
+  if (wasGamepadPressed(0)) performJumpOrBackflip();
+  if ((wasGamepadPressed(4) || wasGamepadPressed(5)) && isMaxMode())
+    performMaxBallLunge() || performMaxBotLunge();
   if (wasGamepadPressed(3) && isMaxMode()) {
     state.ballCam = !state.ballCam;
     setEffectToast(state.ballCam ? "Ball Cam On" : "Ball Cam Off");
@@ -10855,15 +11239,14 @@ function initTouchControls() {
   touchDrift.addEventListener("pointerdown", () => {
     if (input.touchEnabled) {
       updateAutoInputMode("touch");
-      if (isMaxMode()) performMaxBallLunge();
-      else input.drift = true;
+      input.drift = true;
     }
   });
   touchDrift.addEventListener("pointerup", () => {
-    if (input.touchEnabled && !isMaxMode()) input.drift = false;
+    if (input.touchEnabled) input.drift = false;
   });
   touchDrift.addEventListener("pointerleave", () => {
-    if (input.touchEnabled && !isMaxMode()) input.drift = false;
+    if (input.touchEnabled) input.drift = false;
   });
   touchBoost.addEventListener("pointerdown", () => {
     if (input.touchEnabled) {
@@ -10889,11 +11272,7 @@ function initTouchControls() {
     touchBackflip.addEventListener("pointerdown", () => {
       if (!input.touchEnabled) return;
       updateAutoInputMode("touch");
-      if (isMaxMode()) {
-        performMaxBotLunge();
-      } else {
-        performJumpOrBackflip();
-      }
+      performJumpOrBackflip();
     });
     const clearBackflip = () => {
       input.backflip = false;
@@ -11418,6 +11797,7 @@ window.render_game_to_text = () => {
       id: publicModeId,
       label: mode.label,
       category: mode.category,
+      scene: mode.scene,
       objective: mode.objective,
       progress: Number(state.modeRun.progress.toFixed(2)),
       target: state.modeRun.target || mode.target || getLevel().time,
@@ -11452,7 +11832,7 @@ window.render_game_to_text = () => {
       time: Number(state.timeLeft.toFixed(2)),
       effect: state.effectToast || "",
       combo: Number(state.combo.toFixed(2)),
-      driftActive: Boolean(input.drift && !isMaxMode()),
+      driftActive: Boolean(input.drift),
       boost: Number(state.boost.toFixed(2)),
       shield: Number(
         (isMaxMode()

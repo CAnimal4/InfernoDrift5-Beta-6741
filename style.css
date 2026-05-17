@@ -911,6 +911,35 @@ body:has(#overlay.show) .remote-name-layer {
     linear-gradient(145deg, rgba(86, 233, 255, 0.3), rgba(255, 77, 45, 0.22));
 }
 
+.mode-card-art[data-scene="bowling"] {
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0 18%,
+      rgba(255, 209, 122, 0.42) 19% 21%,
+      transparent 22% 78%,
+      rgba(255, 209, 122, 0.42) 79% 81%,
+      transparent 82%
+    ),
+    radial-gradient(
+      circle at 50% 24%,
+      rgba(255, 255, 255, 0.76),
+      transparent 16%
+    ),
+    linear-gradient(145deg, rgba(255, 184, 96, 0.36), rgba(86, 233, 255, 0.2));
+}
+
+.mode-card-art[data-thumb="generated"] {
+  background-image:
+    linear-gradient(180deg, rgba(3, 5, 8, 0.03), rgba(3, 5, 8, 0.35)),
+    url("assets/mode-thumbnails-sprite.png");
+  background-size:
+    100% 100%,
+    500% 300%;
+  background-position: center, var(--thumb-position, 50% 50%);
+  background-repeat: no-repeat;
+}
+
 .game-card:hover,
 .game-card:focus-visible {
   transform: translateY(-2px);

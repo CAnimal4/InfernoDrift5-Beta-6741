@@ -1,6 +1,7 @@
-// InfernoDrift4 no longer uses the legacy single-file shell cache.
+// InfernoDrift4 clears older shell caches so GitHub Pages always serves the
+// current static launch build.
 // This kill-switch clears older caches and removes itself so GitHub Pages always
-// serves the current Vite bundle.
+// serves the current files.
 self.addEventListener("install", () => {
   self.skipWaiting();
 });
