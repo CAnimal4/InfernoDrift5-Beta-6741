@@ -61,9 +61,9 @@ Latest Phase 3 local visual smoke:
 
 Latest Pages smoke:
 
-- `https://canimal4.github.io/InfernoDrift4/?v=f5e23a7`: HTTP 200.
+- `https://canimal4.github.io/InfernoDrift4/?v=eea9193b`: HTTP 200.
 - Served the static InfernoDrift4 game with `script.js`; no React/Vite bundle detected.
-- Browser smoke started Campaign Survival, confirmed `running: true`, `product: InfernoDrift4`, `radarMode: forward-relative`, `online: offline-static`, and no page errors.
+- Browser smoke started Campaign Survival, verified the Phase 3 mode catalog, completed a Race result, confirmed Max Arena, and reported public modes as `campaign-survival` and `max-arena`. Console output contained only expected headless WebGL `ReadPixels` warnings.
 
 For Cloudflare work:
 
