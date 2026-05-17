@@ -10,7 +10,6 @@ const startBtn = document.getElementById("start-btn");
 const overlaySubtitle = document.getElementById("overlay-subtitle");
 const tutorialBtn = document.getElementById("tutorial-btn");
 const tips = document.getElementById("tips");
-const controlsList = document.getElementById("controls-list");
 const controlsRemap = document.getElementById("controls-remap");
 const controllerStatus = document.getElementById("controller-status");
 const howtoList = document.getElementById("howto-list");
@@ -52,14 +51,12 @@ const menu = document.getElementById("menu");
 const menuBtn = document.getElementById("menu-btn");
 const menuClose = document.getElementById("menu-close");
 const menuStateLabel = document.getElementById("menu-state-label");
+const menuActions = document.getElementById("menu-actions");
 const menuResume = document.getElementById("menu-resume");
 const menuRestart = document.getElementById("menu-restart");
-const menuGarage = document.getElementById("menu-garage");
-const menuSettings = document.getElementById("menu-settings");
 const tabButtons = document.querySelectorAll(".tab-btn");
 const tabPanels = document.querySelectorAll(".tab-panel");
 const gamesTabBtn = document.getElementById("games-tab-btn");
-const gameModeHint = document.getElementById("game-mode-hint");
 const modeBrief = document.getElementById("mode-brief");
 const gameCards = document.querySelectorAll("[data-game-mode]");
 const difficultySelect = document.getElementById("difficulty-select");
@@ -2915,9 +2912,6 @@ function refreshGamesUi() {
     card.classList.toggle("active", active);
     card.setAttribute("aria-pressed", active ? "true" : "false");
   });
-  if (gameModeHint) {
-    gameModeHint.textContent = `Current game: ${activeMeta.title} - ${activeMeta.subtitle}`;
-  }
   if (modeBrief) {
     modeBrief.innerHTML = isMaxMode()
       ? `<strong>Objective:</strong> win the arena by scoring goals for Blue. <span>Boost pads, ball lunge, target lunge, and Ball Cam are tuned for readable team play.</span>`
@@ -3034,33 +3028,6 @@ function refreshModeCopy() {
         <div><span>Restart:</span> R</div>
         <div><span>Menu:</span> Esc</div>
         <div><span>Start / Next:</span> Enter</div>
-      `;
-  }
-  if (controlsList) {
-    controlsList.innerHTML = maxModeActive
-      ? `
-        <li><strong>Forward:</strong> W / Arrow Up</li>
-        <li><strong>Left:</strong> A / Arrow Left</li>
-        <li><strong>Right:</strong> D / Arrow Right</li>
-        <li><strong>Reverse:</strong> S / Arrow Down</li>
-        <li><strong>Ball Lunge:</strong> Space when close to the ball</li>
-        <li><strong>Target Lunge:</strong> Ctrl / Command when close to an enemy bot</li>
-        <li><strong>Boost:</strong> Shift</li>
-        <li><strong>Ball Cam:</strong> L</li>
-        <li><strong>Restart:</strong> R</li>
-        <li><strong>Menu:</strong> Esc</li>
-      `
-      : `
-        <li><strong>Forward:</strong> W / Arrow Up</li>
-        <li><strong>Left:</strong> A / Arrow Left</li>
-        <li><strong>Right:</strong> D / Arrow Right</li>
-        <li><strong>Reverse:</strong> S / Arrow Down</li>
-        <li><strong>Handbrake:</strong> Space</li>
-        <li><strong>Boost:</strong> Shift</li>
-        <li><strong>Jump / Trick:</strong> ${formatCodeLabel(controlBindings.jumpTrick[0])}</li>
-        <li><strong>Backflip:</strong> ${formatCodeLabel(controlBindings.jumpTrick[0])} in air, or ${formatCodeLabel(controlBindings.altTrick[0])} as an alternate trick key</li>
-        <li><strong>Restart:</strong> R</li>
-        <li><strong>Menu:</strong> Esc</li>
       `;
   }
   if (howtoList) {
@@ -5027,6 +4994,7 @@ function refreshMenuShell() {
   if (menuStateLabel) {
     menuStateLabel.textContent = state.running ? "Paused" : "Garage / Setup";
   }
+  if (menuActions) menuActions.hidden = !state.running;
   if (menuResume) menuResume.hidden = !state.running;
   renderProgressPanel();
   renderGarageLoadouts();
@@ -9539,12 +9507,6 @@ bindPressAction(menuResume, () => {
 bindPressAction(menuRestart, () => {
   setMenuOpen(false);
   dispatchGameAction("restart-level");
-});
-bindPressAction(menuGarage, () => {
-  setMenuOpen(true, "customize");
-});
-bindPressAction(menuSettings, () => {
-  setMenuOpen(true, "settings");
 });
 
 tabButtons.forEach((button) => {

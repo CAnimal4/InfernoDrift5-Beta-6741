@@ -137,11 +137,9 @@
             </div>
             <button class="ghost" id="menu-close" type="button">Close</button>
           </div>
-          <div class="menu-actions" aria-label="Pause actions">
+          <div class="menu-actions" id="menu-actions" aria-label="Pause actions">
             <button class="primary" id="menu-resume" type="button">Resume</button>
             <button class="ghost" id="menu-restart" type="button">Restart Run</button>
-            <button class="ghost" id="menu-garage" type="button">Garage</button>
-            <button class="ghost" id="menu-settings" type="button">Settings</button>
           </div>
           <div class="menu-tabs">
             <button class="tab-btn active" id="games-tab-btn" data-tab="games" type="button">Play</button>
@@ -171,7 +169,6 @@
                 </button>
               </div>
               <div class="mode-brief" id="mode-brief"></div>
-              <p class="hint" id="game-mode-hint">Current game: InfernoDrift 3.3</p>
             </section>
             <section class="tab-panel" id="tab-customize">
               <div class="garage-shell">
@@ -418,7 +415,9 @@
                     </select>
                   </label>
                   <div class="controller-card" id="controller-status">Controller: not detected</div>
-                  <ul class="menu-list" id="controls-list"></ul>
+                  <p class="hint controls-hint">
+                    Help has the full move list. This panel only changes active input settings.
+                  </p>
                 </div>
               </div>
             </section>
