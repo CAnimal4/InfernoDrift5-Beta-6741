@@ -319,6 +319,12 @@ const DEFAULT_CONTROL_BINDINGS = {
   menu: ["Escape", "KeyM"],
   chat: ["KeyC"],
 };
+const MOVEMENT_FALLBACK_BINDINGS = {
+  throttle: ["KeyW", "ArrowUp"],
+  brake: ["KeyS", "ArrowDown"],
+  left: ["KeyA", "ArrowLeft"],
+  right: ["KeyD", "ArrowRight"],
+};
 const CONTROL_ACTIONS = [
   { id: "throttle", label: "Forward", help: "Accelerate" },
   { id: "brake", label: "Reverse", help: "Brake or reverse" },
@@ -2115,6 +2121,7 @@ function formatCodeLabel(code) {
 }
 
 function isActionCode(code, actionId) {
+  if ((MOVEMENT_FALLBACK_BINDINGS[actionId] ?? []).includes(code)) return true;
   return (controlBindings[actionId] ?? []).includes(code);
 }
 
