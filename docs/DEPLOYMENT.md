@@ -2,7 +2,7 @@
 
 ## GitHub Pages Frontend
 
-The current frontend build is the ID3-derived static root game. `npm run build:web` copies `index.html`, `script.js`, `style.css`, icons, manifest, service-worker reset file, and static card art into `dist/`.
+The current frontend build is the restored static InfernoDrift4 root game. `npm run build:web` copies `index.html`, `script.js`, `style.css`, icons, manifest, service-worker reset file, and static card art into `dist/`.
 
 1. Push `main`.
 2. Ensure GitHub Pages source is GitHub Actions.

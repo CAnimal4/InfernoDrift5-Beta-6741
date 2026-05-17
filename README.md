@@ -1,6 +1,6 @@
 # InfernoDrift4
 
-InfernoDrift4 is the ID3-first launch rescue: the shipped game is the root static `index.html`, `script.js`, and `style.css` experience, built from the proven InfernoDrift 3.3 feel instead of the rejected React rewrite.
+InfernoDrift4 is the restored launch rescue: the shipped game is the root static `index.html`, `script.js`, and `style.css` experience, built from the proven base InfernoDrift4 feel instead of the rejected React rewrite.
 
 Play: https://canimal4.github.io/InfernoDrift4/
 
@@ -13,8 +13,8 @@ Play: https://canimal4.github.io/InfernoDrift4/
 
 ## Implemented In The Rescue Surface
 
-- ID4 visible identity over the ID3-derived survival game
-- Campaign Survival mode using the ID3.3 hunter/ramp/powerup loop
+- InfernoDrift4 visible identity over the restored survival game
+- Campaign Survival mode using the base InfernoDrift4 hunter/ramp/powerup loop
 - Max Arena mode with ball, teams, bot roles, goal replay, ball cam, and local match stats
 - Preserved ground speed/reference lines for speed readability
 - Cleaner, lower-chrome HUD while driving

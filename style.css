@@ -684,6 +684,15 @@ body:has(#overlay.show) .remote-name-layer {
   color: var(--muted);
 }
 
+.mode-brief em,
+.game-card-copy em,
+.game-card-copy small {
+  color: var(--heat);
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
 .field {
   display: grid;
   gap: 6px;
@@ -774,6 +783,24 @@ body:has(#overlay.show) .remote-name-layer {
   gap: 14px;
 }
 
+.mode-board {
+  display: grid;
+  gap: 16px;
+}
+
+.mode-group {
+  display: grid;
+  gap: 10px;
+}
+
+.mode-group-title {
+  color: var(--cool);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
 .game-card {
   padding: 10px;
   border-radius: 18px;
@@ -791,6 +818,97 @@ body:has(#overlay.show) .remote-name-layer {
     transform 0.18s ease,
     border-color 0.18s ease,
     box-shadow 0.18s ease;
+}
+
+.mode-card {
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.mode-card-art {
+  min-height: 82px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(
+      circle at 50% 25%,
+      rgba(255, 209, 122, 0.55),
+      transparent 22%
+    ),
+    linear-gradient(145deg, rgba(255, 77, 45, 0.52), rgba(86, 233, 255, 0.14)),
+    rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.05);
+}
+
+.mode-card-art[data-scene="track"] {
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 14px,
+      rgba(255, 255, 255, 0.18) 14px 16px
+    ),
+    linear-gradient(145deg, rgba(86, 233, 255, 0.28), rgba(255, 184, 96, 0.18));
+}
+
+.mode-card-art[data-scene="stunt"] {
+  background:
+    linear-gradient(
+      135deg,
+      transparent 38%,
+      rgba(255, 209, 122, 0.72) 39% 48%,
+      transparent 49%
+    ),
+    radial-gradient(
+      circle at 72% 26%,
+      rgba(86, 233, 255, 0.52),
+      transparent 28%
+    ),
+    rgba(255, 118, 62, 0.2);
+}
+
+.mode-card-art[data-scene="chase"],
+.mode-card-art[data-scene="boss"] {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 58, 94, 0.7), transparent 22%),
+    conic-gradient(
+      from 0deg,
+      rgba(255, 77, 45, 0.62),
+      rgba(86, 233, 255, 0.18),
+      rgba(255, 77, 45, 0.62)
+    );
+}
+
+.mode-card-art[data-scene="battle"],
+.mode-card-art[data-scene="max"] {
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      rgba(255, 255, 255, 0.74),
+      transparent 15%
+    ),
+    linear-gradient(90deg, rgba(86, 233, 255, 0.38), rgba(255, 77, 45, 0.42));
+}
+
+.mode-card-art[data-scene="lava"] {
+  background:
+    radial-gradient(
+      circle at 45% 68%,
+      rgba(255, 209, 122, 0.72),
+      transparent 22%
+    ),
+    linear-gradient(145deg, rgba(255, 66, 38, 0.62), rgba(9, 12, 18, 0.8));
+}
+
+.mode-card-art[data-scene="zone"],
+.mode-card-art[data-scene="drift"] {
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      transparent 29%,
+      rgba(126, 255, 255, 0.58) 30% 34%,
+      transparent 35%
+    ),
+    linear-gradient(145deg, rgba(86, 233, 255, 0.3), rgba(255, 77, 45, 0.22));
 }
 
 .game-card:hover,
@@ -975,6 +1093,10 @@ body:has(#overlay.show) .remote-name-layer {
   background: rgba(255, 255, 255, 0.035);
   display: grid;
   gap: 6px;
+}
+
+.progress-card-wide {
+  grid-column: 1 / -1;
 }
 
 .progress-card strong,

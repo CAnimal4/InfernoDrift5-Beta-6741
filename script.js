@@ -57,7 +57,7 @@ const tabButtons = document.querySelectorAll(".tab-btn");
 const tabPanels = document.querySelectorAll(".tab-panel");
 const gamesTabBtn = document.getElementById("games-tab-btn");
 const modeBrief = document.getElementById("mode-brief");
-const gameCards = document.querySelectorAll("[data-game-mode]");
+const modeBoard = document.getElementById("mode-board");
 const difficultySelect = document.getElementById("difficulty-select");
 const campaignAiSelect = document.getElementById("campaign-ai-select");
 const maxDifficultyField = document.getElementById("max-difficulty-field");
@@ -216,6 +216,29 @@ const SAVE_STORAGE_KEY = "infernoDrift3.save.v1";
 const GAME_MODE_ID33 = "infernodrift33";
 const GAME_MODE_MAX1 = "infernodriftmax1";
 const GAME_MODE_RISK = "tryatyourownrisk";
+const PUBLIC_MODE_CAMPAIGN = "campaign-survival";
+const PUBLIC_MODE_MAX = "max-arena";
+const GAME_MODE_RACE = "race";
+const GAME_MODE_TIME_TRIAL = "time-trial";
+const GAME_MODE_STUNT = "stunt-park";
+const GAME_MODE_HUNTER_TAG = "hunter-tag";
+const GAME_MODE_BOSS = "boss-chase";
+const GAME_MODE_DRIFT_SCORE = "drift-score";
+const GAME_MODE_BATTLE = "battle-arena";
+const GAME_MODE_RAMP_RUSH = "ramp-rush";
+const GAME_MODE_BOOST_BOWLING = "boost-bowling";
+const GAME_MODE_LAVA_FLOOR = "lava-floor";
+const GAME_MODE_KING_ZONE = "king-zone";
+const GAME_MODE_TRICK_COMBO = "trick-combo";
+const GAME_MODE_BOT_ESCAPE = "bot-escape";
+const MODE_CATEGORY_LABELS = {
+  campaign: "Campaign",
+  arena: "Arena",
+  speed: "Speed",
+  tricks: "Tricks",
+  chase: "Chase",
+  minigames: "Minigames",
+};
 const CAMPAIGN_AI_NORMAL = "normal";
 const CAMPAIGN_AI_ADAPTIVE = "adaptive";
 const MAX_DIFFICULTY_SUPER_EASY = "super_easy";
@@ -265,7 +288,7 @@ const CAR_CLASS_OPTIONS = [
     styleId: "balanced",
     powerId: "nitro_core",
     description:
-      "Forgiving handling, quick boost recovery, and the cleanest default ID3 feel.",
+      "Forgiving handling, quick boost recovery, and the cleanest default InfernoDrift4 feel.",
   },
   {
     id: "drift",
@@ -390,6 +413,253 @@ const RISK_MODE_RULES = {
   lungeRateMult: 1.45,
   boostTriggerRange: 40,
   supportSpacing: 58,
+};
+const MODE_CATALOG = [
+  {
+    id: GAME_MODE_ID33,
+    label: "Campaign Survival",
+    category: "campaign",
+    base: "campaign",
+    scene: "campaign",
+    time: null,
+    target: null,
+    botCount: null,
+    botSpeed: null,
+    card: "World map, hunters, hazards, medals, unlock previews.",
+    objective:
+      "Survive the current world heat, bank a medal, and unlock the next reward preview.",
+    reward: "World medals + garage unlock previews",
+    medal: { bronze: 900, silver: 1600, gold: 2500, inferno: 3600 },
+  },
+  {
+    id: GAME_MODE_MAX1,
+    label: "Max Arena",
+    category: "arena",
+    base: "max",
+    scene: "max",
+    time: MAX_MODE_MATCH_TIME,
+    target: MAX_MODE_GOAL_TARGET,
+    botCount: 8,
+    botSpeed: 44,
+    card: "Ball goals, team roles, replays, ball cam.",
+    objective: "Score for Blue before Red wins the arena.",
+    reward: "Max team decal + goal burst",
+    medal: { bronze: 600, silver: 1200, gold: 1900, inferno: 2800 },
+  },
+  {
+    id: GAME_MODE_RACE,
+    label: "Race",
+    category: "speed",
+    base: "campaign",
+    scene: "track",
+    time: 115,
+    target: 8,
+    botCount: 4,
+    botSpeed: 38,
+    card: "Closed neon track, checkpoint gates, rival cars.",
+    objective:
+      "Clear every checkpoint on the closed track before time runs out.",
+    reward: "Speed class XP + ghost sample",
+    medal: { bronze: 900, silver: 1500, gold: 2300, inferno: 3300 },
+  },
+  {
+    id: GAME_MODE_TIME_TRIAL,
+    label: "Time Trial",
+    category: "speed",
+    base: "campaign",
+    scene: "track",
+    time: 75,
+    target: 8,
+    botCount: 0,
+    botSpeed: 0,
+    card: "Solo track, clean restart, personal best ghost.",
+    objective: "Beat the track quickly and set a cleaner personal best.",
+    reward: "Chrono trail preview",
+    medal: { bronze: 800, silver: 1500, gold: 2400, inferno: 3600 },
+  },
+  {
+    id: GAME_MODE_STUNT,
+    label: "Stunt Park",
+    category: "tricks",
+    base: "campaign",
+    scene: "stunt",
+    time: 120,
+    target: 9,
+    botCount: 2,
+    botSpeed: 30,
+    card: "Ramp types, trick gates, landing grades.",
+    objective: "Chain stunt gates, flips, drifts, and clean landings.",
+    reward: "Stunt kit + air control tune",
+    medal: { bronze: 1000, silver: 1900, gold: 3100, inferno: 4700 },
+  },
+  {
+    id: GAME_MODE_HUNTER_TAG,
+    label: "Hunter Tag",
+    category: "chase",
+    base: "campaign",
+    scene: "chase",
+    time: 100,
+    target: 5,
+    botCount: 5,
+    botSpeed: 42,
+    card: "Evade, then tag a hunter back when you are it.",
+    objective:
+      "Clear escape gates. If tagged, tag a marked hunter to become chased again.",
+    reward: "Hunter tag badge",
+    medal: { bronze: 850, silver: 1550, gold: 2450, inferno: 3550 },
+  },
+  {
+    id: GAME_MODE_BOSS,
+    label: "Boss Chase",
+    category: "chase",
+    base: "campaign",
+    scene: "boss",
+    time: 145,
+    target: 4,
+    botCount: 4,
+    botSpeed: 48,
+    card: "Finale hunter, phases, weak gates, warnings.",
+    objective: "Survive the boss pattern and hit every weak gate.",
+    reward: "Boss flame preview",
+    medal: { bronze: 1100, silver: 2000, gold: 3200, inferno: 4800 },
+  },
+  {
+    id: GAME_MODE_DRIFT_SCORE,
+    label: "Drift Score Attack",
+    category: "tricks",
+    base: "campaign",
+    scene: "drift",
+    time: 95,
+    target: 2600,
+    botCount: 3,
+    botSpeed: 34,
+    card: "Multiplier mastery, near misses, clean exits.",
+    objective: "Build drift score with chains, boosts, and near misses.",
+    reward: "Combo meter plus",
+    medal: { bronze: 1200, silver: 2500, gold: 4200, inferno: 6500 },
+  },
+  {
+    id: GAME_MODE_BATTLE,
+    label: "Battle Arena",
+    category: "arena",
+    base: "campaign",
+    scene: "battle",
+    time: 150,
+    target: 5,
+    botCount: 5,
+    botSpeed: 36,
+    card: "Toy pickups, bumper hits, stocks, safe chaos.",
+    objective: "Score arena tags with kid-friendly pickups and clean bumps.",
+    reward: "Bumper pulse + arena shield",
+    medal: { bronze: 850, silver: 1600, gold: 2500, inferno: 3700 },
+  },
+  {
+    id: GAME_MODE_RAMP_RUSH,
+    label: "Ramp Rush",
+    category: "minigames",
+    base: "campaign",
+    scene: "stunt",
+    time: 85,
+    target: 7,
+    botCount: 1,
+    botSpeed: 28,
+    card: "Timed ramp chain with landing boost medals.",
+    objective: "Hit ramp gates in order and land clean for bonus time.",
+    reward: "Landing boost tune",
+    medal: { bronze: 900, silver: 1700, gold: 2700, inferno: 4000 },
+  },
+  {
+    id: GAME_MODE_BOOST_BOWLING,
+    label: "Boost Bowling",
+    category: "minigames",
+    base: "campaign",
+    scene: "battle",
+    time: 80,
+    target: 10,
+    botCount: 0,
+    botSpeed: 0,
+    card: "Boost lanes into glowing physics pins.",
+    objective: "Smash every pin with boost or high speed.",
+    reward: "Pin crusher horn",
+    medal: { bronze: 700, silver: 1400, gold: 2300, inferno: 3400 },
+  },
+  {
+    id: GAME_MODE_LAVA_FLOOR,
+    label: "Lava Floor",
+    category: "minigames",
+    base: "campaign",
+    scene: "lava",
+    time: 60,
+    target: 35,
+    botCount: 3,
+    botSpeed: 32,
+    card: "Rotating safe zones and rising heat pressure.",
+    objective: "Stay in safe zones long enough while the floor burns shield.",
+    reward: "Magma tire preview",
+    medal: { bronze: 800, silver: 1450, gold: 2200, inferno: 3200 },
+  },
+  {
+    id: GAME_MODE_KING_ZONE,
+    label: "King of the Zone",
+    category: "minigames",
+    base: "campaign",
+    scene: "zone",
+    time: 90,
+    target: 30,
+    botCount: 4,
+    botSpeed: 34,
+    card: "Hold drifting zones while bots contest.",
+    objective:
+      "Control the zone with drift speed while bots try to bump you out.",
+    reward: "Zone crown badge",
+    medal: { bronze: 850, silver: 1550, gold: 2500, inferno: 3700 },
+  },
+  {
+    id: GAME_MODE_TRICK_COMBO,
+    label: "Trick Combo",
+    category: "minigames",
+    base: "campaign",
+    scene: "stunt",
+    time: 100,
+    target: 12,
+    botCount: 2,
+    botSpeed: 30,
+    card: "Strict combo decay: flips, drifts, near misses.",
+    objective: "Chain twelve trick beats before the combo expires.",
+    reward: "Trick chain livery",
+    medal: { bronze: 1100, silver: 2200, gold: 3600, inferno: 5400 },
+  },
+  {
+    id: GAME_MODE_BOT_ESCAPE,
+    label: "Bot Escape",
+    category: "minigames",
+    base: "campaign",
+    scene: "chase",
+    time: 75,
+    target: 6,
+    botCount: 6,
+    botSpeed: 44,
+    card: "Escalating hunter waves through decoy gates.",
+    objective: "Survive hunter waves and clear every escape gate.",
+    reward: "Escape smoke trail",
+    medal: { bronze: 900, silver: 1700, gold: 2600, inferno: 3900 },
+  },
+];
+const MODE_BY_ID = Object.fromEntries(
+  MODE_CATALOG.map((mode) => [mode.id, mode]),
+);
+const MODE_ID_ALIASES = {
+  [GAME_MODE_RISK]: GAME_MODE_MAX1,
+  [PUBLIC_MODE_CAMPAIGN]: GAME_MODE_ID33,
+  [PUBLIC_MODE_MAX]: GAME_MODE_MAX1,
+  campaign: GAME_MODE_ID33,
+  max: GAME_MODE_MAX1,
+  max1: GAME_MODE_MAX1,
+  "max-arena": GAME_MODE_MAX1,
+  stunt: GAME_MODE_STUNT,
+  hunter: GAME_MODE_HUNTER_TAG,
+  boss: GAME_MODE_BOSS,
+  battle: GAME_MODE_BATTLE,
 };
 const DRIVING_TUNING = {
   grounded: {
@@ -1565,6 +1835,115 @@ const devTuning = {
   ...DEFAULT_DEV_TUNING,
 };
 
+function makeDailySeed(date = new Date()) {
+  return date.toISOString().slice(0, 10);
+}
+
+function makeWeeklySeed(date = new Date()) {
+  const start = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const day = Math.floor((date - start) / 86400000);
+  return `${date.getUTCFullYear()}-W${Math.floor(day / 7) + 1}`;
+}
+
+function createProgressionV2() {
+  const dailySeed = makeDailySeed();
+  const weeklySeed = makeWeeklySeed();
+  return {
+    schemaVersion: 2,
+    xp: 0,
+    level: 1,
+    medals: {},
+    personalBests: {},
+    ghostSamples: {},
+    unlockedRewards: ["starter-loadout"],
+    rewardLog: [],
+    daily: {
+      seed: dailySeed,
+      label: "Daily Heat",
+      modeId: GAME_MODE_DRIFT_SCORE,
+      target: 1800,
+      progress: 0,
+      complete: false,
+    },
+    weekly: {
+      seed: weeklySeed,
+      label: "Weekly Tour",
+      modeId: GAME_MODE_RACE,
+      target: 4,
+      progress: 0,
+      complete: false,
+    },
+  };
+}
+
+function normalizeProgressionV2(value = {}) {
+  const base = createProgressionV2();
+  const source = value && typeof value === "object" ? value : {};
+  const daily =
+    source.daily && typeof source.daily === "object" ? source.daily : {};
+  const weekly =
+    source.weekly && typeof source.weekly === "object" ? source.weekly : {};
+  const next = {
+    ...base,
+    ...source,
+    schemaVersion: 2,
+    xp: Math.max(0, Number(source.xp) || 0),
+    level: Math.max(1, Number(source.level) || 1),
+    medals:
+      source.medals && typeof source.medals === "object"
+        ? { ...base.medals, ...source.medals }
+        : base.medals,
+    personalBests:
+      source.personalBests && typeof source.personalBests === "object"
+        ? { ...base.personalBests, ...source.personalBests }
+        : base.personalBests,
+    ghostSamples:
+      source.ghostSamples && typeof source.ghostSamples === "object"
+        ? { ...base.ghostSamples, ...source.ghostSamples }
+        : base.ghostSamples,
+    unlockedRewards: Array.isArray(source.unlockedRewards)
+      ? [...new Set([...base.unlockedRewards, ...source.unlockedRewards])]
+      : base.unlockedRewards,
+    rewardLog: Array.isArray(source.rewardLog)
+      ? source.rewardLog.slice(-12)
+      : base.rewardLog,
+    daily: { ...base.daily, ...daily },
+    weekly: { ...base.weekly, ...weekly },
+  };
+  next.daily.progress = Math.max(0, Number(next.daily.progress) || 0);
+  next.weekly.progress = Math.max(0, Number(next.weekly.progress) || 0);
+  next.daily.complete = Boolean(next.daily.complete);
+  next.weekly.complete = Boolean(next.weekly.complete);
+  return next;
+}
+
+function createModeRunState() {
+  return {
+    id: GAME_MODE_ID33,
+    progress: 0,
+    target: 0,
+    markerIndex: 0,
+    medalEarned: "",
+    xpGained: 0,
+    rewardPreview: "",
+    resultSummary: "",
+    lastTrick: "",
+    comboTimer: 0,
+    tagState: "evader",
+    tagCooldown: 0,
+    taggedBotIndex: 0,
+    bossPhase: 1,
+    bossWeakTimer: 0,
+    battleStocks: 3,
+    battlePickup: "",
+    battlePickupTimer: 0,
+    zoneIndex: 0,
+    zoneTimer: 0,
+    ghost: [],
+    bestGhost: [],
+  };
+}
+
 const state = {
   running: false,
   worldIndex: 0,
@@ -1638,6 +2017,8 @@ const state = {
   deviceProfile: { mode: "auto", ...DEVICE_PROFILES.desktop },
   steppingExternally: false,
   awaitingRemapAction: "",
+  progressionV2: createProgressionV2(),
+  modeRun: createModeRunState(),
   campaignRisk: {
     recentHits: 0,
     recentEscapes: 0,
@@ -1698,15 +2079,33 @@ function getCollisionRadius(car) {
   return car?.collisionRadius ?? (car?.isBot ? BOT_RADIUS : CAR_RADIUS);
 }
 
+function normalizeGameModeId(mode) {
+  const normalized = MODE_ID_ALIASES[mode] ?? mode;
+  return MODE_BY_ID[normalized] ? normalized : GAME_MODE_ID33;
+}
+
+function getPublicModeId(modeOrId = getModeDefinition()) {
+  const modeId =
+    typeof modeOrId === "string" ? normalizeGameModeId(modeOrId) : modeOrId.id;
+  if (modeId === GAME_MODE_ID33) return PUBLIC_MODE_CAMPAIGN;
+  if (modeId === GAME_MODE_MAX1) return PUBLIC_MODE_MAX;
+  return modeId;
+}
+
+function getModeDefinition(mode = settings.activeGameMode) {
+  return MODE_BY_ID[normalizeGameModeId(mode)] ?? MODE_BY_ID[GAME_MODE_ID33];
+}
+
 function isMaxMode() {
-  return (
-    settings.activeGameMode === GAME_MODE_MAX1 ||
-    settings.activeGameMode === GAME_MODE_RISK
-  );
+  return getModeDefinition().base === "max";
 }
 
 function isRiskMode() {
   return isMaxMode();
+}
+
+function isCampaignSurvivalMode() {
+  return normalizeGameModeId(settings.activeGameMode) === GAME_MODE_ID33;
 }
 
 function normalizeCampaignAiMode(value) {
@@ -1773,19 +2172,22 @@ function getMaxAiRules() {
 }
 
 function getActiveGameMeta() {
-  if (isMaxMode()) {
+  const mode = getModeDefinition();
+  if (isMaxMode())
     return {
-      id: GAME_MODE_MAX1,
-      title: "Max Arena",
+      id: mode.id,
+      title: mode.label,
       subtitle: `${getMaxDifficultyProfile().label} Arena`,
     };
-  }
   return {
-    id: GAME_MODE_ID33,
-    title: "Campaign Survival",
-    subtitle: isAdaptiveCampaignAi()
-      ? "ID3.3 Adaptive Hunters"
-      : "ID3.3 Classic",
+    id: mode.id,
+    title: mode.label,
+    subtitle:
+      mode.id === GAME_MODE_ID33
+        ? isAdaptiveCampaignAi()
+          ? "Adaptive Hunters"
+          : "Classic Survival"
+        : mode.card,
   };
 }
 
@@ -1957,6 +2359,7 @@ function getProgressSnapshot() {
   return {
     worldIndex: state.worldIndex,
     levelIndex: state.levelIndex,
+    progressionV2: state.progressionV2,
   };
 }
 
@@ -2511,6 +2914,7 @@ function savePersistentState() {
       glowId: customization.glowId,
     },
     garage: serializeGarageState(),
+    progressionV2: state.progressionV2,
     controlBindings: serializeControlBindings(),
     maxTeamCustomization: {
       blue: { ...maxTeamCustomization.blue },
@@ -2561,7 +2965,12 @@ function loadPersistentState() {
       if (typeof data.settings.devMode === "boolean")
         settings.devMode = data.settings.devMode;
       if (typeof data.settings.activeGameMode === "string")
-        settings.activeGameMode = data.settings.activeGameMode;
+        settings.activeGameMode = normalizeGameModeId(
+          data.settings.activeGameMode,
+        );
+    }
+    if (data.progressionV2 && typeof data.progressionV2 === "object") {
+      state.progressionV2 = normalizeProgressionV2(data.progressionV2);
     }
     if (data.devTuning && typeof data.devTuning === "object") {
       if (Number.isFinite(data.devTuning.playerSpeedMult))
@@ -2910,32 +3319,67 @@ function jumpToCampaignLevel(worldIndex, levelIndex) {
   savePersistentState();
 }
 
+function renderModeBoard() {
+  if (!modeBoard) return;
+  const activeId = normalizeGameModeId(settings.activeGameMode);
+  const groups = Object.keys(MODE_CATEGORY_LABELS)
+    .map((category) => [
+      category,
+      MODE_CATALOG.filter((mode) => mode.category === category),
+    ])
+    .filter(([, modes]) => modes.length > 0);
+  modeBoard.innerHTML = groups
+    .map(
+      ([category, modes]) => `
+        <section class="mode-group" aria-label="${MODE_CATEGORY_LABELS[category]} modes">
+          <div class="mode-group-title">${MODE_CATEGORY_LABELS[category]}</div>
+          <div class="games-grid">
+            ${modes
+              .map((mode) => {
+                const best = state.progressionV2.personalBests[mode.id];
+                const medal = state.progressionV2.medals[mode.id] ?? "New";
+                const length =
+                  mode.time > 0 ? `${mode.time}s run` : "Campaign heat";
+                const legacyId =
+                  mode.id === GAME_MODE_ID33
+                    ? ` id="game-card-id33"`
+                    : mode.id === GAME_MODE_MAX1
+                      ? ` id="game-card-max1"`
+                      : "";
+                return `
+                  <button${legacyId} class="game-card mode-card ${activeId === mode.id ? "active" : ""}" data-game-mode="${mode.id}" type="button">
+                    <div class="mode-card-art" data-scene="${mode.scene}" aria-hidden="true"></div>
+                    <div class="game-card-copy">
+                      <strong>${mode.label}</strong>
+                      <span>${mode.objective}</span>
+                      <small>${length} • ${mode.reward}</small>
+                      <em>${medal} medal${best ? ` • Best ${best.score}` : ""}</em>
+                    </div>
+                  </button>`;
+              })
+              .join("")}
+          </div>
+        </section>`,
+    )
+    .join("");
+}
+
 function refreshGamesUi() {
   const activeMeta = getActiveGameMeta();
   const maxProfile = getMaxDifficultyProfile();
-  gameCards.forEach((card) => {
-    const active = card.dataset.gameMode === settings.activeGameMode;
-    card.classList.toggle("active", active);
-    card.setAttribute("aria-pressed", active ? "true" : "false");
-  });
+  renderModeBoard();
+  const activeMode = getModeDefinition();
   if (modeBrief) {
-    modeBrief.innerHTML = isMaxMode()
-      ? `<strong>Objective:</strong> win the arena by scoring goals for Blue. <span>Boost pads, ball lunge, target lunge, and Ball Cam are tuned for readable team play.</span>`
-      : `<strong>Objective:</strong> survive the heat until the clock ends. <span>Use drift chains, boost pads, ramps, powerups, and near misses to build score while hunters adapt.</span>`;
+    const best = state.progressionV2.personalBests[activeMode.id];
+    modeBrief.innerHTML = `<strong>${activeMode.label}</strong><span>${activeMode.objective}</span><em>${activeMode.reward}${best ? ` • Best ${best.score}` : ""}</em>`;
   }
   if (startBtn) {
-    startBtn.textContent = isMaxMode()
-      ? "Start Max Arena"
-      : isAdaptiveCampaignAi()
-        ? "Start Adaptive Campaign"
-        : "Start Campaign";
+    startBtn.textContent = `Start ${activeMeta.title}`;
   }
   if (overlaySubtitle) {
     overlaySubtitle.textContent = isMaxMode()
       ? `${maxProfile.label} arena rules. Slower cars, cleaner reads, stronger squad play, and smarter goal pressure.`
-      : isAdaptiveCampaignAi()
-        ? "Free-roam survival racers. Adaptive hunters learn your routes, collapse lanes faster, and coordinate pressure as a pack."
-        : "Free-roam survival racers. Drift through neon arenas, grab powerups, launch off ramps, and stay ahead of relentless hunter bots.";
+      : `${activeMode.objective} Every run keeps the current InfernoDrift4 driving base: drift, boost, jump, recover, and restart fast.`;
   }
   const maxModeActive = isMaxMode();
   document.body.classList.toggle("max-mode", maxModeActive);
@@ -2988,9 +3432,7 @@ function setActiveTab(tabName = "settings") {
 }
 
 function setActiveGameMode(mode, { save = true, reset = false } = {}) {
-  const normalizedMode = mode === GAME_MODE_RISK ? GAME_MODE_MAX1 : mode;
-  const nextMode =
-    normalizedMode === GAME_MODE_MAX1 ? GAME_MODE_MAX1 : GAME_MODE_ID33;
+  const nextMode = normalizeGameModeId(mode);
   if (settings.activeGameMode === nextMode && !reset) {
     refreshGamesUi();
     return;
@@ -3068,6 +3510,7 @@ function renderProgressPanel() {
   if (!progressPanel) return;
   const world = getWorld();
   const level = getLevel();
+  const progression = state.progressionV2;
   const clearedWorlds = state.worldIndex;
   const clearedLevels = state.levelIndex;
   const totalLevels = worldData.reduce(
@@ -3094,11 +3537,28 @@ function renderProgressPanel() {
   ]
     .flat()
     .filter((option) => !isOptionUnlocked(option)).length;
+  const medals = Object.values(progression.medals);
+  const bests = Object.entries(progression.personalBests)
+    .sort(([, a], [, b]) => (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, 3);
+  const recentReward =
+    progression.rewardLog[0]?.reward ??
+    "Finish a run to preview the next reward.";
+  const dailyMode = getModeDefinition(progression.daily.modeId);
+  const weeklyMode = getModeDefinition(progression.weekly.modeId);
+  const xpIntoLevel = progression.xp % 500;
+  const nextRecommended =
+    bests.length === 0 ? "Campaign Survival" : MODE_BY_ID[GAME_MODE_RACE].label;
   progressPanel.innerHTML = `
+    <div class="progress-card progress-card-wide"><span>Run Level</span><strong>Level ${progression.level}</strong><span>${xpIntoLevel}/500 XP to next level • ${progression.xp} total XP</span></div>
     <div class="progress-card"><span>Current Zone</span><strong>${world.name}</strong><span>${level.name}</span></div>
-    <div class="progress-card"><span>Campaign</span><strong>${percent}%</strong><span>${clearedWorlds + 1} zones reached, ${clearedLevels + 1} current heat</span></div>
-    <div class="progress-card"><span>Best Chain</span><strong>x${state.bestCombo.toFixed(1)}</strong><span>Near-miss best ${state.bestNearMissStreak}</span></div>
-    <div class="progress-card"><span>Garage Unlocks</span><strong>${lockedParts} locked</strong><span>Clear heats to preview and equip more parts.</span></div>
+    <div class="progress-card"><span>Campaign Map</span><strong>${percent}%</strong><span>${clearedWorlds + 1} zones reached, ${clearedLevels + 1} current heat</span></div>
+    <div class="progress-card"><span>Medals</span><strong>${medals.length}</strong><span>${medals.slice(-4).join(" / ") || "Earn your first medal."}</span></div>
+    <div class="progress-card"><span>Daily</span><strong>${dailyMode.label}</strong><span>${Math.floor(progression.daily.progress)}/${progression.daily.target} • ${progression.daily.complete ? "Complete" : "Open"}</span></div>
+    <div class="progress-card"><span>Weekly</span><strong>${weeklyMode.label}</strong><span>${Math.floor(progression.weekly.progress)}/${progression.weekly.target} • ${progression.weekly.complete ? "Complete" : "Open"}</span></div>
+    <div class="progress-card"><span>Best Runs</span><strong>${bests[0] ? `${getModeDefinition(bests[0][0]).label}` : "No best yet"}</strong><span>${bests.map(([modeId, best]) => `${getModeDefinition(modeId).label}: ${best.score}`).join(" • ") || "Start any mode to set a best."}</span></div>
+    <div class="progress-card"><span>Garage Unlocks</span><strong>${lockedParts} locked</strong><span>${recentReward}</span></div>
+    <div class="progress-card progress-card-wide"><span>Next Run</span><strong>${nextRecommended}</strong><span>Short runs, fast restarts, and visible reward previews keep progress moving.</span></div>
   `;
 }
 
@@ -3186,6 +3646,9 @@ function getNextProgressIndices() {
 const obstacles = [];
 const ramps = [];
 const powerups = [];
+const modeMarkers = [];
+const modeDecor = [];
+const battlePickups = [];
 const boostPads = [];
 const bots = [];
 
@@ -4460,6 +4923,282 @@ function spawnExtraBoostPad(x, z) {
   boostPads.push(pad);
 }
 
+function disposeModeObject(object) {
+  scene.remove(object);
+  props.remove(object);
+  arena.remove(object);
+  disposeObject3D(object);
+}
+
+function clearModeObjects() {
+  modeMarkers.forEach((marker) => disposeModeObject(marker.group));
+  modeMarkers.splice(0, modeMarkers.length);
+  modeDecor.forEach((item) => disposeModeObject(item));
+  modeDecor.splice(0, modeDecor.length);
+  battlePickups.forEach((pickup) => disposeModeObject(pickup.group));
+  battlePickups.splice(0, battlePickups.length);
+}
+
+function makeModeMarker({
+  id,
+  label,
+  kind = "checkpoint",
+  x = 0,
+  z = 0,
+  radius = 11,
+  color = 0x56e9ff,
+  active = true,
+}) {
+  const group = new THREE.Group();
+  const disc = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius, radius, 0.08, 48),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.18,
+      transparent: true,
+      opacity: 0.24,
+      roughness: 0.36,
+      depthWrite: false,
+    }),
+  );
+  disc.position.y = 0.05;
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(radius, Math.max(0.22, radius * 0.035), 12, 64),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.75,
+      roughness: 0.2,
+    }),
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.2;
+  const beacon = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius * 0.18, radius * 0.42, 5.2, 20, 1, true),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.42,
+      transparent: true,
+      opacity: 0.2,
+      depthWrite: false,
+    }),
+  );
+  beacon.position.y = 2.75;
+  group.add(disc, ring, beacon);
+  group.position.set(x, 0, z);
+  group.userData.phase = Math.random() * Math.PI * 2;
+  scene.add(group);
+  const marker = {
+    id,
+    label,
+    kind,
+    group,
+    radius,
+    color,
+    complete: false,
+    active,
+  };
+  modeMarkers.push(marker);
+  return marker;
+}
+
+function makeModeRail(x, z, width, depth, color = 0x56e9ff) {
+  const rail = new THREE.Mesh(
+    new THREE.BoxGeometry(width, 0.16, depth),
+    new THREE.MeshStandardMaterial({
+      color: 0x101924,
+      emissive: color,
+      emissiveIntensity: 0.32,
+      roughness: 0.4,
+    }),
+  );
+  rail.position.set(x, 0.08, z);
+  scene.add(rail);
+  modeDecor.push(rail);
+  return rail;
+}
+
+function makeBattlePickup({ id, label, x, z, color }) {
+  const group = new THREE.Group();
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(4.2, 4.2, 0.26, 24),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.5,
+      roughness: 0.2,
+    }),
+  );
+  const core = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(2.1, 1),
+    new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: color,
+      emissiveIntensity: 0.75,
+      roughness: 0.18,
+    }),
+  );
+  base.position.y = 0.16;
+  core.position.y = 2.6;
+  group.add(base, core);
+  group.position.set(x, 0, z);
+  scene.add(group);
+  const pickup = { id, label, group, radius: 6.5, color, cooldown: 0 };
+  battlePickups.push(pickup);
+  return pickup;
+}
+
+function trackPoints(count = 8, radiusX = 138, radiusZ = 116) {
+  return Array.from({ length: count }, (_, index) => {
+    const angle = (index / count) * Math.PI * 2;
+    return {
+      x: Math.sin(angle) * radiusX,
+      z: Math.cos(angle) * radiusZ,
+    };
+  });
+}
+
+function setupModeSceneObjects() {
+  const mode = getModeDefinition();
+  if (isCampaignSurvivalMode() || isMaxMode()) return;
+  const [primary, secondary] = getWorld().accents;
+
+  if (mode.scene === "track") {
+    const points = trackPoints(mode.target, 142, 112);
+    points.forEach((point, index) => {
+      makeModeMarker({
+        id: `${mode.id}-checkpoint-${index + 1}`,
+        label: `Gate ${index + 1}`,
+        kind: "checkpoint",
+        x: point.x,
+        z: point.z,
+        radius: 13,
+        color: index === 0 ? secondary : primary,
+        active: index === 0,
+      });
+    });
+    [-1, 1].forEach((side) => {
+      makeModeRail(0, side * 132, 292, 2.2, primary);
+      makeModeRail(side * 164, 0, 2.2, 232, secondary);
+    });
+    return;
+  }
+
+  if (mode.scene === "stunt") {
+    [
+      [0, 92, "mega"],
+      [-72, 24, "normal"],
+      [82, -36, "mega"],
+      [-118, -88, "normal"],
+      [124, 82, "mega"],
+    ].forEach(([x, z, kind]) => {
+      const ramp = makeRamp(kind);
+      ramp.position.set(x, 0, z);
+      ramps.push(ramp);
+    });
+    trackPoints(mode.target, 128, 104).forEach((point, index) => {
+      makeModeMarker({
+        id: `${mode.id}-stunt-${index + 1}`,
+        label: index % 2 === 0 ? "Flip Gate" : "Drift Gate",
+        kind: "gate",
+        x: point.x,
+        z: point.z,
+        radius: 15,
+        color: index % 2 === 0 ? secondary : primary,
+        active: index === 0,
+      });
+    });
+    return;
+  }
+
+  if (mode.scene === "chase" || mode.scene === "boss") {
+    trackPoints(mode.target, 135, 118).forEach((point, index) => {
+      makeModeMarker({
+        id: `${mode.id}-escape-${index + 1}`,
+        label:
+          mode.scene === "boss"
+            ? `Weak Gate ${index + 1}`
+            : `Escape ${index + 1}`,
+        kind: "gate",
+        x: point.x,
+        z: point.z,
+        radius: mode.scene === "boss" ? 16 : 13,
+        color: index % 2 === 0 ? primary : secondary,
+        active: index === 0,
+      });
+    });
+    if (mode.scene === "boss") makeNeonBeacon(0, 0, 13, secondary);
+    return;
+  }
+
+  if (mode.scene === "drift") {
+    trackPoints(6, 118, 92).forEach((point, index) => {
+      makeModeMarker({
+        id: `${mode.id}-drift-${index + 1}`,
+        label: "Drift Zone",
+        kind: "zone",
+        x: point.x,
+        z: point.z,
+        radius: 28,
+        color: index % 2 === 0 ? primary : secondary,
+        active: true,
+      });
+    });
+    return;
+  }
+
+  if (mode.scene === "battle") {
+    trackPoints(
+      mode.id === GAME_MODE_BOOST_BOWLING ? mode.target : 5,
+      112,
+      90,
+    ).forEach((point, index) => {
+      makeModeMarker({
+        id: `${mode.id}-target-${index + 1}`,
+        label:
+          mode.id === GAME_MODE_BOOST_BOWLING
+            ? `Pin ${index + 1}`
+            : `Hit ${index + 1}`,
+        kind: "target",
+        x: point.x,
+        z: point.z,
+        radius: mode.id === GAME_MODE_BOOST_BOWLING ? 9 : 12,
+        color: index % 2 === 0 ? primary : secondary,
+        active: mode.id === GAME_MODE_BOOST_BOWLING || index === 0,
+      });
+    });
+    [
+      ["bumper", "Bumper Pulse", -84, 0, 0xff80d0],
+      ["foam", "Foam Slick", 84, 0, 0xa7c0ff],
+      ["shield", "Shield Bubble", 0, 84, 0x7bff9d],
+      ["magnet", "Magnet Boost", 0, -84, 0xffc457],
+      ["spark", "Spark Tag", 0, 0, 0x56e9ff],
+    ].forEach(([id, label, x, z, color]) =>
+      makeBattlePickup({ id, label, x, z, color }),
+    );
+    return;
+  }
+
+  if (mode.scene === "lava" || mode.scene === "zone") {
+    trackPoints(mode.scene === "lava" ? 5 : 3, 112, 92).forEach(
+      (point, index) => {
+        makeModeMarker({
+          id: `${mode.id}-zone-${index + 1}`,
+          label: mode.scene === "lava" ? "Safe Zone" : "King Zone",
+          kind: "zone",
+          x: point.x,
+          z: point.z,
+          radius: mode.scene === "lava" ? 25 : 34,
+          color: index % 2 === 0 ? primary : secondary,
+          active: index === 0 || mode.scene === "zone",
+        });
+      },
+    );
+  }
+}
+
 function getLevelFeatureConfig() {
   const variants = {
     "0-0": {
@@ -5025,6 +5764,7 @@ function setMenuOpen(open, tabName = null) {
 
 function clearWorld() {
   obstacles.splice(0, obstacles.length);
+  clearModeObjects();
   ramps.forEach((ramp) => {
     scene.remove(ramp);
     disposeObject3D(ramp);
@@ -5069,7 +5809,16 @@ function buildWorld() {
     scene.background = new THREE.Color(world.sky);
     groundMaterial.color.setHex(world.ground);
 
-    const rampConfig = getRampDensityConfig(settings.rampDensity);
+    const mode = getModeDefinition();
+    const rampConfig = getRampDensityConfig(
+      isCampaignSurvivalMode()
+        ? settings.rampDensity
+        : mode.scene === "stunt"
+          ? "high"
+          : mode.scene === "track"
+            ? "low"
+            : "normal",
+    );
     spawnRampLayout(rampConfig);
 
     boostPads.length = 0;
@@ -5087,7 +5836,8 @@ function buildWorld() {
       pad.position.set(x, 0, z);
       boostPads.push(pad);
     });
-    applyLevelIdentity(world);
+    if (isCampaignSurvivalMode()) applyLevelIdentity(world);
+    setupModeSceneObjects();
     state.buildCount += 1;
     debugLog("world", "buildWorld complete", {
       buildCount: state.buildCount,
@@ -5098,6 +5848,68 @@ function buildWorld() {
   } finally {
     state.isBuildingWorld = false;
   }
+}
+
+function getModeWorldDefinition(mode = getModeDefinition()) {
+  const sceneTable = {
+    track: {
+      name: "Turbo Circuit",
+      fog: 0x111f2c,
+      sky: 0x18385a,
+      ground: 0x142638,
+      accents: [0x56e9ff, 0xffc457],
+    },
+    stunt: {
+      name: "Launch Park",
+      fog: 0x24170f,
+      sky: 0x3e2115,
+      ground: 0x2a2018,
+      accents: [0xffa24c, 0x56e9ff],
+    },
+    chase: {
+      name: "Hunter Grid",
+      fog: 0x171326,
+      sky: 0x251a44,
+      ground: 0x19172d,
+      accents: [0xff4d8a, 0x80fff1],
+    },
+    boss: {
+      name: "Abyssal Finale",
+      fog: 0x120f14,
+      sky: 0x2f2134,
+      ground: 0x1c1620,
+      accents: [0xff80d0, 0xa7c0ff],
+    },
+    drift: {
+      name: "Combo Loop",
+      fog: 0x15262b,
+      sky: 0x1f3f45,
+      ground: 0x153234,
+      accents: [0x7bff9d, 0xffc457],
+    },
+    battle: {
+      name: "Bumper Forge",
+      fog: 0x221522,
+      sky: 0x442044,
+      ground: 0x29182b,
+      accents: [0xff7bd7, 0x56e9ff],
+    },
+    lava: {
+      name: "Magma Grid",
+      fog: 0x2a1208,
+      sky: 0x4a1808,
+      ground: 0x2b160c,
+      accents: [0xff4d2d, 0xffc457],
+    },
+    zone: {
+      name: "Crown Zone",
+      fog: 0x0f2632,
+      sky: 0x12384a,
+      ground: 0x122c32,
+      accents: [0x80fff1, 0xffd66b],
+    },
+  };
+  return sceneTable[mode.scene] ?? worldData[state.worldIndex];
 }
 
 function getWorld() {
@@ -5119,13 +5931,50 @@ function getWorld() {
       ],
     };
   }
+  if (!isCampaignSurvivalMode()) {
+    const mode = getModeDefinition();
+    const world = getModeWorldDefinition(mode);
+    return {
+      ...world,
+      levels: [
+        {
+          name: mode.label,
+          time: mode.time,
+          bots: mode.botCount,
+          botSpeed: mode.botSpeed,
+          spawnRate: 1,
+        },
+      ],
+    };
+  }
   return worldData[state.worldIndex];
 }
 
 function getLevel() {
-  return isMaxMode()
+  return isMaxMode() || !isCampaignSurvivalMode()
     ? getWorld().levels[0]
     : getWorld().levels[state.levelIndex];
+}
+
+function resetModeRunState() {
+  const mode = getModeDefinition();
+  const previousGhost =
+    state.progressionV2.personalBests?.[mode.id]?.ghostSamples ?? [];
+  state.modeRun = {
+    ...createModeRunState(),
+    id: mode.id,
+    target:
+      mode.id === GAME_MODE_ID33
+        ? getLevel().time
+        : mode.id === GAME_MODE_MAX1
+          ? MAX_MODE_GOAL_TARGET
+          : mode.target,
+    rewardPreview: mode.reward,
+    bestGhost: previousGhost.slice(0, 60),
+    battleStocks: mode.id === GAME_MODE_BATTLE ? 3 : 0,
+    bossPhase: mode.id === GAME_MODE_BOSS ? 1 : 0,
+    tagState: mode.id === GAME_MODE_HUNTER_TAG ? "evader" : "inactive",
+  };
 }
 
 function resetLevel() {
@@ -5161,6 +6010,7 @@ function resetLevel() {
   const level = getLevel();
   state.timeLeft = level.time;
   state.overtime = false;
+  resetModeRunState();
 
   const spawnX = isMaxMode() ? 0 : PLAYER_SPAWN_X;
   const spawnZ = isMaxMode() ? getTeamSpawnSlots("blue")[0][1] : PLAYER_SPAWN_Z;
@@ -5633,6 +6483,7 @@ function spawnBots() {
   player.collisionRadius = CAR_RADIUS;
   if (settings.difficulty === "no_bots") return;
   const level = getLevel();
+  const mode = getModeDefinition();
   const palette = getWorld().accents;
   const difficultyScale = {
     no_bots: 0,
@@ -5641,7 +6492,16 @@ function spawnBots() {
     brutal: 1.25,
   }[settings.difficulty];
   const profile = getDifficultyProfile();
-  const botCount = Math.max(2, Math.round(level.bots * difficultyScale));
+  const baseBotCount = Number.isFinite(mode.botCount)
+    ? mode.botCount
+    : level.bots;
+  const botCount = Math.max(
+    mode.id === GAME_MODE_TIME_TRIAL || mode.id === GAME_MODE_BOOST_BOWLING
+      ? 0
+      : 1,
+    Math.round(baseBotCount * difficultyScale),
+  );
+  if (botCount <= 0) return;
   const spawnPoints = generateSpacedPolarPoints(
     botCount,
     94,
@@ -5662,11 +6522,29 @@ function spawnBots() {
       0,
       THREE.MathUtils.clamp(safeZ, -HALF_WORLD + 46, HALF_WORLD - 46),
     );
-    bot.maxSpeed = level.botSpeed * difficultyScale * profile.speedMultiplier;
+    bot.maxSpeed =
+      (Number.isFinite(mode.botSpeed) ? mode.botSpeed : level.botSpeed) *
+      Math.max(0.55, difficultyScale || 1) *
+      profile.speedMultiplier;
     bot.accel = (18 + level.bots * difficultyScale) * profile.botSkill;
     bot.turnRate = 2.1 * profile.botSkill;
     bot.aiBurstCooldown = Math.random() * 1.2;
     bot.lastRampTime = 0;
+    bot.role =
+      mode.id === GAME_MODE_BOSS && i === 0
+        ? "boss"
+        : mode.id === GAME_MODE_RACE
+          ? `rival-${i + 1}`
+          : mode.id === GAME_MODE_BATTLE
+            ? `bumper-${i + 1}`
+            : "hunter";
+    bot.team = mode.id === GAME_MODE_RACE ? "red" : "hunter";
+    if (mode.id === GAME_MODE_BOSS && i === 0) {
+      bot.visualRoot.scale.setScalar(1.52);
+      bot.collisionRadius = BOT_RADIUS * 1.55;
+      bot.maxSpeed *= 1.08;
+      bot.accel *= 1.1;
+    }
     bots.push(bot);
   }
 }
@@ -7890,6 +8768,428 @@ function updatePowerupCollisions() {
   });
 }
 
+function activeModeMarkers() {
+  return modeMarkers.filter((marker) => marker.active && !marker.complete);
+}
+
+function setModeMarkerActive(index) {
+  modeMarkers.forEach((marker, markerIndex) => {
+    marker.active = markerIndex === index && !marker.complete;
+  });
+}
+
+function completeModeMarker(marker, amount = 1, score = 260) {
+  if (!marker || marker.complete) return;
+  marker.complete = true;
+  marker.active = false;
+  marker.group.visible = false;
+  state.modeRun.progress = Math.min(
+    state.modeRun.target,
+    state.modeRun.progress + amount,
+  );
+  state.score += score * Math.max(1, state.combo * 0.45);
+  state.modeRun.markerIndex += 1;
+  state.modeRun.lastTrick = marker.label;
+  setEffectToast(`${marker.label} +${Math.round(score)}`, { pulse: 0.2 });
+  const next = modeMarkers[state.modeRun.markerIndex];
+  if (next) next.active = true;
+}
+
+function getModeProgressKey(mode = getModeDefinition()) {
+  if (mode.id === GAME_MODE_ID33)
+    return `${mode.id}-${state.worldIndex}-${state.levelIndex}`;
+  return mode.id;
+}
+
+function medalForScore(score, mode = getModeDefinition()) {
+  const table = mode.medal ?? MODE_BY_ID[GAME_MODE_ID33].medal;
+  if (score >= table.inferno) return "Inferno";
+  if (score >= table.gold) return "Gold";
+  if (score >= table.silver) return "Silver";
+  if (score >= table.bronze) return "Bronze";
+  return "Clear";
+}
+
+function modeProgressPercent() {
+  const target = Math.max(1, state.modeRun.target || getLevel().time || 1);
+  return THREE.MathUtils.clamp(state.modeRun.progress / target, 0, 1);
+}
+
+function updateChallengeProgress(mode, score, won) {
+  const progression = state.progressionV2;
+  if (progression.daily.modeId === mode.id) {
+    progression.daily.progress = Math.max(progression.daily.progress, score);
+    progression.daily.complete =
+      progression.daily.complete ||
+      progression.daily.progress >= progression.daily.target;
+  }
+  if (progression.weekly.modeId === mode.id && won) {
+    progression.weekly.progress = Math.min(
+      progression.weekly.target,
+      progression.weekly.progress + 1,
+    );
+    progression.weekly.complete =
+      progression.weekly.progress >= progression.weekly.target;
+  }
+}
+
+function awardModeProgression({ won = true, reason = "" } = {}) {
+  const mode = getModeDefinition();
+  const key = getModeProgressKey(mode);
+  const score = Math.floor(state.score);
+  const medal = won ? medalForScore(score, mode) : "Attempt";
+  const xpGained = won
+    ? 120 + Math.round(score / 18) + Math.round(modeProgressPercent() * 80)
+    : 30 + Math.round(modeProgressPercent() * 40);
+  const progression = state.progressionV2;
+  progression.xp += xpGained;
+  progression.level = 1 + Math.floor(progression.xp / 500);
+  progression.medals[key] = medal;
+  const previousBest = progression.personalBests[mode.id]?.score ?? 0;
+  if (score >= previousBest) {
+    progression.personalBests[mode.id] = {
+      score,
+      medal,
+      time: Number((getLevel().time - state.timeLeft).toFixed(2)),
+      progress: Number(state.modeRun.progress.toFixed(2)),
+      ghostSamples: state.modeRun.ghost.slice(0, 60),
+    };
+  }
+  if (won) {
+    [mode.reward, `level-${progression.level}`]
+      .filter(Boolean)
+      .forEach((reward) => {
+        const rewardId = reward.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        if (!progression.unlockedRewards.includes(rewardId))
+          progression.unlockedRewards.push(rewardId);
+      });
+  }
+  updateChallengeProgress(mode, score, won);
+  progression.rewardLog = [
+    {
+      modeId: mode.id,
+      label: mode.label,
+      medal,
+      xp: xpGained,
+      reward: won ? mode.reward : reason || "Retry for the medal",
+      at: new Date().toISOString(),
+    },
+    ...progression.rewardLog,
+  ].slice(0, 8);
+  state.modeRun.medalEarned = medal;
+  state.modeRun.xpGained = xpGained;
+  state.modeRun.resultSummary = won
+    ? `${medal} medal, +${xpGained} XP, ${mode.reward}`
+    : `${reason || "Objective failed"}, +${xpGained} XP`;
+  savePersistentState();
+  return { medal, xpGained };
+}
+
+function getModeResultRows(won = true) {
+  const mode = getModeDefinition();
+  return [
+    ["Mode", mode.label],
+    ["Medal", state.modeRun.medalEarned || (won ? "Clear" : "Attempt")],
+    ["XP", `+${state.modeRun.xpGained || 0}`],
+    [
+      "Objective",
+      `${Math.floor(state.modeRun.progress)}/${Math.floor(state.modeRun.target || 1)}`,
+    ],
+    ["Best Chain", `x${state.bestCombo.toFixed(1)}`],
+    ["Reward", won ? mode.reward : "Retry preview kept"],
+  ];
+}
+
+function completeModeRun() {
+  if (!state.running) return;
+  const mode = getModeDefinition();
+  const { medal, xpGained } = awardModeProgression({ won: true });
+  showMessage(
+    `${mode.label} Complete`,
+    `${mode.objective} ${medal} medal earned, +${xpGained} XP. ${mode.reward} is now previewed in Progress.`,
+    "Run Again",
+    "restart-current",
+    getModeResultRows(true),
+  );
+}
+
+function failModeRun(
+  reason = "Time expired before the objective was complete.",
+) {
+  if (!state.running) return;
+  const mode = getModeDefinition();
+  awardModeProgression({ won: false, reason });
+  showMessage(
+    `${mode.label} Failed`,
+    `${reason} Fast retry is ready; the reward preview stays visible.`,
+    "Retry",
+    "retry",
+    getModeResultRows(false),
+  );
+}
+
+function isInsideMarker(marker, radiusBoost = 0) {
+  if (!marker) return false;
+  return (
+    Math.hypot(
+      player.position.x - marker.group.position.x,
+      player.position.z - marker.group.position.z,
+    ) <=
+    marker.radius + radiusBoost
+  );
+}
+
+function updateModeMarkerVisuals(dt) {
+  modeMarkers.forEach((marker) => {
+    marker.group.userData.phase = (marker.group.userData.phase ?? 0) + dt * 2.2;
+    const pulse = marker.active
+      ? 1 + Math.sin(marker.group.userData.phase) * 0.08
+      : 0.72;
+    marker.group.visible = !marker.complete;
+    marker.group.scale.setScalar(pulse);
+    marker.group.traverse((child) => {
+      if (child.material?.emissiveIntensity !== undefined) {
+        child.material.emissiveIntensity = marker.active ? 0.75 : 0.22;
+      }
+    });
+  });
+  battlePickups.forEach((pickup) => {
+    pickup.cooldown = Math.max(0, pickup.cooldown - dt);
+    pickup.group.visible = pickup.cooldown <= 0;
+    pickup.group.rotation.y += dt * 1.9;
+  });
+}
+
+function recordGhostSample(dt) {
+  state.modeRun.zoneTimer += dt;
+  if (state.modeRun.zoneTimer >= 0.25) {
+    state.modeRun.zoneTimer = 0;
+    state.modeRun.ghost.push({
+      x: Number(player.position.x.toFixed(1)),
+      z: Number(player.position.z.toFixed(1)),
+      t: Number((getLevel().time - state.timeLeft).toFixed(2)),
+    });
+    state.modeRun.ghost = state.modeRun.ghost.slice(-90);
+  }
+}
+
+function updateBattlePickups() {
+  if (battlePickups.length === 0) return;
+  battlePickups.forEach((pickup) => {
+    if (pickup.cooldown > 0) return;
+    const distance = Math.hypot(
+      player.position.x - pickup.group.position.x,
+      player.position.z - pickup.group.position.z,
+    );
+    if (distance > pickup.radius) return;
+    state.modeRun.battlePickup = pickup.label;
+    state.modeRun.battlePickupTimer = 5;
+    pickup.cooldown = 8;
+    state.score += 120;
+    state.shield = Math.min(
+      1,
+      state.shield + (pickup.id === "shield" ? 0.45 : 0.18),
+    );
+    setEffectToast(pickup.label, { pulse: 0.28 });
+  });
+}
+
+function updateNonCampaignMode(dt) {
+  const mode = getModeDefinition();
+  if (isCampaignSurvivalMode() || isMaxMode()) return;
+  recordGhostSample(dt);
+  updateModeMarkerVisuals(dt);
+  state.modeRun.battlePickupTimer = Math.max(
+    0,
+    state.modeRun.battlePickupTimer - dt,
+  );
+  if (state.modeRun.battlePickupTimer === 0) state.modeRun.battlePickup = "";
+
+  if (mode.id === GAME_MODE_DRIFT_SCORE) {
+    if (input.drift && Math.abs(player.speed) > 18) {
+      const gain =
+        dt *
+        (60 + Math.abs(player.speed) * 0.9) *
+        Math.max(1, state.combo * 0.42);
+      state.modeRun.progress = Math.min(
+        mode.target,
+        state.modeRun.progress + gain,
+      );
+      state.score += gain * 0.35;
+    }
+    if (state.modeRun.progress >= mode.target) completeModeRun();
+    return;
+  }
+
+  if (mode.id === GAME_MODE_LAVA_FLOOR || mode.id === GAME_MODE_KING_ZONE) {
+    const zones = activeModeMarkers();
+    const activeZone = zones[0] ?? modeMarkers[0];
+    const inside = isInsideMarker(activeZone, 0);
+    if (inside) {
+      const driftBonus = input.drift ? 1.55 : 1;
+      state.modeRun.progress = Math.min(
+        mode.target,
+        state.modeRun.progress + dt * driftBonus,
+      );
+      state.score += dt * 18 * driftBonus;
+      if (mode.id === GAME_MODE_LAVA_FLOOR)
+        state.shield = Math.min(1, state.shield + dt * 0.035);
+    } else if (mode.id === GAME_MODE_LAVA_FLOOR) {
+      state.shield = Math.max(0, state.shield - dt * 0.09);
+      if (state.shield <= 0 && state.invincible <= 0) {
+        state.lastFailReason =
+          "The lava floor burned through your shield. Rotate earlier to the next safe zone.";
+        loseLife();
+        state.invincible = 1.4;
+      }
+    }
+    if (mode.id === GAME_MODE_LAVA_FLOOR) {
+      state.modeRun.bossWeakTimer += dt;
+      if (state.modeRun.bossWeakTimer > 7) {
+        state.modeRun.bossWeakTimer = 0;
+        const currentIndex = modeMarkers.findIndex((marker) => marker.active);
+        const nextIndex =
+          (currentIndex + 1 + modeMarkers.length) % modeMarkers.length;
+        modeMarkers.forEach((marker, index) => {
+          marker.active = index === nextIndex;
+        });
+        setEffectToast("Safe Zone Shift");
+      }
+    }
+    if (state.modeRun.progress >= mode.target) completeModeRun();
+    return;
+  }
+
+  if (mode.id === GAME_MODE_BATTLE) {
+    updateBattlePickups();
+    bots.forEach((bot) => {
+      const dist = bot.position.distanceTo(player.position);
+      if (
+        dist < 11 &&
+        (Math.abs(player.speed) > 32 || state.modeRun.battlePickupTimer > 0) &&
+        bot.aiBurstCooldown <= 0
+      ) {
+        bot.aiBurstCooldown = 1.4;
+        bot.speed *= 0.2;
+        bot.position.addScaledVector(
+          tempVector.copy(bot.position).sub(player.position).normalize(),
+          8,
+        );
+        completeModeMarker(
+          modeMarkers.find((marker) => marker.active) ??
+            modeMarkers[state.modeRun.markerIndex],
+          1,
+          state.modeRun.battlePickup ? 460 : 280,
+        );
+        setEffectToast(state.modeRun.battlePickup || "Bumper Tag", {
+          shake: 0.18,
+          pulse: 0.25,
+        });
+      }
+    });
+    if (state.modeRun.progress >= mode.target) completeModeRun();
+    return;
+  }
+
+  if (mode.id === GAME_MODE_BOOST_BOWLING) {
+    modeMarkers.forEach((marker) => {
+      if (
+        !marker.complete &&
+        isInsideMarker(marker, 1.5) &&
+        (Math.abs(player.speed) > 54 || input.boost || gamepadState.boost)
+      ) {
+        completeModeMarker(marker, 1, 360);
+      }
+    });
+    if (state.modeRun.progress >= mode.target) completeModeRun();
+    return;
+  }
+
+  if (mode.id === GAME_MODE_HUNTER_TAG) {
+    state.modeRun.tagCooldown = Math.max(0, state.modeRun.tagCooldown - dt);
+    if (state.modeRun.tagState === "it") {
+      const target =
+        bots[state.modeRun.taggedBotIndex % Math.max(1, bots.length)];
+      if (target && target.position.distanceTo(player.position) < 13) {
+        state.modeRun.tagState = "evader";
+        state.modeRun.tagCooldown = 1.2;
+        completeModeMarker(modeMarkers[state.modeRun.markerIndex], 1, 420);
+        setEffectToast("Hunter Tagged Back");
+      }
+    } else {
+      const marker = modeMarkers[state.modeRun.markerIndex];
+      if (isInsideMarker(marker, 2)) completeModeMarker(marker, 1, 300);
+    }
+    if (state.modeRun.progress >= mode.target) completeModeRun();
+    return;
+  }
+
+  if (mode.id === GAME_MODE_BOSS) {
+    const marker = modeMarkers[state.modeRun.markerIndex];
+    state.modeRun.bossWeakTimer = Math.max(0, state.modeRun.bossWeakTimer - dt);
+    state.modeRun.bossPhase = 1 + Math.floor(state.modeRun.progress);
+    if (isInsideMarker(marker, 3)) {
+      completeModeMarker(marker, 1, 520);
+      state.modeRun.bossWeakTimer = 2.4;
+      const boss = bots.find((bot) => bot.role === "boss") ?? bots[0];
+      if (boss) {
+        boss.speed *= 0.35;
+        boss.aiBurstCooldown = 2.4;
+      }
+      setEffectToast("Boss Weak Point");
+    }
+    if (state.modeRun.progress >= mode.target) completeModeRun();
+    return;
+  }
+
+  if (mode.id === GAME_MODE_TRICK_COMBO) {
+    state.modeRun.comboTimer = Math.max(0, state.modeRun.comboTimer - dt);
+    if ((input.drift && Math.abs(player.speed) > 24) || player.backflipActive) {
+      state.modeRun.comboTimer = 2.2;
+      state.modeRun.progress = Math.min(
+        mode.target,
+        state.modeRun.progress + dt * 1.15,
+      );
+      state.score += dt * 80 * Math.max(1, state.combo * 0.35);
+    } else if (state.modeRun.comboTimer <= 0) {
+      state.modeRun.progress = Math.max(0, state.modeRun.progress - dt * 0.8);
+    }
+    const marker = modeMarkers[state.modeRun.markerIndex];
+    if (isInsideMarker(marker, 2)) completeModeMarker(marker, 0.75, 240);
+    if (state.modeRun.progress >= mode.target) completeModeRun();
+    return;
+  }
+
+  const marker = modeMarkers[state.modeRun.markerIndex];
+  if (
+    isInsideMarker(
+      marker,
+      mode.id === GAME_MODE_RACE || mode.id === GAME_MODE_TIME_TRIAL ? 4 : 2,
+    )
+  ) {
+    const airBonus =
+      player.position.y > 0.3 || state.lastLandingGrade ? 1.25 : 1;
+    completeModeMarker(
+      marker,
+      1,
+      mode.id === GAME_MODE_RAMP_RUSH || mode.id === GAME_MODE_STUNT
+        ? 300 * airBonus
+        : 260,
+    );
+  }
+  if (state.modeRun.progress >= mode.target) completeModeRun();
+}
+
+function handleModeTimeExpired() {
+  const mode = getModeDefinition();
+  if (isCampaignSurvivalMode()) {
+    completeLevel();
+    return;
+  }
+  if (state.modeRun.progress >= state.modeRun.target) completeModeRun();
+  else failModeRun("Time expired before the mode objective was complete.");
+}
+
 function updateBoostPads(dt = 0.016) {
   const loadoutStats = state.playerLoadoutStats ?? computePlayerLoadoutStats();
   const deviceAssist = getDeviceAssistTuning();
@@ -8229,6 +9529,7 @@ function stepGame(dt) {
       updatePowerups(dt);
       updatePowerupCollisions();
       updateBoostPads(dt);
+      updateNonCampaignMode(dt);
     }
     updateFx(dt);
 
@@ -8253,9 +9554,7 @@ function stepGame(dt) {
       state.noBotsRecoveryTimer = 0;
     }
 
-    if (!isMaxMode() && state.timeLeft <= 0) {
-      completeLevel();
-    }
+    if (!isMaxMode() && state.timeLeft <= 0) handleModeTimeExpired();
     if (DEBUG_FLAGS.enabled && DEBUG_FLAGS.minimap) {
       state.minimapDebugTimer += dt;
       if (state.minimapDebugTimer > 0.5) {
@@ -8464,6 +9763,41 @@ function buildRadarSnapshot() {
         },
       );
     });
+    modeMarkers
+      .filter((marker) => !marker.complete)
+      .slice(0, 12)
+      .forEach((marker) => {
+        addRadarEntity(
+          entities,
+          metrics,
+          "marker",
+          marker.label ?? marker.kind ?? "objective",
+          marker.group.position.x,
+          marker.group.position.z,
+          0,
+          {
+            kindDetail: marker.kind,
+            active: marker.active,
+            priority: marker.active ? 76 : 42,
+          },
+        );
+      });
+    battlePickups
+      .filter((pickup) => pickup.cooldown <= 0)
+      .forEach((pickup) => {
+        addRadarEntity(
+          entities,
+          metrics,
+          "pickup",
+          pickup.label,
+          pickup.group.position.x,
+          pickup.group.position.z,
+          0,
+          {
+            priority: 64,
+          },
+        );
+      });
     boostPads.slice(0, 16).forEach((pad) => {
       addRadarEntity(
         entities,
@@ -8637,6 +9971,29 @@ function drawMinimap() {
     } else if (entity.kind === "powerup") {
       minimapCtx.fillStyle = "rgba(255, 213, 95, 0.94)";
       minimapCtx.fillRect(entity.x - 2.6, entity.y - 2.6, 5.2, 5.2);
+    } else if (entity.kind === "marker") {
+      minimapCtx.strokeStyle = entity.active
+        ? "rgba(255, 209, 122, 0.96)"
+        : "rgba(126, 255, 255, 0.68)";
+      minimapCtx.lineWidth = entity.active ? 2 : 1.2;
+      minimapCtx.beginPath();
+      minimapCtx.arc(
+        entity.x,
+        entity.y,
+        entity.active ? 4.8 : 3.6,
+        0,
+        Math.PI * 2,
+      );
+      minimapCtx.stroke();
+    } else if (entity.kind === "pickup") {
+      minimapCtx.fillStyle = "rgba(192, 255, 126, 0.94)";
+      minimapCtx.beginPath();
+      minimapCtx.moveTo(entity.x, entity.y - 4.2);
+      minimapCtx.lineTo(entity.x + 4.2, entity.y);
+      minimapCtx.lineTo(entity.x, entity.y + 4.2);
+      minimapCtx.lineTo(entity.x - 4.2, entity.y);
+      minimapCtx.closePath();
+      minimapCtx.fill();
     } else if (entity.kind === "boost") {
       drawRadarDot(minimapCtx, entity, "rgba(86, 233, 255, 0.74)", 2.1);
     }
@@ -8683,7 +10040,7 @@ function updateDebugHud() {
   const visible = settings.devMode && DEBUG_FLAGS.enabled;
   debugHud.hidden = !visible;
   if (!visible) return;
-  const mode = isMaxMode() ? "MAX" : "ID3.3";
+  const mode = getModeDefinition().label;
   const ballSummary =
     isMaxMode() && maxMode.ball
       ? `BALL ${maxMode.ball.position.x.toFixed(0)}, ${maxMode.ball.position.z.toFixed(0)}`
@@ -8750,8 +10107,21 @@ function updateMatchPanel() {
   }
 }
 
+function getModeHudStatus(mode = getModeDefinition()) {
+  if (isCampaignSurvivalMode()) return getLevel().name;
+  if (mode.id === GAME_MODE_HUNTER_TAG) {
+    return state.modeRun.tagState === "it" ? "Tag Back" : "Escape";
+  }
+  if (mode.id === GAME_MODE_BOSS) return `Phase ${state.modeRun.bossPhase}`;
+  if (mode.id === GAME_MODE_BATTLE)
+    return `Stocks ${state.modeRun.battleStocks}`;
+  const target = Math.max(1, state.modeRun.target || mode.target || 1);
+  return `${Math.floor(state.modeRun.progress)}/${Math.floor(target)}`;
+}
+
 function updateHud() {
   const level = getLevel();
+  const mode = getModeDefinition();
   if (isMaxMode()) {
     if (statusLabelNodes.length >= 2) {
       statusLabelNodes[0].textContent = "Boost";
@@ -8796,8 +10166,10 @@ function updateHud() {
       hudLabelNodes[4].textContent = "Speed";
       hudLabelNodes[5].textContent = "Lives";
     }
-    hudWorld.textContent = getWorld().name;
-    hudLevel.textContent = level.name;
+    hudWorld.textContent = isCampaignSurvivalMode()
+      ? getWorld().name
+      : mode.label;
+    hudLevel.textContent = getModeHudStatus(mode);
     hudScore.textContent = Math.floor(state.score).toString();
     hudSpeed.textContent = `${Math.round(Math.abs(player.speed) * SPEED_TO_MPH_MULT)} MPH`;
     renderLivesHud();
@@ -8815,7 +10187,11 @@ function updateHud() {
   hudTime.textContent = `${minutes}:${seconds}`;
   boostBar.style.width = `${Math.round(state.boost * 100)}%`;
   shieldBar.style.width = `${Math.round((isMaxMode() ? (player.maxHealth ?? MAX_HEALTH_MAX) / MAX_HEALTH_MAX : state.shield) * 100)}%`;
-  progressBar.style.width = `${Math.min(100, (1 - state.timeLeft / level.time) * 100)}%`;
+  const progressPercent =
+    isCampaignSurvivalMode() || isMaxMode()
+      ? Math.min(100, (1 - state.timeLeft / level.time) * 100)
+      : modeProgressPercent() * 100;
+  progressBar.style.width = `${progressPercent}%`;
   drawMinimap();
   updateDebugHud();
   updateBotHealthBars();
@@ -8915,6 +10291,35 @@ function handlePlayerHit(sourceBotId = -1) {
     state.campaignRisk.nearMisses - 0.6,
   );
   debugLog("hits", "detected", { sourceBotId, hitCount: state.hitCount });
+
+  if (
+    getModeDefinition().id === GAME_MODE_HUNTER_TAG &&
+    state.modeRun.tagState === "evader" &&
+    state.modeRun.tagCooldown <= 0
+  ) {
+    state.modeRun.tagState = "it";
+    state.modeRun.taggedBotIndex = Math.max(0, sourceBotId);
+    state.modeRun.tagCooldown = 1.4;
+    state.lastFailReason =
+      "You were tagged. Chase the marked hunter and tag them back to resume the escape.";
+    setEffectToast("You Are It - Tag a Hunter", { shake: 0.4, pulse: 0.3 });
+    state.invincible = 1.2;
+    return;
+  }
+
+  if (getModeDefinition().id === GAME_MODE_BATTLE) {
+    state.modeRun.battleStocks = Math.max(0, state.modeRun.battleStocks - 1);
+    state.lastFailReason =
+      "A bumper bot knocked a stock away. Grab Shield Bubble or Bumper Pulse before re-engaging.";
+    setEffectToast(`Stock Lost (${state.modeRun.battleStocks})`, {
+      shake: 0.42,
+      pulse: 0.28,
+    });
+    state.invincible = 1.3;
+    if (state.modeRun.battleStocks <= 0)
+      failModeRun("All arena stocks are gone.");
+    return;
+  }
 
   if (state.shield > 0.2) {
     state.shield = Math.max(
@@ -9124,12 +10529,18 @@ function showMessage(
 
 function completeLevel() {
   if (isMaxMode()) {
+    const { medal, xpGained } = awardModeProgression({ won: true });
     showMessage(
       "Blue Team Wins",
-      "Arena complete. Press Enter to replay.",
+      `Arena complete. ${medal} medal earned, +${xpGained} XP. Press Enter to replay.`,
       "Replay",
       "restart-current",
+      getModeResultRows(true),
     );
+    return;
+  }
+  if (!isCampaignSurvivalMode()) {
+    completeModeRun();
     return;
   }
   const world = getWorld();
@@ -9143,25 +10554,34 @@ function completeLevel() {
   state.worldIndex = currentWorld;
   state.levelIndex = currentLevel;
   const isLastLevel = state.levelIndex === world.levels.length - 1;
+  const { medal, xpGained } = awardModeProgression({ won: true });
   const runSummary = `Score ${Math.floor(state.score)}. Best chain x${state.bestCombo.toFixed(1)}. Near-miss streak ${state.bestNearMissStreak}. ${state.lastLandingGrade ? `${state.lastLandingGrade}. ` : ""}Press Enter for the next heat.`;
   if (isLastLevel) {
     const isLastWorld = state.worldIndex === worldData.length - 1;
     if (isLastWorld) {
       showMessage(
         "Champion Crowned",
-        `You outran every hunter. ${runSummary}`,
+        `You outran every hunter. ${medal} medal, +${xpGained} XP. ${runSummary}`,
         "Restart Saga",
+        "next",
+        getModeResultRows(true),
       );
     } else {
       showMessage(
         `World Cleared: ${world.name}`,
-        `New realm unlocked. ${runSummary}`,
+        `New realm unlocked. ${medal} medal, +${xpGained} XP. ${runSummary}`,
+        "Next Heat",
+        "next",
+        getModeResultRows(true),
       );
     }
   } else {
     showMessage(
       `Level Cleared: ${level.name}`,
-      `Momentum locked. ${runSummary}`,
+      `Momentum locked. ${medal} medal, +${xpGained} XP. ${runSummary}`,
+      "Next Heat",
+      "next",
+      getModeResultRows(true),
     );
   }
 }
@@ -9564,17 +10984,15 @@ touchScaleSelect?.addEventListener("change", (event) => {
   savePersistentState();
 });
 
-gameCards.forEach((card) => {
-  bindPressAction(card, () => {
-    const nextMode = card.dataset.gameMode;
-    setActiveGameMode(nextMode, { save: true, reset: state.running });
-    setActiveTab("games");
-    setEffectToast(
-      nextMode === GAME_MODE_MAX1 || nextMode === GAME_MODE_RISK
-        ? "Max Arena Ready"
-        : "Campaign Ready",
-    );
-  });
+modeBoard?.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const card = target?.closest("[data-game-mode]");
+  if (!card) return;
+  const nextMode = card.dataset.gameMode;
+  const mode = getModeDefinition(nextMode);
+  setActiveGameMode(nextMode, { save: true, reset: state.running });
+  setActiveTab("games");
+  setEffectToast(`${mode.label} Ready`);
 });
 
 difficultySelect.addEventListener("change", (event) => {
@@ -9989,11 +11407,23 @@ window.render_game_to_text = () => {
   const currentCustomization = getCurrentCustomization();
   const dims = getMaxArenaDimensions();
   const radarSnapshot = buildRadarSnapshot().snapshot;
+  const mode = getModeDefinition();
   const activeTab =
     document.querySelector(".tab-btn.active")?.dataset.tab ?? "";
   const activeScreen = getUiScreen();
+  const publicModeId = getPublicModeId(mode);
   const payload = {
-    mode: isMaxMode() ? GAME_MODE_MAX1 : GAME_MODE_ID33,
+    mode: publicModeId,
+    modeInfo: {
+      id: publicModeId,
+      label: mode.label,
+      category: mode.category,
+      objective: mode.objective,
+      progress: Number(state.modeRun.progress.toFixed(2)),
+      target: state.modeRun.target || mode.target || getLevel().time,
+      medalPreview: mode.medal,
+      rewardPreview: mode.reward,
+    },
     note: "origin center, +x right, +z north/forward, +y up",
     running: state.running,
     replay: maxMode.replayActive,
@@ -10078,6 +11508,35 @@ window.render_game_to_text = () => {
       })),
     },
     radar: radarSnapshot,
+    markers: modeMarkers.map((marker) => ({
+      kind: marker.kind,
+      label: marker.label,
+      active: marker.active,
+      complete: marker.complete,
+      x: Number(marker.group.position.x.toFixed(2)),
+      z: Number(marker.group.position.z.toFixed(2)),
+    })),
+    track: {
+      checkpoints: modeMarkers.filter((marker) => marker.kind === "checkpoint")
+        .length,
+      nextIndex: state.modeRun.markerIndex,
+      progress: Number(modeProgressPercent().toFixed(3)),
+    },
+    ghost: {
+      samples: state.modeRun.ghost.length,
+      bestSamples: state.modeRun.bestGhost?.length ?? 0,
+    },
+    battlePickups: battlePickups.map((pickup) => ({
+      id: pickup.id,
+      label: pickup.label,
+      ready: pickup.cooldown <= 0,
+    })),
+    hunterTagState: {
+      state: state.modeRun.tagState,
+      cooldown: Number(state.modeRun.tagCooldown.toFixed(2)),
+      taggedBotIndex: state.modeRun.taggedBotIndex,
+    },
+    bossPhase: state.modeRun.bossPhase,
     camera: {
       distance: Number(state.cameraTelemetry.distance.toFixed(2)),
       height: Number(state.cameraTelemetry.height.toFixed(2)),
@@ -10133,6 +11592,13 @@ window.render_game_to_text = () => {
       levelIndex: state.levelIndex,
       world: getWorld().name,
       level: getLevel().name,
+      levelNumber: state.progressionV2.level,
+      xp: state.progressionV2.xp,
+      medals: state.progressionV2.medals,
+      personalBests: state.progressionV2.personalBests,
+      daily: state.progressionV2.daily,
+      weekly: state.progressionV2.weekly,
+      rewardLog: state.progressionV2.rewardLog.slice(-6),
     },
     online: {
       status: "offline-static",
@@ -10235,6 +11701,45 @@ window.__infernodriftTestApi = {
     return { layout: settings.touchLayout, scale: settings.touchScale };
   },
   setControlBinding: (actionId, code) => setPrimaryBinding(actionId, code),
+  getModeCatalog: () =>
+    MODE_CATALOG.map((mode) => ({ ...mode, id: getPublicModeId(mode) })),
+  selectMode: (modeId) => {
+    setActiveGameMode(modeId, { save: false, reset: false });
+    const mode = getModeDefinition();
+    return { ...mode, id: getPublicModeId(mode) };
+  },
+  startMode: (modeId) => {
+    setActiveGameMode(modeId, { save: false, reset: false });
+    startRun(true);
+    const mode = getModeDefinition();
+    return { ...mode, id: getPublicModeId(mode) };
+  },
+  completeModeObjective: () => {
+    if (isMaxMode()) scoreMaxGoal("blue");
+    else if (isCampaignSurvivalMode()) completeLevel();
+    else completeModeRun();
+    return {
+      mode: getPublicModeId(),
+      progression: state.progressionV2,
+      screen: getUiScreen(),
+    };
+  },
+  failModeObjective: (reason = "Test fail") => {
+    failModeRun(reason);
+    return {
+      mode: getPublicModeId(),
+      progression: state.progressionV2,
+      screen: getUiScreen(),
+    };
+  },
+  getProgressionSnapshot: () => structuredClone(state.progressionV2),
+  resetLocalProgressionForTest: () => {
+    state.progressionV2 = createProgressionV2();
+    savePersistentState();
+    renderProgressPanel();
+    refreshGamesUi();
+    return structuredClone(state.progressionV2);
+  },
 };
 
 loadPersistentState();

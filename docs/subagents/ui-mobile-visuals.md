@@ -1,6 +1,6 @@
 # UI / Mobile / Visuals Subagent Report
 
-Current UI/visual direction is the static ID3 cockpit surface, cleaned without replacing the game:
+Current UI/visual direction is the static InfernoDrift4 cockpit surface, cleaned without replacing the game:
 
 - Active HUD, radar, menu, garage, and touch controls live in root `index.html`, `style.css`, and `script.js`.
 - HUD should stay compact while driving and keep the center playfield clear.

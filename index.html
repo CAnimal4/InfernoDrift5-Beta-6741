@@ -97,14 +97,14 @@
 
       <div class="overlay show" id="overlay">
         <div class="panel">
-          <div class="overlay-kicker">ID3 Handling, ID4 Heat</div>
+          <div class="overlay-kicker">InfernoDrift4 Handling, Full InfernoDrift4 Heat</div>
           <h1>InfernoDrift4</h1>
           <p class="subtitle" id="overlay-subtitle">
             Free-roam survival racers. Drift through neon arenas, grab powerups, launch off ramps,
             and stay ahead of relentless hunter bots.
           </p>
           <div class="cta-row">
-            <button class="primary" id="start-btn">Start ID4 Run</button>
+            <button class="primary" id="start-btn">Start InfernoDrift4 Run</button>
             <button class="ghost" id="tutorial-btn">Quick Tips</button>
           </div>
           <div class="overlay-notes">
@@ -151,23 +151,8 @@
           </div>
           <div class="menu-content" id="menu-content">
             <section class="tab-panel active" id="tab-games">
-              <p class="hint">Pick the ruleset you want to play. ID4 keeps the 3.3 survival feel and builds from it.</p>
-              <div class="games-grid">
-                <button class="game-card active" id="game-card-id33" data-game-mode="infernodrift33" type="button">
-                  <img src="output/imagegen/infernodrift33-card.svg" alt="InfernoDrift 3.3 card art" />
-                  <div class="game-card-copy">
-                    <strong>Campaign Survival</strong>
-                    <span>InfernoDrift 3.3 Classic: survival drifting, hunters, ramps, powerups, and quick restarts.</span>
-                  </div>
-                </button>
-                <button class="game-card" id="game-card-max1" data-game-mode="infernodriftmax1" type="button">
-                  <img src="output/imagegen/infernodriftmax1-card.svg" alt="InfernoDriftMax 1 card art" />
-                  <div class="game-card-copy">
-                    <strong>Max Arena</strong>
-                    <span>Ball, teams, goal replays, readable roles, and ID3-style handling in a tighter arena.</span>
-                  </div>
-                </button>
-              </div>
+              <p class="hint">Pick a run. Every mode keeps the same InfernoDrift4 driving feel, then changes the objective.</p>
+              <div class="mode-board" id="mode-board" aria-label="Offline mode board"></div>
               <div class="mode-brief" id="mode-brief"></div>
             </section>
             <section class="tab-panel" id="tab-customize">

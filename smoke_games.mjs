@@ -31,7 +31,7 @@ await page.waitForTimeout(800);
 const campaignState = JSON.parse(
   await page.evaluate(() => window.render_game_to_text()),
 );
-assert.equal(campaignState.mode, "infernodrift33");
+assert.equal(campaignState.mode, "campaign-survival");
 assert.equal(campaignState.running, true);
 assert.equal(campaignState.player.demolished, false);
 assert.ok(campaignState.bots.length >= 4);
@@ -123,6 +123,11 @@ assert.match(
 
 await page.locator("#games-tab-btn").click({ force: true });
 assert.equal(await page.locator("#games-tab-btn").isHidden(), false);
+await page.screenshot({
+  path: "output/playwright/phase3-play-board.png",
+  fullPage: false,
+  timeout: 30000,
+});
 await domClick(page, "#game-card-max1");
 await page.waitForTimeout(300);
 await page.keyboard.press("Escape");
@@ -132,7 +137,7 @@ await page.evaluate(() => window.advanceTime(900));
 const maxState = JSON.parse(
   await page.evaluate(() => window.render_game_to_text()),
 );
-assert.equal(maxState.mode, "infernodriftmax1");
+assert.equal(maxState.mode, "max-arena");
 assert.ok(maxState.ball);
 assert.ok(maxState.bots.some((bot) => bot.team === "red"));
 assert.ok(maxState.bots.some((bot) => bot.team === "blue"));
@@ -156,8 +161,77 @@ await page.waitForTimeout(700);
 const restoredState = JSON.parse(
   await page.evaluate(() => window.render_game_to_text()),
 );
-assert.equal(restoredState.mode, "infernodrift33");
+assert.equal(restoredState.mode, "campaign-survival");
 assert.equal(restoredState.ball, null);
+
+const requiredModes = [
+  "campaign-survival",
+  "max-arena",
+  "race",
+  "time-trial",
+  "stunt-park",
+  "hunter-tag",
+  "boss-chase",
+  "drift-score",
+  "battle-arena",
+  "ramp-rush",
+  "boost-bowling",
+  "lava-floor",
+  "king-zone",
+  "trick-combo",
+  "bot-escape",
+];
+const catalog = await page.evaluate(() =>
+  window.__infernodriftTestApi.getModeCatalog(),
+);
+assert.deepEqual(
+  requiredModes.every((modeId) => catalog.some((mode) => mode.id === modeId)),
+  true,
+);
+
+for (const modeId of requiredModes) {
+  const state = await page.evaluate((id) => {
+    window.__infernodriftTestApi.startMode(id);
+    window.advanceTime(420);
+    return JSON.parse(window.render_game_to_text());
+  }, modeId);
+  assert.equal(state.mode, modeId);
+  assert.equal(state.running, true);
+  assert.ok(state.modeInfo.label);
+  assert.ok(state.modeInfo.objective);
+  assert.ok(state.modeInfo.rewardPreview);
+  assert.ok(state.progression.levelNumber >= 1);
+  if (modeId !== "campaign-survival" && modeId !== "max-arena") {
+    assert.ok(
+      state.markers.length > 0 || state.battlePickups.length > 0,
+      `${modeId} should expose local objectives`,
+    );
+  }
+}
+
+const phase3Result = await page.evaluate(() => {
+  window.__infernodriftTestApi.startMode("race");
+  window.advanceTime(120);
+  return window.__infernodriftTestApi.completeModeObjective();
+});
+assert.equal(phase3Result.screen, "results");
+assert.equal(
+  await page
+    .locator("#message")
+    .evaluate((el) => el.classList.contains("show")),
+  true,
+);
+const phase3Progress = await page.evaluate(() =>
+  window.__infernodriftTestApi.getProgressionSnapshot(),
+);
+assert.ok(phase3Progress.xp > 0);
+assert.ok(phase3Progress.personalBests.race);
+await page.waitForTimeout(1500);
+await page.screenshot({
+  path: "output/playwright/phase3-results.png",
+  fullPage: false,
+  timeout: 30000,
+});
 
 await page.screenshot({
   path: "output/playwright/games-smoke.png",

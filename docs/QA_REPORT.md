@@ -1,6 +1,6 @@
 # QA Report
 
-Updated for the ID3-first static launch rescue.
+Updated for the InfernoDrift4 static launch rescue.
 
 ## Current Source Under Test
 

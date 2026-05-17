@@ -500,7 +500,9 @@ export function App() {
   const driftPercent = Math.round(clamp(carSpec.drift * 74, 12, 100));
   const airPercent = Math.round(clamp(carSpec.air * 70, 12, 100));
   const modeFamily =
-    activeMeta.baseMode === "infernodriftmax1" ? "Max circuit" : "ID4 circuit";
+    activeMeta.baseMode === "infernodriftmax1"
+      ? "Max circuit"
+      : "InfernoDrift4 circuit";
   const menuStatus =
     game.machine === "paused"
       ? "Paused"
@@ -859,10 +861,10 @@ export function App() {
                     onClick={() => beginMode("campaign")}
                     type="button"
                   >
-                    <em>ID4 mainline</em>
+                    <em>InfernoDrift4 mainline</em>
                     <strong>Campaign Survival</strong>
                     <span>
-                      World progression, Risk hunters, bosses, medals.
+                      World progression, adaptive hunters, bosses, medals.
                     </span>
                   </button>
                   <button

@@ -32,4 +32,4 @@ for (const file of ["infernodrift33-card.svg", "infernodriftmax1-card.svg"]) {
 }
 
 fs.writeFileSync(path.join(dist, ".nojekyll"), "");
-console.log("Built InfernoDrift4 ID3-derived static site to dist/");
+console.log("Built InfernoDrift4 static site to dist/");

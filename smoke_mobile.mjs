@@ -48,7 +48,7 @@ const touchUserSelect = await page
     return `${style.userSelect}/${style.webkitUserSelect}`;
   });
 
-assert.equal(state.mode, "infernodrift33");
+assert.equal(state.mode, "campaign-survival");
 assert.equal(state.running, true);
 assert.equal(state.player.demolished, false);
 assert.equal(overlayClass, "overlay");

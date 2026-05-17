@@ -1,10 +1,10 @@
 # Baseline Subagent Report
 
-The active baseline is the root static ID3-derived game in this repository. Preserve these strengths:
+The active baseline is the root static InfernoDrift4 game in this repository. Preserve these strengths:
 
 - Readable car scale and close third-person camera.
 - Ground speed/reference lines for motion and speed feel.
-- InfernoDrift 3.3 campaign survival with hunter pressure.
+- InfernoDrift4 campaign survival with hunter pressure.
 - Max Arena with ball, goals, teams, bot roles, health, lunges, and replay.
 - Garage/customization, dev tools, radar, touch layouts, local saves, and deterministic test hooks.
 

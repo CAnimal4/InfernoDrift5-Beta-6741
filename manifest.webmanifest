@@ -1,6 +1,6 @@
 {
   "name": "InfernoDrift4",
-  "short_name": "ID4",
+  "short_name": "InfernoDrift4",
   "description": "Neon-fire survival drifting evolved from the current InfernoDrift.",
   "start_url": "./index.html",
   "display": "standalone",

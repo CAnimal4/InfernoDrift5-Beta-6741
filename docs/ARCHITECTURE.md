@@ -1,8 +1,8 @@
 # Architecture
 
-InfernoDrift4 currently ships the ID3-derived static game from the repository root. The active launch files are `index.html`, `script.js`, `style.css`, static icons, and `scripts/build-site.mjs`.
+InfernoDrift4 currently ships the restored static game from the repository root. The active launch files are `index.html`, `script.js`, `style.css`, static icons, and `scripts/build-site.mjs`.
 
-The previous React/Vite/TypeScript work remains in `client/` and `packages/` as reference/scaffolding. It is not the launch surface and must not replace the static game unless a future parity gate proves it is at least as fun, readable, and stable as the ID3-derived build.
+The previous React/Vite/TypeScript work remains in `client/` and `packages/` as reference/scaffolding. It is not the launch surface and must not replace the static game unless a future parity gate proves it is at least as fun, readable, and stable as the restored InfernoDrift4 build.
 
 ## Static Client
 
@@ -21,7 +21,7 @@ The previous React/Vite/TypeScript work remains in `client/` and `packages/` as 
 
 The static runtime includes the current real game systems:
 
-- ID3.3-style Campaign Survival with worlds, levels, hunters, ramps, boost pads, powerups, local saves, and unlock-gated customization.
+- InfernoDrift4-style Campaign Survival with worlds, levels, hunters, ramps, boost pads, powerups, local saves, and unlock-gated customization.
 - Max Arena with teams, ball physics, goals, bot roles, lunges, health, goal replay, ball cam, and match stats.
 - Forward-relative radar: top means in front of the car, left means car-left, right means car-right, and edge icons show off-radar threats.
 - Unobtrusive name tags for real remote/human players only. Bots remain unlabeled.

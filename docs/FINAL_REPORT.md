@@ -1,6 +1,6 @@
 # Final Report
 
-Status: active work is the ID3-first static launch rescue. The current shipped game is the root `index.html`, `script.js`, and `style.css` build, not the rejected React/Vite rewrite.
+Status: active work is the InfernoDrift4 static launch rescue. The current shipped game is the root `index.html`, `script.js`, and `style.css` build, not the rejected React/Vite rewrite.
 
 ## URLs
 
@@ -11,8 +11,8 @@ Status: active work is the ID3-first static launch rescue. The current shipped g
 ## Current Implementation Summary
 
 - Root static files are the launch surface and `npm run build:web` copies them into `dist/`.
-- Visible product identity now uses InfernoDrift4 while preserving ID3.3 mode DNA.
-- Campaign Survival keeps the readable ID3 drift-survival loop: close camera, ground speed/reference lines, hunters, ramps, boost pads, powerups, touch controls, quick restarts, local save, and customization unlocks.
+- Visible product identity now uses InfernoDrift4 while preserving the base mode DNA.
+- Campaign Survival keeps the readable InfernoDrift4 drift-survival loop: close camera, ground speed/reference lines, hunters, ramps, boost pads, powerups, touch controls, quick restarts, local save, and customization unlocks.
 - Max Arena remains real local gameplay with ball physics, teams, bot roles, health, lunges, score, goal replay, and ball cam.
 - The radar has been rebuilt as a clean forward-relative tactical radar where top is in front, left is car-left, right is car-right, and edge icons indicate off-radar threats.
 - `render_game_to_text()` now reports UI screen, radar projections, progression, and honest offline/static online status.
@@ -21,6 +21,9 @@ Status: active work is the ID3-first static launch rescue. The current shipped g
 - Controls Phase 2 is active: `X` remains jump/in-air trick, `B` is the alternate backflip/trick key, keyboard remapping persists, touch presets/scale are configurable, controller status is visible, and standard Gamepad API controls are mapped.
 - `C` is reserved for backend-backed chat.
 - Remote human username tags are available through the test/API layer for real players only and remain unobtrusive.
+- Phase 3 offline expansion is active: the Play board exposes Campaign, Arena, Speed, Tricks, Chase, and Minigames groups with Campaign Survival, Max Arena, Race, Time Trial, Stunt Park, Hunter Tag, Boss Chase, Drift Score Attack, Battle Arena, Ramp Rush, Boost Bowling, Lava Floor, King of the Zone, Trick Combo, and Bot Escape.
+- Mode runs now use local objectives and scene objects: checkpoint tracks, ghost samples, stunt/ramp gates, drift zones, Hunter Tag role switching, boss phases, safe zones, king zones, boosted bowling targets, and kid-friendly battle pickups.
+- Local progression now uses `progressionV2` with XP, levels, medals, personal bests, ghost samples, daily/weekly challenge seeds, reward log, save migration defaults, and a Progress "Run Board".
 
 ## Backend Status
 
@@ -30,9 +33,9 @@ Status: active work is the ID3-first static launch rescue. The current shipped g
 
 ## Required Verification Before Release Sign-Off
 
-Latest verification run on 2026-05-16:
+Latest verification run on 2026-05-17:
 
-- `node --check script.js`: passed.
+- `node --check script.js`: covered by `npm run typecheck` and passed.
 - `npm run typecheck`: passed.
 - `npm test`: passed, 22 tests.
 - `npm run build`: passed.
@@ -50,10 +53,16 @@ Latest Phase 2 local visual smoke:
 - `output/phase2/garage.png`: Garage preview bay renders a nonblank car with loadouts and class summary.
 - `output/phase2/controls.png`: remap/touch/controller UI fits inside the scroll-safe menu.
 
+Latest Phase 3 local visual smoke:
+
+- `output/playwright/phase3-play-board.png`: visible mode board grouped by purpose with no buried required mode.
+- `output/playwright/phase3-results.png`: structured Race result screen with medal, XP, objective, best chain, and reward preview.
+- `output/playwright/mobile-landscape-smoke.png`: phone landscape HUD/radar/touch layout remains playable.
+
 Latest Pages smoke:
 
 - `https://canimal4.github.io/InfernoDrift4/?v=f5e23a7`: HTTP 200.
-- Served the static ID3-first game with `script.js`; no React/Vite bundle detected.
+- Served the static InfernoDrift4 game with `script.js`; no React/Vite bundle detected.
 - Browser smoke started Campaign Survival, confirmed `running: true`, `product: InfernoDrift4`, `radarMode: forward-relative`, `online: offline-static`, and no page errors.
 
 For Cloudflare work:
@@ -68,7 +77,7 @@ Hosted online remains blocked until a real Worker URL passes the hosted smoke an
 
 ## Known Limitations
 
-- The full offline mode list and six minigames are not all implemented in the static launch surface yet.
+- Online/social remains local-only or backend-gated in this phase; the static game is honest about offline status.
 - Keyboard remapping and controller support are implemented for the static launch surface, but physical controller QA still depends on browser/device availability.
 - Audio runtime and dynamic music are not complete.
 - Hosted online requires Cloudflare credentials, deployment, and verification.
