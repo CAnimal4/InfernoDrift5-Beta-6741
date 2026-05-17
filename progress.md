@@ -63,3 +63,15 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Fixed the radar projection sign so objects in front of the car report as front/top, then added smoke assertions for front and car-left projections.
 - Verification passed: `node --check script.js`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run format`, `npm run worker:check`, and `npm run worker:types`.
 - Pushed rescue commit `f5e23a7`; GitHub Actions CI, Pages deploy, and Pages build/deployment completed successfully. Production smoke at `https://canimal4.github.io/InfernoDrift4/?v=f5e23a7` served the static game and started Campaign Survival with no page errors.
+
+2026-05-16 Phase 2 UI/Garage pass:
+
+- Kept the root static ID3-first game as the launch product and revamped the UI layer without touching the core Phase 1 driving loop.
+- Split the HUD into compact run/vehicle clusters, removed effect text from persistent HUD labels, and added a transient toast layer for combo, landing, boost, and warning feedback.
+- Rebuilt the pause/menu shell into focused actions plus Play, Garage, Progress, Settings, Controls, and Help tabs.
+- Added structured result stats for score, best chain, near-miss streak, landing grade, clock, and next-run hook.
+- Added a real Three.js Garage preview bay using the existing procedural car visual path, with drag rotation, zoom/reset controls, three local loadouts, car class summaries, and migration from the old flat customization save.
+- Added keyboard remapping with duplicate-primary rejection, touch layout/scale presets, controller status, and a standard Gamepad API path. `X` remains jump/in-air trick and `B` is the alternate backflip/trick key.
+- Extended `render_game_to_text()` and `__infernodriftTestApi` with Phase 2 UI, garage, control binding, touch layout, controller, and preview-state fields.
+- Local Phase 2 screenshots reviewed: `output/phase2/campaign-hud.png`, `output/phase2/menu-play.png`, `output/phase2/garage.png`, and `output/phase2/controls.png`.
+- Validation so far: `node --check script.js`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, and `npm run smoke:online-local` passed. Headless WebGL emitted expected `ReadPixels` warnings only.

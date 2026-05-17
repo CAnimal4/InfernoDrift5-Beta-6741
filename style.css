@@ -139,13 +139,33 @@ canvas {
   right: 24px;
   top: var(--hud-top);
   display: flex;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: nowrap;
   gap: 8px;
   text-align: left;
   z-index: 5;
   font-size: 0.9rem;
   transform: scale(var(--hud-scale));
   transform-origin: top left;
+}
+
+.hud-cluster {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.hud-cluster-run {
+  justify-content: flex-start;
+  max-width: min(62vw, 760px);
+}
+
+.hud-cluster-drive {
+  justify-content: flex-end;
+  max-width: min(54vw, 660px);
 }
 
 .hud .pill {
@@ -198,6 +218,10 @@ body.playing .hud .pill {
 
 body.playing .hud .label {
   opacity: 0.62;
+}
+
+body.playing .hud {
+  opacity: 0.94;
 }
 
 .hud .menu-btn {
@@ -264,6 +288,34 @@ body.playing .hud .label {
   backdrop-filter: blur(10px);
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.24);
   white-space: pre-line;
+}
+
+.effect-toast {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--hud-top) + 46px);
+  z-index: 7;
+  max-width: min(44vw, 420px);
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 209, 122, 0.24);
+  border-radius: 999px;
+  background: rgba(7, 13, 22, 0.58);
+  color: #fff2ca;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -6px) scale(0.98);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.effect-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
 }
 
 .match-panel {
@@ -395,6 +447,14 @@ body.max-mode .hud strong {
   pointer-events: auto;
 }
 
+body:has(#message.show) .hud,
+body:has(#message.show) .progress,
+body:has(#message.show) .minimap-wrap,
+body:has(#message.show) .match-panel,
+body:has(#message.show) .remote-name-layer {
+  opacity: 0.18;
+}
+
 body:has(#overlay.show) .hud,
 body:has(#overlay.show) .progress,
 body:has(#overlay.show) .status,
@@ -506,7 +566,8 @@ body:has(#overlay.show) .remote-name-layer {
 }
 
 .menu-panel {
-  max-width: 680px;
+  max-width: 860px;
+  width: min(94vw, 860px);
   text-align: left;
   max-height: min(88vh, 920px);
   display: flex;
@@ -521,6 +582,25 @@ body:has(#overlay.show) .remote-name-layer {
   gap: 16px;
 }
 
+.menu-header h2 {
+  margin-bottom: 0;
+}
+
+.menu-header .overlay-kicker {
+  margin: 0 0 8px;
+}
+
+.menu-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0 4px;
+  padding: 10px;
+  border: 1px solid rgba(126, 178, 255, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
 .menu-tabs {
   display: flex;
   gap: 10px;
@@ -530,11 +610,19 @@ body:has(#overlay.show) .remote-name-layer {
 }
 
 .menu-content {
+  position: relative;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: 8px;
+  padding: 2px 10px 18px 0;
   min-height: 0;
   scrollbar-width: thin;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 16px,
+    #000 calc(100% - 18px),
+    transparent 100%
+  );
 }
 
 .menu-content::-webkit-scrollbar {
@@ -571,6 +659,29 @@ body:has(#overlay.show) .remote-name-layer {
 
 .tab-panel.active {
   display: grid;
+}
+
+.mode-brief,
+.garage-class-summary,
+.controller-card {
+  padding: 12px 14px;
+  border: 1px solid rgba(126, 178, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  line-height: 1.38;
+}
+
+.mode-brief strong,
+.garage-class-summary strong {
+  display: block;
+  color: var(--ink);
+  margin-bottom: 3px;
+}
+
+.mode-brief span,
+.garage-class-summary span {
+  color: var(--muted);
 }
 
 .field {
@@ -726,6 +837,70 @@ body:has(#overlay.show) .remote-name-layer {
   align-items: start;
 }
 
+.garage-shell {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.05fr) minmax(220px, 0.95fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.garage-preview-card,
+.garage-controls {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(126, 178, 255, 0.16);
+  border-radius: 18px;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 21, 30, 0.96),
+    rgba(9, 13, 20, 0.84)
+  );
+}
+
+.garage-preview {
+  position: relative;
+  min-height: clamp(220px, 34vh, 340px);
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(126, 255, 255, 0.18);
+  background:
+    radial-gradient(
+      circle at 50% 72%,
+      rgba(255, 118, 62, 0.24),
+      transparent 28%
+    ),
+    linear-gradient(180deg, rgba(10, 18, 30, 0.98), rgba(3, 7, 12, 0.92));
+  touch-action: none;
+}
+
+.garage-preview canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.garage-preview-actions,
+.loadout-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.loadout-slot {
+  flex: 1 1 120px;
+  min-width: 0;
+  justify-content: center;
+}
+
+.loadout-slot.active {
+  border-color: rgba(255, 209, 122, 0.72);
+  background: linear-gradient(
+    120deg,
+    rgba(255, 118, 62, 0.22),
+    rgba(86, 233, 255, 0.16)
+  );
+}
+
 .custom-column {
   min-width: 0;
   padding: 16px;
@@ -783,6 +958,49 @@ body:has(#overlay.show) .remote-name-layer {
     rgba(14, 20, 30, 0.94),
     rgba(9, 13, 20, 0.82)
   );
+}
+
+.progress-grid,
+.control-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.progress-card,
+.remap-row {
+  padding: 12px 14px;
+  border: 1px solid rgba(126, 178, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  display: grid;
+  gap: 6px;
+}
+
+.progress-card strong,
+.remap-row strong {
+  color: var(--ink);
+}
+
+.progress-card span,
+.remap-row span {
+  color: var(--muted);
+}
+
+.remap-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.remap-button {
+  justify-self: start;
+  min-width: 118px;
+}
+
+.remap-button.listening {
+  border-color: rgba(255, 209, 122, 0.8);
+  color: #111;
+  background: linear-gradient(120deg, var(--heat), var(--cool));
 }
 
 .custom-stat {
@@ -861,6 +1079,33 @@ h2 {
   max-width: 31rem;
   margin-left: auto;
   margin-right: auto;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 20px;
+}
+
+.result-stat {
+  padding: 10px 12px;
+  border: 1px solid rgba(126, 178, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  text-align: left;
+}
+
+.result-stat span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.result-stat strong {
+  color: var(--ink);
 }
 
 .cta-row {
@@ -1104,8 +1349,8 @@ body.playing .minimap-title {
 
 body.device-tablet {
   --stack-gap: 22px;
-  --minimap-top: calc(var(--hud-top) + 58px);
-  --minimap-size: 162px;
+  --minimap-top: calc(var(--hud-top) + 52px);
+  --minimap-size: 148px;
   --touch-scale: 1.03;
   --touch-stick-size: 150px;
   --touch-knob-size: 62px;
@@ -1138,8 +1383,8 @@ body.device-phone {
   --progress-top: 16px;
   --progress-height: 8px;
   --stack-gap: 18px;
-  --minimap-top: calc(var(--hud-top) + 74px);
-  --minimap-size: 112px;
+  --minimap-top: calc(var(--hud-top) + 58px);
+  --minimap-size: 96px;
   --touch-scale: 0.84;
   --touch-stick-size: 118px;
   --touch-knob-size: 50px;
@@ -1158,10 +1403,19 @@ body.device-phone .hud {
   left: 10px;
   right: 10px;
   gap: 5px;
+  flex-wrap: nowrap;
 }
 
-body.device-phone .hud .status {
+body.device-phone .hud-cluster {
   gap: 5px;
+}
+
+body.device-phone .hud-cluster-run {
+  max-width: 57vw;
+}
+
+body.device-phone .hud-cluster-drive {
+  max-width: 44vw;
 }
 
 body.device-phone .hud .status .pill {
@@ -1171,6 +1425,13 @@ body.device-phone .hud .status .pill {
 
 body.device-phone .bar {
   width: 74px;
+}
+
+body.device-phone .effect-toast {
+  top: calc(var(--hud-top) + 42px);
+  max-width: 50vw;
+  padding: 6px 10px;
+  font-size: 0.72rem;
 }
 
 body.device-phone .minimap-wrap {
@@ -1194,9 +1455,17 @@ body.device-phone .debug-hud {
 body.device-phone .custom-layout,
 body.device-phone .custom-grid,
 body.device-phone .custom-stats,
+body.device-phone .garage-shell,
+body.device-phone .progress-grid,
+body.device-phone .control-layout,
+body.device-phone .result-grid,
 body.device-phone .dev-tools-grid,
 body.device-phone .games-grid {
   grid-template-columns: 1fr;
+}
+
+body.device-phone .garage-preview {
+  min-height: 190px;
 }
 
 body.device-tablet .menu-panel {
@@ -1204,8 +1473,28 @@ body.device-tablet .menu-panel {
   padding: 22px 20px;
 }
 
-body.device-tablet .custom-stats {
+body.device-tablet .custom-stats,
+body.device-tablet .garage-shell,
+body.device-tablet .progress-grid,
+body.device-tablet .control-layout {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+body.touch-layout-compact .touch-buttons {
+  gap: 8px;
+}
+
+body.touch-layout-compact .touch-controls button {
+  min-width: 92px;
+}
+
+body.touch-layout-lefty {
+  --touch-controls-left: 18px;
+  --touch-controls-right: 18px;
+}
+
+body.touch-layout-lefty .touch-controls {
+  flex-direction: row-reverse;
 }
 
 body.device-phone .overlay .panel .subtitle {

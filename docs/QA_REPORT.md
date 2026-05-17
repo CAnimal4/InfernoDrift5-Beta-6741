@@ -38,6 +38,22 @@ Phase 1 completion verification, run on 2026-05-16:
   - `output/playwright/phase1-live-max.png`
   - `output/playwright/mobile-landscape-smoke.png`
 
+Phase 2 UI/Garage verification, run on 2026-05-16:
+
+- HUD is split into compact run and vehicle clusters with the center playfield clear.
+- Pause/menu now opens to focused Resume, Restart Run, Garage, and Settings actions.
+- Results use structured stats instead of only a long generic message paragraph.
+- Menu hierarchy is Play, Garage, Progress, Settings, Controls, Help, with scroll affordance in long panels.
+- Garage includes a real lightweight Three.js preview bay with rotate/zoom/reset controls.
+- Garage supports three local loadouts, car-class summaries, and save migration from the old flat customization object.
+- Controls tab includes keyboard remapping, touch layout/scale presets, controller status, and `B` as the alternate backflip key while `X` remains jump/trick.
+- `render_game_to_text()` reports Phase 2 UI, garage, control binding, touch layout, and controller state.
+- Fresh local screenshots captured:
+  - `output/phase2/campaign-hud.png`
+  - `output/phase2/menu-play.png`
+  - `output/phase2/garage.png`
+  - `output/phase2/controls.png`
+
 Latest Pages smoke, run on 2026-05-16:
 
 - `https://canimal4.github.io/InfernoDrift4/?v=f5e23a7`: HTTP 200.
@@ -48,12 +64,15 @@ Latest Pages smoke, run on 2026-05-16:
 
 - Title screen uses InfernoDrift4 identity.
 - Campaign Survival starts, drives, boosts, drifts, jumps, backflips with `X`, restarts, pauses, and shows results/fail messages.
+- `B` also works as the alternate backflip/trick key.
 - Ground speed/reference lines remain visible during normal driving.
 - Radar is forward-relative: top/front, left/car-left, right/car-right, bottom/behind.
 - Radar uses the full box, has no heavy grid clutter, and shows clean icons plus edge arrows.
 - Max Arena starts, ball interaction works, teams/roles are readable, goal replay works, and ball cam state is clear.
-- Garage/customization updates the car immediately and shows unlock hints.
-- Mobile landscape keeps HUD/radar/touch controls usable and disables text selection.
+- Garage updates the car immediately, renders a 3D preview bay, switches local loadouts, and shows class/unlock hints.
+- Mobile landscape keeps HUD/radar/touch controls usable, supports touch presets, and disables text selection.
+- Keyboard remapping rejects duplicate primary bindings and persists through the save payload.
+- Controller status appears in Controls and the Gamepad API path maps standard driving/actions where browser support exists.
 - Remote human name tags are readable and unobtrusive; bots are not labeled.
 
 ## Online QA

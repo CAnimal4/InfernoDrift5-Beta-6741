@@ -18,44 +18,50 @@
 
       <div class="progress"><span id="progress"></span></div>
 
-      <div class="hud">
-        <div class="pill">
-          <span class="label">World</span>
-          <strong id="hud-world">—</strong>
-        </div>
-        <div class="pill">
-          <span class="label">Level</span>
-          <strong id="hud-level">—</strong>
-        </div>
-        <div class="pill">
-          <span class="label">Time</span>
-          <strong id="hud-time">0:00</strong>
-        </div>
-        <div class="pill">
-          <span class="label">Score</span>
-          <strong id="hud-score">0</strong>
-        </div>
-        <div class="pill">
-          <span class="label">Speed</span>
-          <strong id="hud-speed">0 MPH</strong>
-        </div>
-        <div class="pill lives-pill">
-          <span class="label">Lives</span>
-          <div id="hud-hearts" class="hearts" aria-label="Lives"></div>
-          <strong id="hud-lives" class="lives-count">3/5</strong>
-        </div>
-        <div class="status">
-          <div class="pill meter-pill">
-            <div class="label">Boost</div>
-            <div class="bar"><span id="boost-bar"></span></div>
+      <div class="hud" id="hud">
+        <div class="hud-cluster hud-cluster-run" aria-label="Run status">
+          <div class="pill run-pill">
+            <span class="label">Zone</span>
+            <strong id="hud-world">—</strong>
           </div>
-          <div class="pill meter-pill">
-            <div class="label">Shield</div>
-            <div class="bar"><span id="shield-bar"></span></div>
+          <div class="pill run-pill">
+            <span class="label">Heat</span>
+            <strong id="hud-level">—</strong>
+          </div>
+          <div class="pill run-pill">
+            <span class="label">Clock</span>
+            <strong id="hud-time">0:00</strong>
+          </div>
+          <div class="pill run-pill">
+            <span class="label">Score</span>
+            <strong id="hud-score">0</strong>
           </div>
         </div>
-        <button class="pill menu-btn" id="menu-btn" type="button">Menu</button>
+        <div class="hud-cluster hud-cluster-drive" aria-label="Vehicle status">
+          <div class="pill drive-pill">
+            <span class="label">Speed</span>
+            <strong id="hud-speed">0 MPH</strong>
+          </div>
+          <div class="pill drive-pill lives-pill">
+            <span class="label">Lives</span>
+            <div id="hud-hearts" class="hearts" aria-label="Lives"></div>
+            <strong id="hud-lives" class="lives-count">3/5</strong>
+          </div>
+          <div class="status">
+            <div class="pill meter-pill">
+              <div class="label">Boost</div>
+              <div class="bar"><span id="boost-bar"></span></div>
+            </div>
+            <div class="pill meter-pill">
+              <div class="label">Shield</div>
+              <div class="bar"><span id="shield-bar"></span></div>
+            </div>
+          </div>
+          <button class="pill menu-btn" id="menu-btn" type="button">Menu</button>
+        </div>
       </div>
+
+      <div class="effect-toast" id="effect-toast" aria-live="polite"></div>
 
       <div class="debug-hud" id="debug-hud" hidden></div>
 
@@ -114,6 +120,7 @@
         <div class="panel">
           <h2 id="message-title">Level Complete</h2>
           <p class="subtitle" id="message-body">You melted the asphalt. Ready for the next heat?</p>
+          <div class="result-grid" id="message-stats" hidden></div>
           <div class="cta-row">
             <button class="primary" id="next-btn">Next</button>
             <button class="ghost" id="retry-btn">Retry</button>
@@ -124,18 +131,126 @@
       <div class="overlay" id="menu">
         <div class="panel menu-panel">
           <div class="menu-header">
-            <h2>InfernoDrift4</h2>
+            <div>
+              <div class="overlay-kicker" id="menu-state-label">Paused</div>
+              <h2>InfernoDrift4</h2>
+            </div>
             <button class="ghost" id="menu-close" type="button">Close</button>
           </div>
-          <div class="menu-tabs">
-            <button class="tab-btn active" data-tab="settings" type="button">Settings</button>
-            <button class="tab-btn" id="games-tab-btn" data-tab="games" type="button">Games</button>
-            <button class="tab-btn" data-tab="customize" type="button">Garage</button>
-            <button class="tab-btn" data-tab="controls" type="button">Controls</button>
-            <button class="tab-btn" data-tab="howto" type="button">How to Play</button>
+          <div class="menu-actions" aria-label="Pause actions">
+            <button class="primary" id="menu-resume" type="button">Resume</button>
+            <button class="ghost" id="menu-restart" type="button">Restart Run</button>
+            <button class="ghost" id="menu-garage" type="button">Garage</button>
+            <button class="ghost" id="menu-settings" type="button">Settings</button>
           </div>
-          <div class="menu-content">
-            <section class="tab-panel active" id="tab-settings">
+          <div class="menu-tabs">
+            <button class="tab-btn active" id="games-tab-btn" data-tab="games" type="button">Play</button>
+            <button class="tab-btn" data-tab="customize" type="button">Garage</button>
+            <button class="tab-btn" data-tab="progress" type="button">Progress</button>
+            <button class="tab-btn" data-tab="settings" type="button">Settings</button>
+            <button class="tab-btn" data-tab="controls" type="button">Controls</button>
+            <button class="tab-btn" data-tab="howto" type="button">Help</button>
+          </div>
+          <div class="menu-content" id="menu-content">
+            <section class="tab-panel active" id="tab-games">
+              <p class="hint">Pick the ruleset you want to play. ID4 keeps the 3.3 survival feel and builds from it.</p>
+              <div class="games-grid">
+                <button class="game-card active" id="game-card-id33" data-game-mode="infernodrift33" type="button">
+                  <img src="output/imagegen/infernodrift33-card.svg" alt="InfernoDrift 3.3 card art" />
+                  <div class="game-card-copy">
+                    <strong>Campaign Survival</strong>
+                    <span>InfernoDrift 3.3 Classic: survival drifting, hunters, ramps, powerups, and quick restarts.</span>
+                  </div>
+                </button>
+                <button class="game-card" id="game-card-max1" data-game-mode="infernodriftmax1" type="button">
+                  <img src="output/imagegen/infernodriftmax1-card.svg" alt="InfernoDriftMax 1 card art" />
+                  <div class="game-card-copy">
+                    <strong>Max Arena</strong>
+                    <span>Ball, teams, goal replays, readable roles, and ID3-style handling in a tighter arena.</span>
+                  </div>
+                </button>
+              </div>
+              <div class="mode-brief" id="mode-brief"></div>
+              <p class="hint" id="game-mode-hint">Current game: InfernoDrift 3.3</p>
+            </section>
+            <section class="tab-panel" id="tab-customize">
+              <div class="garage-shell">
+                <div class="garage-preview-card">
+                  <div class="custom-section-title">Preview Bay</div>
+                  <div id="garage-preview" class="garage-preview" aria-label="Garage car preview"></div>
+                  <div class="garage-preview-actions">
+                    <button class="ghost" id="garage-zoom-out" type="button">Zoom -</button>
+                    <button class="ghost" id="garage-reset-view" type="button">Reset View</button>
+                    <button class="ghost" id="garage-zoom-in" type="button">Zoom +</button>
+                  </div>
+                  <p class="hint">Drag the car to spin it. Use zoom for detail checks.</p>
+                </div>
+                <div class="garage-controls">
+                  <div class="custom-section-title">Loadouts</div>
+                  <div class="loadout-slots" id="loadout-slots"></div>
+                  <label class="field">
+                    <span>Car Class</span>
+                    <select id="car-class-select"></select>
+                  </label>
+                  <div class="garage-class-summary" id="garage-class-summary"></div>
+                </div>
+              </div>
+              <div class="custom-layout">
+                <div class="custom-column">
+                  <div class="custom-section-title">Performance Build</div>
+                  <div class="custom-grid custom-grid-primary">
+                    <label class="field">
+                      <span>Body</span>
+                      <select id="body-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Wheels</span>
+                      <select id="wheel-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Driving Style</span>
+                      <select id="style-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Power</span>
+                      <select id="power-select"></select>
+                    </label>
+                  </div>
+                </div>
+                <div class="custom-column">
+                  <div class="custom-section-title">Appearance</div>
+                  <div class="custom-grid custom-grid-secondary">
+                    <label class="field">
+                      <span>Paint</span>
+                      <select id="paint-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Accent</span>
+                      <select id="accent-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Window Tint</span>
+                      <select id="tint-select"></select>
+                    </label>
+                    <label class="field">
+                      <span>Rear Kit</span>
+                      <select id="spoiler-select"></select>
+                    </label>
+                    <label class="field field-full">
+                      <span>Underglow</span>
+                      <select id="glow-select"></select>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div class="custom-stats" id="custom-stats"></div>
+              <p class="hint" id="custom-hint">Garage changes apply instantly and unlock more parts as you clear worlds.</p>
+            </section>
+            <section class="tab-panel" id="tab-progress">
+              <div class="progress-grid" id="progress-panel"></div>
+              <p class="hint">Progress is local in this phase. Online sync stays backend-gated until the Cloudflare phase.</p>
+            </section>
+            <section class="tab-panel" id="tab-settings">
               <label class="field">
                 <span>Difficulty</span>
                 <select id="difficulty-select">
@@ -278,80 +393,34 @@
               </div>
               <p class="hint">Changes apply instantly. Press R to restart the current level.</p>
             </section>
-            <section class="tab-panel" id="tab-games">
-              <p class="hint">Pick the ruleset you want to play. ID4 keeps the 3.3 survival feel and builds from it.</p>
-              <div class="games-grid">
-                <button class="game-card active" id="game-card-id33" data-game-mode="infernodrift33" type="button">
-                  <img src="output/imagegen/infernodrift33-card.svg" alt="InfernoDrift 3.3 card art" />
-                  <div class="game-card-copy">
-                    <strong>Campaign Survival</strong>
-                    <span>InfernoDrift 3.3 Classic: survival drifting, hunters, ramps, powerups, and quick restarts.</span>
-                  </div>
-                </button>
-                <button class="game-card" id="game-card-max1" data-game-mode="infernodriftmax1" type="button">
-                  <img src="output/imagegen/infernodriftmax1-card.svg" alt="InfernoDriftMax 1 card art" />
-                  <div class="game-card-copy">
-                    <strong>Max Arena</strong>
-                    <span>Ball, teams, goal replays, readable roles, and ID3-style handling in a tighter arena.</span>
-                  </div>
-                </button>
-              </div>
-              <p class="hint" id="game-mode-hint">Current game: InfernoDrift 3.3</p>
-            </section>
-            <section class="tab-panel" id="tab-customize">
-              <div class="custom-layout">
-                <div class="custom-column">
-                  <div class="custom-section-title">Performance Build</div>
-                  <div class="custom-grid custom-grid-primary">
-                    <label class="field">
-                      <span>Body</span>
-                      <select id="body-select"></select>
-                    </label>
-                    <label class="field">
-                      <span>Wheels</span>
-                      <select id="wheel-select"></select>
-                    </label>
-                    <label class="field">
-                      <span>Driving Style</span>
-                      <select id="style-select"></select>
-                    </label>
-                    <label class="field">
-                      <span>Power</span>
-                      <select id="power-select"></select>
-                    </label>
-                  </div>
-                </div>
-                <div class="custom-column">
-                  <div class="custom-section-title">Appearance</div>
-                  <div class="custom-grid custom-grid-secondary">
-                    <label class="field">
-                      <span>Paint</span>
-                      <select id="paint-select"></select>
-                    </label>
-                    <label class="field">
-                      <span>Accent</span>
-                      <select id="accent-select"></select>
-                    </label>
-                    <label class="field">
-                      <span>Window Tint</span>
-                      <select id="tint-select"></select>
-                    </label>
-                    <label class="field">
-                      <span>Rear Kit</span>
-                      <select id="spoiler-select"></select>
-                    </label>
-                    <label class="field field-full">
-                      <span>Underglow</span>
-                      <select id="glow-select"></select>
-                    </label>
-                  </div>
-                </div>
-              </div>
-              <div class="custom-stats" id="custom-stats"></div>
-              <p class="hint" id="custom-hint">Garage changes apply instantly and unlock more parts as you clear worlds.</p>
-            </section>
             <section class="tab-panel" id="tab-controls">
-              <ul class="menu-list" id="controls-list"></ul>
+              <div class="control-layout">
+                <div>
+                  <div class="custom-section-title">Keyboard Map</div>
+                  <div class="remap-grid" id="controls-remap"></div>
+                </div>
+                <div>
+                  <div class="custom-section-title">Touch Layout</div>
+                  <label class="field">
+                    <span>Touch Preset</span>
+                    <select id="touch-layout-select">
+                      <option value="classic">Classic</option>
+                      <option value="compact">Compact</option>
+                      <option value="lefty">Lefty</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Touch Scale</span>
+                    <select id="touch-scale-select">
+                      <option value="0.86">Small</option>
+                      <option value="1" selected>Normal</option>
+                      <option value="1.14">Large</option>
+                    </select>
+                  </label>
+                  <div class="controller-card" id="controller-status">Controller: not detected</div>
+                  <ul class="menu-list" id="controls-list"></ul>
+                </div>
+              </div>
             </section>
             <section class="tab-panel" id="tab-howto">
               <ol class="menu-list" id="howto-list"></ol>

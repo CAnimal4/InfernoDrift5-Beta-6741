@@ -5,17 +5,21 @@ const overlay = document.getElementById("overlay");
 const message = document.getElementById("message");
 const messageTitle = document.getElementById("message-title");
 const messageBody = document.getElementById("message-body");
+const messageStats = document.getElementById("message-stats");
 const startBtn = document.getElementById("start-btn");
 const overlaySubtitle = document.getElementById("overlay-subtitle");
 const tutorialBtn = document.getElementById("tutorial-btn");
 const tips = document.getElementById("tips");
 const controlsList = document.getElementById("controls-list");
+const controlsRemap = document.getElementById("controls-remap");
+const controllerStatus = document.getElementById("controller-status");
 const howtoList = document.getElementById("howto-list");
 const nextBtn = document.getElementById("next-btn");
 const retryBtn = document.getElementById("retry-btn");
 const boostBar = document.getElementById("boost-bar");
 const shieldBar = document.getElementById("shield-bar");
 const statusLabelNodes = document.querySelectorAll(".status .pill .label");
+const effectToast = document.getElementById("effect-toast");
 const debugHud = document.getElementById("debug-hud");
 const matchPanel = document.getElementById("match-panel");
 const matchPanelScore = document.getElementById("match-panel-score");
@@ -29,7 +33,9 @@ const hudScore = document.getElementById("hud-score");
 const hudSpeed = document.getElementById("hud-speed");
 const hudLives = document.getElementById("hud-lives");
 const hudHearts = document.getElementById("hud-hearts");
-const hudLabelNodes = document.querySelectorAll(".hud > .pill .label");
+const hudLabelNodes = document.querySelectorAll(
+  ".hud .run-pill .label, .hud .drive-pill .label",
+);
 const hudWorldPill = hudWorld?.closest(".pill");
 const hudLevelPill = hudLevel?.closest(".pill");
 const hudTimePill = hudTime?.closest(".pill");
@@ -45,10 +51,16 @@ const minimapCtx = minimapCanvas ? minimapCanvas.getContext("2d") : null;
 const menu = document.getElementById("menu");
 const menuBtn = document.getElementById("menu-btn");
 const menuClose = document.getElementById("menu-close");
+const menuStateLabel = document.getElementById("menu-state-label");
+const menuResume = document.getElementById("menu-resume");
+const menuRestart = document.getElementById("menu-restart");
+const menuGarage = document.getElementById("menu-garage");
+const menuSettings = document.getElementById("menu-settings");
 const tabButtons = document.querySelectorAll(".tab-btn");
 const tabPanels = document.querySelectorAll(".tab-panel");
 const gamesTabBtn = document.getElementById("games-tab-btn");
 const gameModeHint = document.getElementById("game-mode-hint");
+const modeBrief = document.getElementById("mode-brief");
 const gameCards = document.querySelectorAll("[data-game-mode]");
 const difficultySelect = document.getElementById("difficulty-select");
 const campaignAiSelect = document.getElementById("campaign-ai-select");
@@ -94,6 +106,14 @@ const devForceDemo = document.getElementById("dev-force-demo");
 const devResetTuning = document.getElementById("dev-reset-tuning");
 const deviceModeSelect = document.getElementById("device-mode-select");
 const deviceModeActive = document.getElementById("device-mode-active");
+const progressPanel = document.getElementById("progress-panel");
+const garagePreviewHost = document.getElementById("garage-preview");
+const garageZoomIn = document.getElementById("garage-zoom-in");
+const garageZoomOut = document.getElementById("garage-zoom-out");
+const garageResetView = document.getElementById("garage-reset-view");
+const loadoutSlots = document.getElementById("loadout-slots");
+const carClassSelect = document.getElementById("car-class-select");
+const garageClassSummary = document.getElementById("garage-class-summary");
 const bodySelect = document.getElementById("body-select");
 const wheelSelect = document.getElementById("wheel-select");
 const styleSelect = document.getElementById("style-select");
@@ -105,6 +125,8 @@ const spoilerSelect = document.getElementById("spoiler-select");
 const glowSelect = document.getElementById("glow-select");
 const customStats = document.getElementById("custom-stats");
 const customHint = document.getElementById("custom-hint");
+const touchLayoutSelect = document.getElementById("touch-layout-select");
+const touchScaleSelect = document.getElementById("touch-scale-select");
 const touchControlsRoot = document.getElementById("touch-controls");
 const touchSteerPad = document.getElementById("touch-steer-pad");
 const touchSteerKnob = document.getElementById("touch-steer-knob");
@@ -236,6 +258,100 @@ const DEFAULT_CUSTOMIZATION = {
   tintId: "smoke",
   spoilerId: "none",
   glowId: "cyan",
+};
+const GARAGE_LOADOUT_IDS = ["slot-1", "slot-2", "slot-3"];
+const GARAGE_LOADOUT_NAMES = ["Street Heat", "Air Trick", "Arena Guard"];
+const CAR_CLASS_OPTIONS = [
+  {
+    id: "balanced",
+    name: "Street Balanced",
+    bodyId: "street",
+    styleId: "balanced",
+    powerId: "nitro_core",
+    description:
+      "Forgiving handling, quick boost recovery, and the cleanest default ID3 feel.",
+  },
+  {
+    id: "drift",
+    name: "Lightweight Drift",
+    bodyId: "prototype",
+    styleId: "drift",
+    powerId: "slipstream",
+    description:
+      "Looser rear grip and higher speed retention for long combo chains.",
+  },
+  {
+    id: "bruiser",
+    name: "Heavy Bruiser",
+    bodyId: "muscle",
+    styleId: "grip",
+    powerId: "shock_guard",
+    description:
+      "Stable impact recovery and stronger shield retention for hunter pressure.",
+  },
+  {
+    id: "stunt",
+    name: "Stunt Catalyst",
+    bodyId: "rally",
+    styleId: "balanced",
+    powerId: "air_control",
+    description:
+      "Better air control, ramp exits, and landing boosts without changing the core car scale.",
+  },
+  {
+    id: "speed",
+    name: "Speed Prototype",
+    bodyId: "interceptor",
+    styleId: "speed",
+    powerId: "pulse_charger",
+    description:
+      "Higher top speed and boost-pad chains with a narrower high-speed steering window.",
+  },
+];
+const DEFAULT_CONTROL_BINDINGS = {
+  throttle: ["KeyW", "ArrowUp"],
+  brake: ["KeyS", "ArrowDown"],
+  left: ["KeyA", "ArrowLeft"],
+  right: ["KeyD", "ArrowRight"],
+  drift: ["Space"],
+  boost: ["ShiftLeft", "ShiftRight"],
+  jumpTrick: ["KeyX"],
+  altTrick: ["KeyB"],
+  targetLunge: ["ControlLeft", "ControlRight", "MetaLeft", "MetaRight"],
+  ballCam: ["KeyL"],
+  restart: ["KeyR"],
+  menu: ["Escape", "KeyM"],
+  chat: ["KeyC"],
+};
+const CONTROL_ACTIONS = [
+  { id: "throttle", label: "Forward", help: "Accelerate" },
+  { id: "brake", label: "Reverse", help: "Brake or reverse" },
+  { id: "left", label: "Left", help: "Steer left" },
+  { id: "right", label: "Right", help: "Steer right" },
+  { id: "drift", label: "Handbrake", help: "Drift, or ball lunge in Max" },
+  { id: "boost", label: "Boost", help: "Hold for surge" },
+  {
+    id: "jumpTrick",
+    label: "Jump / Trick",
+    help: "X jumps, then flips in air",
+  },
+  {
+    id: "altTrick",
+    label: "Alt Backflip",
+    help: "B is the alternate trick key",
+  },
+  { id: "ballCam", label: "Ball Cam", help: "Max Arena camera toggle" },
+  { id: "restart", label: "Restart", help: "Fast retry" },
+  { id: "menu", label: "Pause/Menu", help: "Open or close menu" },
+  { id: "chat", label: "Chat", help: "Reserved for online phase" },
+];
+const CONTROL_ACTION_LABELS = Object.fromEntries(
+  CONTROL_ACTIONS.map((action) => [action.id, action.label]),
+);
+const TOUCH_LAYOUT_OPTIONS = {
+  classic: { label: "Classic", className: "touch-layout-classic" },
+  compact: { label: "Compact", className: "touch-layout-compact" },
+  lefty: { label: "Lefty", className: "touch-layout-lefty" },
 };
 const DEFAULT_MAX_TEAM_CUSTOMIZATION = {
   blue: {
@@ -1385,12 +1501,57 @@ const settings = {
   cameraFocus: false,
   rampDensity: "normal",
   deviceMode: "auto",
+  touchLayout: "classic",
+  touchScale: 1,
   devMode: false,
   activeGameMode: GAME_MODE_ID33,
 };
 
 const customization = {
   ...DEFAULT_CUSTOMIZATION,
+};
+
+function makeGarageLoadout(index, overrides = {}) {
+  return {
+    id: GARAGE_LOADOUT_IDS[index] ?? `slot-${index + 1}`,
+    name: GARAGE_LOADOUT_NAMES[index] ?? `Loadout ${index + 1}`,
+    classId: index === 1 ? "stunt" : index === 2 ? "bruiser" : "balanced",
+    ...DEFAULT_CUSTOMIZATION,
+    ...overrides,
+  };
+}
+
+const garageState = {
+  activeLoadoutId: GARAGE_LOADOUT_IDS[0],
+  loadouts: GARAGE_LOADOUT_IDS.map((_, index) => makeGarageLoadout(index)),
+  preview: {
+    ready: false,
+    yaw: -0.42,
+    zoom: 5.7,
+    dragging: false,
+    lastX: 0,
+    lastY: 0,
+    frame: 0,
+  },
+};
+
+const controlBindings = Object.fromEntries(
+  Object.entries(DEFAULT_CONTROL_BINDINGS).map(([key, value]) => [
+    key,
+    [...value],
+  ]),
+);
+
+const gamepadState = {
+  connected: false,
+  id: "",
+  steer: 0,
+  throttle: 0,
+  brake: 0,
+  drift: false,
+  boost: false,
+  buttons: {},
+  previousButtons: {},
 };
 
 const maxTeamCustomization = {
@@ -1474,6 +1635,7 @@ const state = {
   playerLoadoutStats: null,
   deviceProfile: { mode: "auto", ...DEVICE_PROFILES.desktop },
   steppingExternally: false,
+  awaitingRemapAction: "",
   campaignRisk: {
     recentHits: 0,
     recentEscapes: 0,
@@ -1724,7 +1886,7 @@ function applyDeviceProfile() {
   );
   document.documentElement.style.setProperty(
     "--touch-scale",
-    String(profile.controlScale),
+    String(profile.controlScale * (Number(settings.touchScale) || 1)),
   );
   document.documentElement.style.setProperty(
     "--touch-stick-size",
@@ -1753,6 +1915,7 @@ function applyDeviceProfile() {
     input.throttle = false;
     input.brake = false;
   }
+  applyTouchLayout();
   refreshDevModeUi();
   if (deviceModeSelect) deviceModeSelect.value = settings.deviceMode;
   if (deviceModeActive) {
@@ -1763,6 +1926,20 @@ function applyDeviceProfile() {
       deviceModeActive.textContent = `Active device: ${label} (Manual, touch ${touchActive ? "on" : "off"})`;
     }
   }
+}
+
+function applyTouchLayout() {
+  const layout = TOUCH_LAYOUT_OPTIONS[settings.touchLayout]
+    ? settings.touchLayout
+    : "classic";
+  document.body.classList.remove(
+    "touch-layout-classic",
+    "touch-layout-compact",
+    "touch-layout-lefty",
+  );
+  document.body.classList.add(TOUCH_LAYOUT_OPTIONS[layout].className);
+  if (touchLayoutSelect) touchLayoutSelect.value = layout;
+  if (touchScaleSelect) touchScaleSelect.value = String(settings.touchScale);
 }
 
 function isProgressAtLeast(progress, unlock) {
@@ -1794,6 +1971,197 @@ function getOptionById(group, id, fallbackId) {
     group.find((option) => option.id === id) ??
     group.find((option) => option.id === fallbackId) ??
     group[0]
+  );
+}
+
+function getActiveLoadoutIndex() {
+  return Math.max(
+    0,
+    garageState.loadouts.findIndex(
+      (loadout) => loadout.id === garageState.activeLoadoutId,
+    ),
+  );
+}
+
+function getActiveLoadout() {
+  return (
+    garageState.loadouts.find(
+      (loadout) => loadout.id === garageState.activeLoadoutId,
+    ) ?? garageState.loadouts[0]
+  );
+}
+
+function copyCustomizationFromLoadout(loadout) {
+  if (!loadout) return;
+  Object.assign(customization, {
+    bodyId: loadout.bodyId ?? DEFAULT_CUSTOMIZATION.bodyId,
+    wheelId: loadout.wheelId ?? DEFAULT_CUSTOMIZATION.wheelId,
+    styleId: loadout.styleId ?? DEFAULT_CUSTOMIZATION.styleId,
+    powerId: loadout.powerId ?? DEFAULT_CUSTOMIZATION.powerId,
+    paintId: loadout.paintId ?? DEFAULT_CUSTOMIZATION.paintId,
+    accentId: loadout.accentId ?? DEFAULT_CUSTOMIZATION.accentId,
+    tintId: loadout.tintId ?? DEFAULT_CUSTOMIZATION.tintId,
+    spoilerId: loadout.spoilerId ?? DEFAULT_CUSTOMIZATION.spoilerId,
+    glowId: loadout.glowId ?? DEFAULT_CUSTOMIZATION.glowId,
+  });
+}
+
+function syncActiveLoadoutFromCustomization() {
+  const loadout = getActiveLoadout();
+  if (!loadout) return;
+  Object.assign(loadout, {
+    bodyId: customization.bodyId,
+    wheelId: customization.wheelId,
+    styleId: customization.styleId,
+    powerId: customization.powerId,
+    paintId: customization.paintId,
+    accentId: customization.accentId,
+    tintId: customization.tintId,
+    spoilerId: customization.spoilerId,
+    glowId: customization.glowId,
+  });
+}
+
+function clampLoadoutToUnlocks(loadout, progress = getProgressSnapshot()) {
+  copyCustomizationFromLoadout(loadout);
+  clampCustomizationToUnlocks(progress);
+  syncActiveLoadoutFromCustomization();
+}
+
+function normalizeGarageLoadout(
+  value,
+  index,
+  progress = getProgressSnapshot(),
+) {
+  const base = makeGarageLoadout(index);
+  const source = value && typeof value === "object" ? value : {};
+  const classId =
+    CAR_CLASS_OPTIONS.find((option) => option.id === source.classId)?.id ??
+    base.classId;
+  const next = makeGarageLoadout(index, {
+    ...source,
+    id: GARAGE_LOADOUT_IDS[index] ?? base.id,
+    name:
+      typeof source.name === "string" && source.name.trim()
+        ? source.name.trim().slice(0, 22)
+        : base.name,
+    classId,
+  });
+  const previousActive = garageState.activeLoadoutId;
+  garageState.activeLoadoutId = next.id;
+  const previousLoadouts = garageState.loadouts;
+  garageState.loadouts = previousLoadouts.map((loadout, loadoutIndex) =>
+    loadoutIndex === index ? next : loadout,
+  );
+  clampLoadoutToUnlocks(next, progress);
+  garageState.activeLoadoutId = previousActive;
+  garageState.loadouts = previousLoadouts;
+  return next;
+}
+
+function serializeGarageState() {
+  syncActiveLoadoutFromCustomization();
+  return {
+    schemaVersion: 2,
+    activeLoadoutId: garageState.activeLoadoutId,
+    loadouts: garageState.loadouts.map((loadout) => ({ ...loadout })),
+  };
+}
+
+function applyCarClass(classId, { save = true } = {}) {
+  const option =
+    CAR_CLASS_OPTIONS.find((item) => item.id === classId) ??
+    CAR_CLASS_OPTIONS[0];
+  const loadout = getActiveLoadout();
+  if (loadout) loadout.classId = option.id;
+  const progress = getProgressSnapshot();
+  [
+    ["bodyId", BODY_OPTIONS, option.bodyId],
+    ["styleId", STYLE_OPTIONS, option.styleId],
+    ["powerId", POWER_OPTIONS, option.powerId],
+  ].forEach(([key, group, id]) => {
+    const selected = getOptionById(group, id, DEFAULT_CUSTOMIZATION[key]);
+    if (isOptionUnlocked(selected, progress)) customization[key] = selected.id;
+  });
+  applyPlayerCustomization();
+  if (save) savePersistentState();
+}
+
+function selectGarageLoadout(loadoutId, { save = true } = {}) {
+  const next =
+    garageState.loadouts.find((loadout) => loadout.id === loadoutId) ??
+    garageState.loadouts[0];
+  garageState.activeLoadoutId = next.id;
+  copyCustomizationFromLoadout(next);
+  applyPlayerCustomization();
+  if (save) savePersistentState();
+}
+
+function getClassSummary() {
+  const loadout = getActiveLoadout();
+  const option =
+    CAR_CLASS_OPTIONS.find((item) => item.id === loadout?.classId) ??
+    CAR_CLASS_OPTIONS[0];
+  return option;
+}
+
+function formatCodeLabel(code) {
+  return String(code)
+    .replace(/^Key/, "")
+    .replace(/^Arrow/, "")
+    .replace("Space", "Space")
+    .replace("ShiftLeft", "Shift")
+    .replace("ShiftRight", "Shift")
+    .replace("ControlLeft", "Ctrl")
+    .replace("ControlRight", "Ctrl")
+    .replace("MetaLeft", "Command")
+    .replace("MetaRight", "Command");
+}
+
+function isActionCode(code, actionId) {
+  return (controlBindings[actionId] ?? []).includes(code);
+}
+
+function setPrimaryBinding(actionId, code) {
+  if (!controlBindings[actionId]) return false;
+  const duplicate = Object.entries(controlBindings).find(
+    ([otherAction, codes]) =>
+      otherAction !== actionId && codes[0] === code && code !== "Escape",
+  );
+  if (duplicate) {
+    setEffectToast(
+      `${formatCodeLabel(code)} already maps to ${CONTROL_ACTION_LABELS[duplicate[0]]}`,
+    );
+    return false;
+  }
+  const defaults = DEFAULT_CONTROL_BINDINGS[actionId] ?? [];
+  controlBindings[actionId] = [
+    code,
+    ...defaults.filter((item) => item !== code).slice(1),
+  ];
+  renderControlsUi();
+  savePersistentState();
+  return true;
+}
+
+function hydrateControlBindings(value) {
+  if (!value || typeof value !== "object") return;
+  Object.entries(DEFAULT_CONTROL_BINDINGS).forEach(([actionId, defaults]) => {
+    const incoming = value[actionId];
+    if (!Array.isArray(incoming) || typeof incoming[0] !== "string") return;
+    controlBindings[actionId] = [
+      incoming[0],
+      ...defaults.filter((code) => code !== incoming[0]).slice(1),
+    ];
+  });
+}
+
+function serializeControlBindings() {
+  return Object.fromEntries(
+    Object.entries(controlBindings).map(([actionId, codes]) => [
+      actionId,
+      [...codes],
+    ]),
   );
 }
 
@@ -2112,6 +2480,8 @@ function savePersistentState() {
       cameraFocus: settings.cameraFocus,
       rampDensity: settings.rampDensity,
       deviceMode: settings.deviceMode,
+      touchLayout: settings.touchLayout,
+      touchScale: settings.touchScale,
       devMode: settings.devMode,
       activeGameMode: settings.activeGameMode,
     },
@@ -2137,6 +2507,8 @@ function savePersistentState() {
       spoilerId: customization.spoilerId,
       glowId: customization.glowId,
     },
+    garage: serializeGarageState(),
+    controlBindings: serializeControlBindings(),
     maxTeamCustomization: {
       blue: { ...maxTeamCustomization.blue },
       red: { ...maxTeamCustomization.red },
@@ -2172,6 +2544,17 @@ function loadPersistentState() {
         settings.rampDensity = data.settings.rampDensity;
       if (typeof data.settings.deviceMode === "string")
         settings.deviceMode = data.settings.deviceMode;
+      if (
+        typeof data.settings.touchLayout === "string" &&
+        TOUCH_LAYOUT_OPTIONS[data.settings.touchLayout]
+      )
+        settings.touchLayout = data.settings.touchLayout;
+      if (Number.isFinite(data.settings.touchScale))
+        settings.touchScale = THREE.MathUtils.clamp(
+          Number(data.settings.touchScale),
+          0.86,
+          1.14,
+        );
       if (typeof data.settings.devMode === "boolean")
         settings.devMode = data.settings.devMode;
       if (typeof data.settings.activeGameMode === "string")
@@ -2217,6 +2600,33 @@ function loadPersistentState() {
       if (typeof data.customization.glowId === "string")
         customization.glowId = data.customization.glowId;
     }
+    const progressForGarage = {
+      worldIndex: Number.isFinite(data.worldIndex) ? data.worldIndex : 0,
+      levelIndex: Number.isFinite(data.levelIndex) ? data.levelIndex : 0,
+    };
+    if (data.garage && typeof data.garage === "object") {
+      const incomingLoadouts = Array.isArray(data.garage.loadouts)
+        ? data.garage.loadouts
+        : [];
+      garageState.loadouts = GARAGE_LOADOUT_IDS.map((_, index) =>
+        normalizeGarageLoadout(
+          incomingLoadouts[index],
+          index,
+          progressForGarage,
+        ),
+      );
+      garageState.activeLoadoutId = garageState.loadouts.some(
+        (loadout) => loadout.id === data.garage.activeLoadoutId,
+      )
+        ? data.garage.activeLoadoutId
+        : GARAGE_LOADOUT_IDS[0];
+      copyCustomizationFromLoadout(getActiveLoadout());
+    } else {
+      garageState.activeLoadoutId = GARAGE_LOADOUT_IDS[0];
+      garageState.loadouts[0] = makeGarageLoadout(0, { ...customization });
+      syncActiveLoadoutFromCustomization();
+    }
+    hydrateControlBindings(data.controlBindings);
     if (
       data.maxTeamCustomization &&
       typeof data.maxTeamCustomization === "object"
@@ -2243,6 +2653,7 @@ function loadPersistentState() {
       worldIndex: safeWorld,
       levelIndex: state.levelIndex,
     });
+    syncActiveLoadoutFromCustomization();
     if (settings.activeGameMode === GAME_MODE_RISK)
       settings.activeGameMode = GAME_MODE_MAX1;
   } catch (error) {
@@ -2507,6 +2918,11 @@ function refreshGamesUi() {
   if (gameModeHint) {
     gameModeHint.textContent = `Current game: ${activeMeta.title} - ${activeMeta.subtitle}`;
   }
+  if (modeBrief) {
+    modeBrief.innerHTML = isMaxMode()
+      ? `<strong>Objective:</strong> win the arena by scoring goals for Blue. <span>Boost pads, ball lunge, target lunge, and Ball Cam are tuned for readable team play.</span>`
+      : `<strong>Objective:</strong> survive the heat until the clock ends. <span>Use drift chains, boost pads, ramps, powerups, and near misses to build score while hunters adapt.</span>`;
+  }
   if (startBtn) {
     startBtn.textContent = isMaxMode()
       ? "Start Max Arena"
@@ -2563,6 +2979,12 @@ function setActiveTab(tabName = "settings") {
   tabPanels.forEach((panel) => {
     panel.classList.toggle("active", panel.id === `tab-${tabName}`);
   });
+  if (tabName === "customize") {
+    initGaragePreview();
+    refreshGaragePreview();
+  }
+  if (tabName === "progress") renderProgressPanel();
+  if (tabName === "controls") renderControlsUi();
 }
 
 function setActiveGameMode(mode, { save = true, reset = false } = {}) {
@@ -2607,8 +3029,8 @@ function refreshModeCopy() {
         <div><span>Reverse:</span> S / Arrow Down</div>
         <div><span>Handbrake:</span> Space</div>
         <div><span>Boost:</span> Shift</div>
-        <div><span>Jump:</span> X</div>
-        <div><span>Backflip:</span> X again while airborne</div>
+        <div><span>Jump / Trick:</span> ${formatCodeLabel(controlBindings.jumpTrick[0])}</div>
+        <div><span>Backflip:</span> ${formatCodeLabel(controlBindings.jumpTrick[0])} in air or ${formatCodeLabel(controlBindings.altTrick[0])}</div>
         <div><span>Restart:</span> R</div>
         <div><span>Menu:</span> Esc</div>
         <div><span>Start / Next:</span> Enter</div>
@@ -2635,8 +3057,8 @@ function refreshModeCopy() {
         <li><strong>Reverse:</strong> S / Arrow Down</li>
         <li><strong>Handbrake:</strong> Space</li>
         <li><strong>Boost:</strong> Shift</li>
-        <li><strong>Jump:</strong> X</li>
-        <li><strong>Backflip:</strong> X again while airborne</li>
+        <li><strong>Jump / Trick:</strong> ${formatCodeLabel(controlBindings.jumpTrick[0])}</li>
+        <li><strong>Backflip:</strong> ${formatCodeLabel(controlBindings.jumpTrick[0])} in air, or ${formatCodeLabel(controlBindings.altTrick[0])} as an alternate trick key</li>
         <li><strong>Restart:</strong> R</li>
         <li><strong>Menu:</strong> Esc</li>
       `;
@@ -2656,7 +3078,7 @@ function refreshModeCopy() {
         <li>Hunter bots will chase you — dodge or bait them wide.</li>
         <li>Hit neon ramps to launch and earn airtime bonus.</li>
         <li>Boost pads refill boost and sling you forward.</li>
-        <li>Tap <strong>X</strong> to jump, then tap <strong>X</strong> again in the air for backflips and trick landings.</li>
+        <li>Tap <strong>${formatCodeLabel(controlBindings.jumpTrick[0])}</strong> to jump, then tap it again in the air for backflips. <strong>${formatCodeLabel(controlBindings.altTrick[0])}</strong> is an alternate trick key.</li>
         <li>Collect powerups: Boost, Shield, Life, or Slow.</li>
       `;
   }
@@ -2666,6 +3088,107 @@ function refreshModeCopy() {
   if (touchBackflip) {
     touchBackflip.textContent = maxModeActive ? "Target" : "Trick";
     touchBackflip.hidden = !input.touchEnabled || !maxModeActive;
+  }
+}
+
+function renderProgressPanel() {
+  if (!progressPanel) return;
+  const world = getWorld();
+  const level = getLevel();
+  const clearedWorlds = state.worldIndex;
+  const clearedLevels = state.levelIndex;
+  const totalLevels = worldData.reduce(
+    (sum, item) => sum + item.levels.length,
+    0,
+  );
+  const clearedTotal =
+    worldData
+      .slice(0, state.worldIndex)
+      .reduce((sum, item) => sum + item.levels.length, 0) + state.levelIndex;
+  const percent = Math.round(
+    (clearedTotal / Math.max(1, totalLevels - 1)) * 100,
+  );
+  const lockedParts = [
+    BODY_OPTIONS,
+    WHEEL_OPTIONS,
+    STYLE_OPTIONS,
+    POWER_OPTIONS,
+    PAINT_OPTIONS,
+    ACCENT_OPTIONS,
+    TINT_OPTIONS,
+    SPOILER_OPTIONS,
+    GLOW_OPTIONS,
+  ]
+    .flat()
+    .filter((option) => !isOptionUnlocked(option)).length;
+  progressPanel.innerHTML = `
+    <div class="progress-card"><span>Current Zone</span><strong>${world.name}</strong><span>${level.name}</span></div>
+    <div class="progress-card"><span>Campaign</span><strong>${percent}%</strong><span>${clearedWorlds + 1} zones reached, ${clearedLevels + 1} current heat</span></div>
+    <div class="progress-card"><span>Best Chain</span><strong>x${state.bestCombo.toFixed(1)}</strong><span>Near-miss best ${state.bestNearMissStreak}</span></div>
+    <div class="progress-card"><span>Garage Unlocks</span><strong>${lockedParts} locked</strong><span>Clear heats to preview and equip more parts.</span></div>
+  `;
+}
+
+function renderGarageLoadouts() {
+  if (!loadoutSlots) return;
+  loadoutSlots.innerHTML = "";
+  garageState.loadouts.forEach((loadout, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `ghost loadout-slot${loadout.id === garageState.activeLoadoutId ? " active" : ""}`;
+    button.textContent = `${index + 1}. ${loadout.name}`;
+    button.setAttribute(
+      "aria-pressed",
+      loadout.id === garageState.activeLoadoutId ? "true" : "false",
+    );
+    bindPressAction(button, () => selectGarageLoadout(loadout.id));
+    loadoutSlots.appendChild(button);
+  });
+  if (carClassSelect) {
+    carClassSelect.innerHTML = "";
+    CAR_CLASS_OPTIONS.forEach((option) => {
+      const optionEl = document.createElement("option");
+      optionEl.value = option.id;
+      optionEl.textContent = option.name;
+      optionEl.selected = option.id === getClassSummary().id;
+      carClassSelect.appendChild(optionEl);
+    });
+  }
+  if (garageClassSummary) {
+    const summary = getClassSummary();
+    garageClassSummary.innerHTML = `<strong>${summary.name}</strong><span>${summary.description}</span>`;
+  }
+}
+
+function renderControlsUi() {
+  if (controlsRemap) {
+    controlsRemap.innerHTML = "";
+    CONTROL_ACTIONS.forEach((action) => {
+      const row = document.createElement("div");
+      row.className = "remap-row";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ghost remap-button";
+      button.dataset.action = action.id;
+      button.textContent = formatCodeLabel(
+        controlBindings[action.id]?.[0] ?? "",
+      );
+      bindPressAction(button, () => {
+        state.awaitingRemapAction = action.id;
+        button.classList.add("listening");
+        button.textContent = "Press key";
+      });
+      row.innerHTML = `<strong>${action.label}</strong><span>${action.help}</span>`;
+      row.appendChild(button);
+      controlsRemap.appendChild(row);
+    });
+  }
+  if (touchLayoutSelect) touchLayoutSelect.value = settings.touchLayout;
+  if (touchScaleSelect) touchScaleSelect.value = String(settings.touchScale);
+  if (controllerStatus) {
+    controllerStatus.textContent = gamepadState.connected
+      ? `Controller: ${gamepadState.id || "connected"}`
+      : "Controller: not detected";
   }
 }
 
@@ -3118,10 +3641,136 @@ const player = new Car({ color: 0xfff1d0, accent: 0x12151c, isBot: false });
 scene.add(player.group);
 const remotePlayers = new Map();
 const remoteNameProjector = new THREE.Vector3();
+let garagePreview = null;
 
-function rebuildPlayerCarMesh() {
-  const loadout = getCurrentCustomization();
-  player.rebuildVisual({
+function initGaragePreview() {
+  if (!garagePreviewHost || garagePreview) return garagePreview;
+  const previewCanvas = document.createElement("canvas");
+  previewCanvas.setAttribute("aria-hidden", "true");
+  garagePreviewHost.appendChild(previewCanvas);
+  const previewRenderer = new THREE.WebGLRenderer({
+    canvas: previewCanvas,
+    antialias: true,
+    alpha: true,
+    powerPreference: "low-power",
+  });
+  previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+  const previewScene = new THREE.Scene();
+  previewScene.fog = new THREE.Fog(0x09111a, 12, 26);
+  const previewCamera = new THREE.PerspectiveCamera(42, 1, 0.1, 60);
+  const ambient = new THREE.HemisphereLight(0x89ddff, 0x170d09, 1.15);
+  const key = new THREE.DirectionalLight(0xffd18c, 1.65);
+  key.position.set(3.8, 5.4, 4.8);
+  const rim = new THREE.DirectionalLight(0x56e9ff, 1.1);
+  rim.position.set(-5, 3.2, -4);
+  const platform = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.85, 3.2, 0.14, 48),
+    new THREE.MeshStandardMaterial({
+      color: 0x0c1722,
+      roughness: 0.62,
+      metalness: 0.18,
+      emissive: 0x071625,
+      emissiveIntensity: 0.45,
+    }),
+  );
+  platform.position.y = -0.08;
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(2.55, 0.025, 8, 72),
+    new THREE.MeshBasicMaterial({
+      color: 0x5feaff,
+      transparent: true,
+      opacity: 0.44,
+    }),
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.02;
+  const previewCar = new Car({
+    color: 0xfff1d0,
+    accent: 0x12151c,
+    isBot: false,
+  });
+  scene.remove(previewCar.healthBarGroup);
+  previewCar.group.scale.setScalar(1.05);
+  previewCar.group.position.y = 0.05;
+  previewScene.add(ambient, key, rim, platform, ring, previewCar.group);
+  garagePreview = {
+    canvas: previewCanvas,
+    renderer: previewRenderer,
+    scene: previewScene,
+    camera: previewCamera,
+    car: previewCar,
+    ring,
+    width: 0,
+    height: 0,
+  };
+  garageState.preview.ready = true;
+  previewCanvas.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    garageState.preview.dragging = true;
+    garageState.preview.lastX = event.clientX;
+    garageState.preview.lastY = event.clientY;
+    previewCanvas.setPointerCapture(event.pointerId);
+  });
+  previewCanvas.addEventListener("pointermove", (event) => {
+    if (!garageState.preview.dragging) return;
+    const dx = event.clientX - garageState.preview.lastX;
+    garageState.preview.lastX = event.clientX;
+    garageState.preview.lastY = event.clientY;
+    garageState.preview.yaw += dx * 0.012;
+  });
+  const stopDrag = () => {
+    garageState.preview.dragging = false;
+  };
+  previewCanvas.addEventListener("pointerup", stopDrag);
+  previewCanvas.addEventListener("pointercancel", stopDrag);
+  previewCanvas.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    garageState.preview.zoom = THREE.MathUtils.clamp(
+      garageState.preview.zoom + Math.sign(event.deltaY) * 0.35,
+      4.1,
+      7.6,
+    );
+  });
+  refreshGaragePreview();
+  return garagePreview;
+}
+
+function refreshGaragePreview() {
+  if (!garagePreview) return;
+  garagePreview.car.rebuildVisual(getCarVisualConfig());
+  const summary = getClassSummary();
+  if (garageClassSummary) {
+    garageClassSummary.innerHTML = `<strong>${summary.name}</strong><span>${summary.description}</span>`;
+  }
+}
+
+function renderGaragePreview() {
+  if (!garagePreviewHost || !garagePreview) return;
+  const activeTab =
+    document.querySelector(".tab-btn.active")?.dataset.tab === "customize";
+  if (!isMenuOpen() || !activeTab) return;
+  const rect = garagePreviewHost.getBoundingClientRect();
+  const width = Math.max(1, Math.floor(rect.width));
+  const height = Math.max(1, Math.floor(rect.height));
+  if (width !== garagePreview.width || height !== garagePreview.height) {
+    garagePreview.width = width;
+    garagePreview.height = height;
+    garagePreview.renderer.setSize(width, height, false);
+    garagePreview.camera.aspect = width / height;
+    garagePreview.camera.updateProjectionMatrix();
+  }
+  garageState.preview.frame += 1;
+  garagePreview.car.group.rotation.y = garageState.preview.yaw;
+  garagePreview.car.updateWheels(0.36);
+  garagePreview.ring.rotation.z += 0.006;
+  const distance = garageState.preview.zoom;
+  garagePreview.camera.position.set(0, 2.45, distance);
+  garagePreview.camera.lookAt(0, 0.58, 0);
+  garagePreview.renderer.render(garagePreview.scene, garagePreview.camera);
+}
+
+function getCarVisualConfig(loadout = getCurrentCustomization()) {
+  return {
     ...loadout.body.visual,
     primary: loadout.paint.color,
     accent: loadout.accent.color,
@@ -3135,15 +3784,21 @@ function rebuildPlayerCarMesh() {
         ? "wing"
         : loadout.spoiler.style,
     glowColor: loadout.glow.color,
-  });
+  };
+}
+
+function rebuildPlayerCarMesh() {
+  player.rebuildVisual(getCarVisualConfig());
 }
 
 function applyPlayerCustomization(options = {}) {
   clampCustomizationToUnlocks(options.progress);
+  syncActiveLoadoutFromCustomization();
   state.playerLoadoutStats = computePlayerLoadoutStats();
   applyRuntimePlayerStats();
   rebuildPlayerCarMesh();
   refreshCustomizationMenu();
+  refreshGaragePreview();
 }
 
 function makeBot(color) {
@@ -3495,6 +4150,15 @@ function setEffectToast(text, { shake = 0, pulse = 0 } = {}) {
   state.effectToastTimer = 1.4;
   state.cameraShake = Math.max(state.cameraShake, shake);
   state.screenPulse = Math.max(state.screenPulse, pulse);
+  if (effectToast) {
+    effectToast.textContent = text;
+    effectToast.classList.add("show");
+  }
+}
+
+function clearEffectToast() {
+  state.effectToast = "";
+  effectToast?.classList.remove("show");
 }
 
 function makeRamp(kind = "normal") {
@@ -4351,10 +5015,38 @@ function isMenuOpen() {
   return menu.classList.contains("show");
 }
 
-function setMenuOpen(open) {
+function getUiScreen() {
+  if (overlay.classList.contains("show")) return "title";
+  if (message.classList.contains("show")) return "results";
+  if (isMenuOpen()) return "paused";
+  if (state.running) return "playing";
+  return "idle";
+}
+
+function refreshMenuShell() {
+  if (menuStateLabel) {
+    menuStateLabel.textContent = state.running ? "Paused" : "Garage / Setup";
+  }
+  if (menuResume) menuResume.hidden = !state.running;
+  renderProgressPanel();
+  renderGarageLoadouts();
+  renderControlsUi();
+  if (isMenuOpen()) {
+    initGaragePreview();
+    refreshGaragePreview();
+  }
+}
+
+function setMenuOpen(open, tabName = null) {
   menu.classList.toggle("show", open);
+  document.body.classList.toggle("menu-open", open);
+  if (open && tabName) setActiveTab(tabName);
+  if (open && !tabName && !document.querySelector(".tab-btn.active")) {
+    setActiveTab("games");
+  }
   refreshCustomizationMenu();
   refreshDevModeUi();
+  refreshMenuShell();
   debugLog("menu", open ? "menu_open" : "menu_close");
 }
 
@@ -4481,6 +5173,7 @@ function resetLevel() {
   state.slowBotsTimer = 0;
   state.effectToast = "";
   state.effectToastTimer = 0;
+  effectToast?.classList.remove("show");
   state.lastEffectToast = "";
   state.cameraShake = 0;
   state.screenPulse = 0;
@@ -5149,6 +5842,8 @@ function refreshCustomizationMenu() {
         ? `${lockedCounts} loadout upgrades are still locked. Clear more worlds to unlock them.`
         : "All loadout parts unlocked. Mix bodies, wheels, handling, and powers freely.";
   }
+  renderGarageLoadouts();
+  refreshGaragePreview();
 }
 
 function updatePowerups(dt) {
@@ -5467,10 +6162,10 @@ function updatePlayer(dt) {
   ) {
     attemptBackflip();
   }
-  const throttle = input.throttle ? 1 : 0;
-  const brake = input.brake ? 1 : 0;
-  const drift = input.drift && !airborne;
-  const boostActive = input.boost && state.boost > 0.05;
+  const throttle = input.throttle || gamepadState.throttle > 0.16 ? 1 : 0;
+  const brake = input.brake || gamepadState.brake > 0.16 ? 1 : 0;
+  const drift = (input.drift || gamepadState.drift) && !airborne;
+  const boostActive = (input.boost || gamepadState.boost) && state.boost > 0.05;
   player.maxBoostTimer = boostActive
     ? 0.2
     : Math.max(0, (player.maxBoostTimer ?? 0) - dt);
@@ -7466,7 +8161,7 @@ function updateDifficulty(dt) {
   if (isMaxMode()) {
     if (state.effectToastTimer > 0) {
       state.effectToastTimer = Math.max(0, state.effectToastTimer - dt);
-      if (state.effectToastTimer === 0) state.effectToast = "";
+      if (state.effectToastTimer === 0) clearEffectToast();
     }
     return;
   }
@@ -7479,7 +8174,7 @@ function updateDifficulty(dt) {
     state.slowBotsTimer = Math.max(0, state.slowBotsTimer - dt);
   if (state.effectToastTimer > 0) {
     state.effectToastTimer = Math.max(0, state.effectToastTimer - dt);
-    if (state.effectToastTimer === 0) state.effectToast = "";
+    if (state.effectToastTimer === 0) clearEffectToast();
   }
 }
 
@@ -7491,6 +8186,7 @@ function updateTransientEffects(dt) {
 }
 
 function stepGame(dt) {
+  updateGamepadInput();
   const pausedByMenu = isMenuOpen();
   const targetMinimapHeading = MINIMAP_USE_MOVE_HEADING
     ? player.moveHeading
@@ -7507,6 +8203,7 @@ function stepGame(dt) {
     updateHud();
     updateRemoteNameTags();
     renderer.render(scene, camera);
+    renderGaragePreview();
     return;
   }
 
@@ -7608,6 +8305,7 @@ function stepGame(dt) {
   updateHud();
   updateRemoteNameTags();
   renderer.render(scene, camera);
+  renderGaragePreview();
 }
 
 function getRadarSector(right, forward) {
@@ -8087,8 +8785,8 @@ function updateHud() {
       statusLabelNodes[1].textContent = "Health";
     }
     if (hudLabelNodes.length >= 6) {
-      hudLabelNodes[0].textContent = "Score";
-      hudLabelNodes[1].textContent = "Preset";
+      hudLabelNodes[0].textContent = "Match";
+      hudLabelNodes[1].textContent = "Build";
       hudLabelNodes[2].textContent = "Clock";
       hudLabelNodes[3].textContent = "State";
       hudLabelNodes[4].textContent = "Speed";
@@ -8118,18 +8816,15 @@ function updateHud() {
       statusLabelNodes[1].textContent = "Shield";
     }
     if (hudLabelNodes.length >= 6) {
-      hudLabelNodes[0].textContent = "World";
-      hudLabelNodes[1].textContent = "Level";
-      hudLabelNodes[2].textContent = "Time";
+      hudLabelNodes[0].textContent = "Zone";
+      hudLabelNodes[1].textContent = "Heat";
+      hudLabelNodes[2].textContent = "Clock";
       hudLabelNodes[3].textContent = "Score";
       hudLabelNodes[4].textContent = "Speed";
       hudLabelNodes[5].textContent = "Lives";
     }
     hudWorld.textContent = getWorld().name;
-    const levelLabel = level.name;
-    hudLevel.textContent = state.effectToast
-      ? `${levelLabel} - ${state.effectToast}`
-      : levelLabel;
+    hudLevel.textContent = level.name;
     hudScore.textContent = Math.floor(state.score).toString();
     hudSpeed.textContent = `${Math.round(Math.abs(player.speed) * SPEED_TO_MPH_MULT)} MPH`;
     renderLivesHud();
@@ -8338,7 +9033,10 @@ function getSteer() {
       (input.pointerStartX - input.pointerX) / (window.innerWidth * 0.4);
     return THREE.MathUtils.clamp(delta, -1, 1);
   }
-  return (input.left ? -1 : 0) + (input.right ? 1 : 0);
+  const keyboardSteer = (input.left ? -1 : 0) + (input.right ? 1 : 0);
+  const gamepadSteer =
+    Math.abs(gamepadState.steer) > 0.12 ? gamepadState.steer : 0;
+  return THREE.MathUtils.clamp(keyboardSteer + gamepadSteer, -1, 1);
 }
 
 function angleDifference(a, b) {
@@ -8354,6 +9052,9 @@ function hasMovementInput() {
     input.brake ||
     input.left ||
     input.right ||
+    gamepadState.throttle > 0.16 ||
+    gamepadState.brake > 0.16 ||
+    Math.abs(gamepadState.steer) > 0.12 ||
     Math.abs(input.touchSteer) > 0.08
   );
 }
@@ -8410,11 +9111,38 @@ function dispatchGameAction(action) {
   }
 }
 
-function showMessage(title, body, nextLabel = "Next", action = "next") {
+function getResultRows() {
+  return [
+    ["Score", Math.floor(state.score).toString()],
+    ["Best Chain", `x${state.bestCombo.toFixed(1)}`],
+    ["Near Miss", `${state.bestNearMissStreak}`],
+    ["Landing", state.lastLandingGrade || "Clean"],
+    ["Clock", hudTime?.textContent || "0:00"],
+    ["Next Hook", isMaxMode() ? "Replay arena" : "One more heat"],
+  ];
+}
+
+function showMessage(
+  title,
+  body,
+  nextLabel = "Next",
+  action = "next",
+  rows = null,
+) {
   messageTitle.textContent = title;
   messageBody.textContent = body;
   nextBtn.textContent = nextLabel;
   retryBtn.hidden = action === "retry" || action === "restart-current";
+  if (messageStats) {
+    const statRows = rows ?? getResultRows();
+    messageStats.hidden = statRows.length === 0;
+    messageStats.innerHTML = statRows
+      .map(
+        ([label, value]) =>
+          `<div class="result-stat"><span>${label}</span><strong>${value}</strong></div>`,
+      )
+      .join("");
+  }
   message.classList.add("show");
   document.body.classList.remove("playing");
   state.running = false;
@@ -8434,35 +9162,13 @@ function completeLevel() {
   const world = getWorld();
   const level = getLevel();
   const nextProgress = getNextProgressIndices();
-  try {
-    const payload = {
-      worldIndex: nextProgress.worldIndex,
-      levelIndex: nextProgress.levelIndex,
-      settings: {
-        difficulty: settings.difficulty,
-        campaignAiMode: settings.campaignAiMode,
-        invertSteer: settings.invertSteer,
-        cameraFocus: settings.cameraFocus,
-        rampDensity: settings.rampDensity,
-        deviceMode: settings.deviceMode,
-        activeGameMode: settings.activeGameMode,
-      },
-      customization: {
-        bodyId: customization.bodyId,
-        wheelId: customization.wheelId,
-        styleId: customization.styleId,
-        powerId: customization.powerId,
-        paintId: customization.paintId,
-        accentId: customization.accentId,
-        tintId: customization.tintId,
-        spoilerId: customization.spoilerId,
-        glowId: customization.glowId,
-      },
-    };
-    localStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(payload));
-  } catch (error) {
-    debugLog("menu", "save_failed", error?.message || error);
-  }
+  const currentWorld = state.worldIndex;
+  const currentLevel = state.levelIndex;
+  state.worldIndex = nextProgress.worldIndex;
+  state.levelIndex = nextProgress.levelIndex;
+  savePersistentState();
+  state.worldIndex = currentWorld;
+  state.levelIndex = currentLevel;
   const isLastLevel = state.levelIndex === world.levels.length - 1;
   const runSummary = `Score ${Math.floor(state.score)}. Best chain x${state.bestCombo.toFixed(1)}. Near-miss streak ${state.bestNearMissStreak}. ${state.lastLandingGrade ? `${state.lastLandingGrade}. ` : ""}Press Enter for the next heat.`;
   if (isLastLevel) {
@@ -8529,46 +9235,48 @@ window.addEventListener(
 
 window.addEventListener("keydown", (event) => {
   updateAutoInputMode("desktop");
+  if (state.awaitingRemapAction && !event.repeat) {
+    event.preventDefault();
+    const action = state.awaitingRemapAction;
+    state.awaitingRemapAction = "";
+    setPrimaryBinding(action, event.code);
+    return;
+  }
   if (
-    event.code === "Space" ||
-    event.code === "ControlLeft" ||
-    event.code === "ControlRight" ||
-    event.code === "MetaLeft" ||
-    event.code === "MetaRight"
+    isActionCode(event.code, "drift") ||
+    isActionCode(event.code, "targetLunge") ||
+    isActionCode(event.code, "jumpTrick") ||
+    isActionCode(event.code, "altTrick")
   ) {
     event.preventDefault();
   }
-  if (event.code === "KeyX") event.preventDefault();
-  if (event.code === "ArrowLeft" || event.code === "KeyA") input.left = true;
-  if (event.code === "ArrowRight" || event.code === "KeyD") input.right = true;
-  if (event.code === "ArrowUp" || event.code === "KeyW") input.throttle = true;
-  if (event.code === "ArrowDown" || event.code === "KeyS") input.brake = true;
-  if (event.code === "Space") {
+  if (isActionCode(event.code, "left")) input.left = true;
+  if (isActionCode(event.code, "right")) input.right = true;
+  if (isActionCode(event.code, "throttle")) input.throttle = true;
+  if (isActionCode(event.code, "brake")) input.brake = true;
+  if (isActionCode(event.code, "drift")) {
     if (isMaxMode()) performMaxBallLunge();
     else input.drift = true;
   }
-  if (event.code === "ShiftLeft" || event.code === "ShiftRight")
-    input.boost = true;
-  if (
-    event.code === "ControlLeft" ||
-    event.code === "ControlRight" ||
-    event.code === "MetaLeft" ||
-    event.code === "MetaRight"
-  ) {
+  if (isActionCode(event.code, "boost")) input.boost = true;
+  if (isActionCode(event.code, "targetLunge")) {
     if (isMaxMode() && !event.repeat) performMaxBotLunge();
   }
-  if (event.code === "KeyX" && !isMaxMode()) {
+  if (
+    (isActionCode(event.code, "jumpTrick") ||
+      isActionCode(event.code, "altTrick")) &&
+    !isMaxMode()
+  ) {
     if (isCarAirborne(player) || player.backflipActive) input.backflip = true;
     if (!event.repeat) performJumpOrBackflip();
   }
-  if (event.code === "KeyC" && !event.repeat)
+  if (isActionCode(event.code, "chat") && !event.repeat)
     setEffectToast("Online chat needs backend");
-  if (event.code === "KeyL" && isMaxMode() && !event.repeat) {
+  if (isActionCode(event.code, "ballCam") && isMaxMode() && !event.repeat) {
     state.ballCam = !state.ballCam;
     setEffectToast(state.ballCam ? "Ball Cam On" : "Ball Cam Off");
   }
-  if (event.code === "KeyR") dispatchGameAction("restart-level");
-  if (event.code === "KeyM") setMenuOpen(true);
+  if (isActionCode(event.code, "restart")) dispatchGameAction("restart-level");
   if (event.code === "Enter") {
     if (overlay.classList.contains("show")) {
       dispatchGameAction("start");
@@ -8576,7 +9284,7 @@ window.addEventListener("keydown", (event) => {
       dispatchGameAction("message-next");
     }
   }
-  if (event.code === "Escape") {
+  if (isActionCode(event.code, "menu")) {
     setMenuOpen(!isMenuOpen());
   }
   debugLog("input", "keydown", event.code);
@@ -8584,22 +9292,24 @@ window.addEventListener("keydown", (event) => {
 
 window.addEventListener("keyup", (event) => {
   if (
-    event.code === "Space" ||
-    event.code === "ControlLeft" ||
-    event.code === "ControlRight" ||
-    event.code === "MetaLeft" ||
-    event.code === "MetaRight"
+    isActionCode(event.code, "drift") ||
+    isActionCode(event.code, "targetLunge") ||
+    isActionCode(event.code, "jumpTrick") ||
+    isActionCode(event.code, "altTrick")
   ) {
     event.preventDefault();
   }
-  if (event.code === "ArrowLeft" || event.code === "KeyA") input.left = false;
-  if (event.code === "ArrowRight" || event.code === "KeyD") input.right = false;
-  if (event.code === "ArrowUp" || event.code === "KeyW") input.throttle = false;
-  if (event.code === "ArrowDown" || event.code === "KeyS") input.brake = false;
-  if (event.code === "Space" && !isMaxMode()) input.drift = false;
-  if (event.code === "ShiftLeft" || event.code === "ShiftRight")
-    input.boost = false;
-  if (event.code === "KeyX") input.backflip = false;
+  if (isActionCode(event.code, "left")) input.left = false;
+  if (isActionCode(event.code, "right")) input.right = false;
+  if (isActionCode(event.code, "throttle")) input.throttle = false;
+  if (isActionCode(event.code, "brake")) input.brake = false;
+  if (isActionCode(event.code, "drift") && !isMaxMode()) input.drift = false;
+  if (isActionCode(event.code, "boost")) input.boost = false;
+  if (
+    isActionCode(event.code, "jumpTrick") ||
+    isActionCode(event.code, "altTrick")
+  )
+    input.backflip = false;
   debugLog("input", "keyup", event.code);
 });
 
@@ -8660,6 +9370,57 @@ function resetTouchSteer() {
   touchSteerKnob.style.transform = "translate(0px, 0px)";
   input.throttle = false;
   input.brake = false;
+}
+
+function wasGamepadPressed(index) {
+  return (
+    Boolean(gamepadState.buttons[index]) && !gamepadState.previousButtons[index]
+  );
+}
+
+function updateGamepadInput() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()] : [];
+  const pad = pads.find(Boolean);
+  gamepadState.previousButtons = { ...gamepadState.buttons };
+  if (!pad) {
+    gamepadState.connected = false;
+    gamepadState.id = "";
+    gamepadState.steer = 0;
+    gamepadState.throttle = 0;
+    gamepadState.brake = 0;
+    gamepadState.drift = false;
+    gamepadState.boost = false;
+    gamepadState.buttons = {};
+    return;
+  }
+  gamepadState.connected = true;
+  gamepadState.id = pad.id || "Gamepad";
+  gamepadState.steer = THREE.MathUtils.clamp(pad.axes?.[0] ?? 0, -1, 1);
+  const dpadLeft = pad.buttons?.[14]?.pressed ? -1 : 0;
+  const dpadRight = pad.buttons?.[15]?.pressed ? 1 : 0;
+  if (dpadLeft || dpadRight) gamepadState.steer = dpadLeft + dpadRight;
+  gamepadState.throttle = Math.max(
+    pad.buttons?.[7]?.value ?? 0,
+    pad.buttons?.[12]?.pressed ? 1 : 0,
+  );
+  gamepadState.brake = Math.max(
+    pad.buttons?.[6]?.value ?? 0,
+    pad.buttons?.[13]?.pressed ? 1 : 0,
+  );
+  gamepadState.drift = Boolean(pad.buttons?.[2]?.pressed);
+  gamepadState.boost = Boolean(pad.buttons?.[1]?.pressed);
+  gamepadState.buttons = Object.fromEntries(
+    pad.buttons.map((button, index) => [index, Boolean(button.pressed)]),
+  );
+  if (wasGamepadPressed(0) && !isMaxMode()) performJumpOrBackflip();
+  if (wasGamepadPressed(2) && isMaxMode()) performMaxBallLunge();
+  if (wasGamepadPressed(3) && isMaxMode()) {
+    state.ballCam = !state.ballCam;
+    setEffectToast(state.ballCam ? "Ball Cam On" : "Ball Cam Off");
+  }
+  if (wasGamepadPressed(8)) dispatchGameAction("restart-level");
+  if (wasGamepadPressed(9)) setMenuOpen(!isMenuOpen());
+  if (controllerStatus && isMenuOpen()) renderControlsUi();
 }
 
 function bindPressAction(element, handler) {
@@ -8767,10 +9528,23 @@ bindPressAction(retryBtn, () => {
 });
 
 bindPressAction(menuBtn, () => {
-  setMenuOpen(true);
+  setMenuOpen(true, state.running ? "games" : null);
 });
 bindPressAction(menuClose, () => {
   setMenuOpen(false);
+});
+bindPressAction(menuResume, () => {
+  setMenuOpen(false);
+});
+bindPressAction(menuRestart, () => {
+  setMenuOpen(false);
+  dispatchGameAction("restart-level");
+});
+bindPressAction(menuGarage, () => {
+  setMenuOpen(true, "customize");
+});
+bindPressAction(menuSettings, () => {
+  setMenuOpen(true, "settings");
 });
 
 tabButtons.forEach((button) => {
@@ -8778,6 +9552,49 @@ tabButtons.forEach((button) => {
     if (button.hidden) return;
     setActiveTab(button.dataset.tab);
   });
+});
+
+bindPressAction(garageZoomIn, () => {
+  initGaragePreview();
+  garageState.preview.zoom = THREE.MathUtils.clamp(
+    garageState.preview.zoom - 0.45,
+    4.1,
+    7.6,
+  );
+});
+bindPressAction(garageZoomOut, () => {
+  initGaragePreview();
+  garageState.preview.zoom = THREE.MathUtils.clamp(
+    garageState.preview.zoom + 0.45,
+    4.1,
+    7.6,
+  );
+});
+bindPressAction(garageResetView, () => {
+  garageState.preview.yaw = -0.42;
+  garageState.preview.zoom = 5.7;
+});
+
+carClassSelect?.addEventListener("change", (event) => {
+  applyCarClass(event.target.value);
+});
+
+touchLayoutSelect?.addEventListener("change", (event) => {
+  settings.touchLayout = TOUCH_LAYOUT_OPTIONS[event.target.value]
+    ? event.target.value
+    : "classic";
+  applyDeviceProfile();
+  savePersistentState();
+});
+
+touchScaleSelect?.addEventListener("change", (event) => {
+  settings.touchScale = THREE.MathUtils.clamp(
+    Number(event.target.value),
+    0.86,
+    1.14,
+  );
+  applyDeviceProfile();
+  savePersistentState();
 });
 
 gameCards.forEach((card) => {
@@ -9207,15 +10024,7 @@ window.render_game_to_text = () => {
   const radarSnapshot = buildRadarSnapshot().snapshot;
   const activeTab =
     document.querySelector(".tab-btn.active")?.dataset.tab ?? "";
-  const activeScreen = overlay.classList.contains("show")
-    ? "title"
-    : message.classList.contains("show")
-      ? "results"
-      : isMenuOpen()
-        ? "menu"
-        : state.running
-          ? "playing"
-          : "idle";
+  const activeScreen = getUiScreen();
   const payload = {
     mode: isMaxMode() ? GAME_MODE_MAX1 : GAME_MODE_ID33,
     note: "origin center, +x right, +z north/forward, +y up",
@@ -9224,6 +10033,8 @@ window.render_game_to_text = () => {
     ui: {
       screen: activeScreen,
       tab: activeTab,
+      paused: isMenuOpen(),
+      resultsVisible: message.classList.contains("show"),
       product: "InfernoDrift4",
     },
     player: {
@@ -9266,9 +10077,38 @@ window.render_game_to_text = () => {
       bestNearMissStreak: state.bestNearMissStreak,
     },
     controls: {
-      jumpTrickKey: "X",
-      backflipKey: "X",
-      reservedChatKey: "C",
+      jumpTrickKey: formatCodeLabel(controlBindings.jumpTrick[0] ?? "KeyX"),
+      backflipKey: formatCodeLabel(controlBindings.altTrick[0] ?? "KeyB"),
+      alternateBackflipKey: formatCodeLabel(
+        controlBindings.altTrick[0] ?? "KeyB",
+      ),
+      reservedChatKey: formatCodeLabel(controlBindings.chat[0] ?? "KeyC"),
+      bindings: serializeControlBindings(),
+      touchLayout: settings.touchLayout,
+      touchScale: Number(settings.touchScale),
+      controller: {
+        connected: gamepadState.connected,
+        id: gamepadState.id,
+        steer: Number(gamepadState.steer.toFixed(2)),
+      },
+    },
+    garage: {
+      activeLoadoutId: garageState.activeLoadoutId,
+      activeLoadoutIndex: getActiveLoadoutIndex(),
+      activeClass: getClassSummary().id,
+      preview: {
+        ready: garageState.preview.ready,
+        yaw: Number(garageState.preview.yaw.toFixed(3)),
+        zoom: Number(garageState.preview.zoom.toFixed(2)),
+        frame: garageState.preview.frame,
+      },
+      loadouts: garageState.loadouts.map((loadout) => ({
+        id: loadout.id,
+        name: loadout.name,
+        classId: loadout.classId,
+        paintId: loadout.paintId,
+        glowId: loadout.glowId,
+      })),
     },
     radar: radarSnapshot,
     camera: {
@@ -9403,6 +10243,31 @@ window.__infernodriftTestApi = {
     applyDeviceProfile();
     return { ...state.deviceProfile };
   },
+  openMenuTab: (tabName = "games") => {
+    setMenuOpen(true, tabName);
+    return {
+      screen: getUiScreen(),
+      tab: document.querySelector(".tab-btn.active")?.dataset.tab ?? "",
+    };
+  },
+  selectLoadout: (loadoutId = GARAGE_LOADOUT_IDS[0]) => {
+    selectGarageLoadout(loadoutId, { save: false });
+    return serializeGarageState();
+  },
+  getGaragePreviewState: () => ({
+    ready: garageState.preview.ready,
+    yaw: garageState.preview.yaw,
+    zoom: garageState.preview.zoom,
+    frame: garageState.preview.frame,
+    hasCanvas: Boolean(garagePreviewHost?.querySelector("canvas")),
+  }),
+  setTouchLayout: (layout = "classic", scale = settings.touchScale) => {
+    settings.touchLayout = TOUCH_LAYOUT_OPTIONS[layout] ? layout : "classic";
+    settings.touchScale = THREE.MathUtils.clamp(Number(scale) || 1, 0.86, 1.14);
+    applyDeviceProfile();
+    return { layout: settings.touchLayout, scale: settings.touchScale };
+  },
+  setControlBinding: (actionId, code) => setPrimaryBinding(actionId, code),
 };
 
 loadPersistentState();
@@ -9417,8 +10282,13 @@ invertToggle.checked = settings.invertSteer;
 cameraToggle.checked = settings.cameraFocus;
 if (rampDensitySelect) rampDensitySelect.value = settings.rampDensity;
 if (devModeToggle) devModeToggle.checked = settings.devMode;
+if (touchLayoutSelect) touchLayoutSelect.value = settings.touchLayout;
+if (touchScaleSelect) touchScaleSelect.value = String(settings.touchScale);
 applyDeviceProfile();
 refreshDevModeUi();
+refreshGamesUi();
+renderControlsUi();
+renderProgressPanel();
 applyPlayerCustomization({ progress: getProgressSnapshot() });
 resetLevel();
 updateHud();
