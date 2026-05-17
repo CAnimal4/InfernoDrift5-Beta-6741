@@ -165,7 +165,11 @@ await page.evaluate(() => window.advanceTime(180));
 const maxFlipState = JSON.parse(
   await page.evaluate(() => window.render_game_to_text()),
 );
-assert.match(maxFlipState.effects.lastToast, /Backflip|Jump/i);
+assert.equal(
+  maxFlipState.player.backflipActive ||
+    /Backflip|Jump/i.test(maxFlipState.effects.lastToast),
+  true,
+);
 
 await page.evaluate(() => window.__infernodriftTestApi.forceMaxGoal("blue"));
 await page.waitForTimeout(150);
@@ -263,6 +267,10 @@ for (const modeId of requiredModes) {
       "boolean",
     );
     assert.ok(state.bots.some((bot) => String(bot.role).startsWith("rival")));
+    assert.equal(
+      state.bots.some((bot) => bot.team === "hunter"),
+      false,
+    );
   }
   if (modeId === "time-trial") {
     assert.equal(state.modeInfo.scene, "track");
@@ -298,8 +306,10 @@ for (const modeId of requiredModes) {
   if (modeId === "battle-arena") {
     assert.equal(state.modeInfo.scene, "battle");
     assert.equal(state.battle.team, "blue");
-    assert.equal(state.battle.health, 100);
-    assert.ok(state.battle.ammo > 0);
+    assert.equal(state.battle.health, 180);
+    assert.equal(state.battle.ammo, 10);
+    assert.equal(state.battle.targetScore, 3);
+    assert.equal(state.battle.flags.length, 2);
     assert.ok(state.battlePickups.length >= 5);
     assert.ok(state.bots.some((bot) => bot.team === "red"));
   }

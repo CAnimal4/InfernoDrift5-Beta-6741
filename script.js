@@ -213,7 +213,8 @@ const AIRBORNE_BOOST_CAP_MULT = 1.18;
 const DEV_MODE_PASSWORDS = ["ibelikesheesh", "pandamo2011"];
 const BACKFLIP_DURATION = 0.78;
 const BACKFLIP_RECOVERY_DURATION = 0.3;
-const SAVE_STORAGE_KEY = "infernoDrift3.save.v1";
+const SAVE_STORAGE_KEY = "infernoDrift4.save.v1";
+const LEGACY_SAVE_STORAGE_KEYS = ["infernoDrift3.save.v1"];
 const GAME_MODE_ID33 = "infernodrift33";
 const GAME_MODE_MAX1 = "infernodriftmax1";
 const GAME_MODE_RISK = "tryatyourownrisk";
@@ -415,15 +416,17 @@ const BATTLE_TEAM_SKINS = {
   red: { primary: 0xff514d, accent: 0x3b1116, glow: 0xff817a },
 };
 const BATTLE_RULES = {
-  maxHealth: 100,
-  maxAmmo: 6,
-  laserDamage: 34,
-  laserRange: 128,
+  maxHealth: 180,
+  maxAmmo: 10,
+  laserDamage: 24,
+  laserRange: 152,
   laserWidth: 5.2,
-  laserCooldown: 0.42,
-  reloadSeconds: 2.1,
+  laserCooldown: 0.14,
+  reloadSeconds: 0.58,
   respawnSeconds: 1.8,
-  targetScore: 8,
+  respawnShieldSeconds: 5,
+  targetScore: 3,
+  arenaHalfSize: 224,
 };
 const HUNTER_BOT_COLOR = 0x39ff8a;
 const BOWLING_RULES = {
@@ -847,10 +850,10 @@ const MAX_DEMOLITION_RULES = {
   explosionBurstCount: 32,
 };
 const MAX_REPLAY_RULES = {
-  sampleRate: 1 / 24,
-  maxFrames: 96,
-  playbackFps: 14,
-  playbackDuration: 4.25,
+  sampleRate: 1 / 30,
+  maxFrames: 180,
+  playbackFps: 8,
+  playbackDuration: 6,
 };
 const MAX_WALL_RIDE_RULES = {
   startBand: 9,
@@ -1754,6 +1757,7 @@ const input = {
   brake: false,
   drift: false,
   boost: false,
+  laser: false,
   pointerActive: false,
   pointerX: 0,
   pointerStartX: 0,
@@ -1935,14 +1939,20 @@ function createModeRunState() {
     bossWeakTimer: 0,
     battlePickup: "",
     battlePickupTimer: 0,
+    battleFlags: [],
     battle: {
       blueScore: 0,
       redScore: 0,
+      targetScore: BATTLE_RULES.targetScore,
       health: BATTLE_RULES.maxHealth,
       ammo: BATTLE_RULES.maxAmmo,
       laserCooldown: 0,
       reloadTimer: 0,
+      shield: 0,
       lastLaserHit: "",
+      blueFlagCarrier: "",
+      redFlagCarrier: "",
+      flagMessage: "",
     },
     bowling: {
       frame: 1,
@@ -1963,10 +1973,15 @@ function createModeRunState() {
       rings: 0,
       loopActive: false,
       loopTimer: 0,
+      loopDuration: 1,
+      loopCenter: null,
+      loopHeading: 0,
+      loopRadius: 15,
       barrelRolls: 0,
     },
     lava: {
-      height: 0,
+      height: -1.15,
+      graceTimer: 2.8,
       safeZoneIndex: 0,
       platformHeight: 1.6,
     },
@@ -2991,7 +3006,11 @@ function savePersistentState() {
 
 function loadPersistentState() {
   try {
-    const raw = localStorage.getItem(SAVE_STORAGE_KEY);
+    const raw =
+      localStorage.getItem(SAVE_STORAGE_KEY) ??
+      LEGACY_SAVE_STORAGE_KEYS.map((key) => localStorage.getItem(key)).find(
+        Boolean,
+      );
     if (!raw) return;
     const data = JSON.parse(raw);
     if (!data || typeof data !== "object") return;
@@ -3816,6 +3835,7 @@ const powerups = [];
 const modeMarkers = [];
 const modeDecor = [];
 const battlePickups = [];
+const battleFlags = [];
 const boostPads = [];
 const bots = [];
 
@@ -3912,6 +3932,12 @@ class Car {
     this.backflipActive = false;
     this.backflipProgress = 0;
     this.backflipRecovery = 0;
+    this.barrelRollActive = false;
+    this.barrelRollProgress = 0;
+    this.barrelRollDirection = 1;
+    this.barrelRollSpin = 0;
+    this.battleShieldTimer = 0;
+    this.shieldBubble = null;
     this.maxHealth = MAX_HEALTH_MAX;
     this.maxStunTimer = 0;
     this.maxBoostTimer = 0;
@@ -4139,6 +4165,21 @@ class Car {
     glow.position.set(0, 0.08, 0);
     this.visualRoot.add(glow);
     this.underglow = glow;
+
+    const shieldBubble = new THREE.Mesh(
+      new THREE.SphereGeometry(2.35, 24, 16),
+      new THREE.MeshBasicMaterial({
+        color: config.glowColor,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    shieldBubble.position.y = 0.72;
+    shieldBubble.visible = false;
+    this.visualRoot.add(shieldBubble);
+    this.shieldBubble = shieldBubble;
   }
 
   setPosition(x, y, z) {
@@ -4196,8 +4237,33 @@ class Car {
         Math.min(1, dt * 12),
       );
     }
+    if (this.barrelRollActive) {
+      this.barrelRollProgress = Math.min(
+        1,
+        this.barrelRollProgress + dt / 0.64,
+      );
+      const ease = 0.5 - Math.cos(this.barrelRollProgress * Math.PI) * 0.5;
+      const spin = this.barrelRollDirection * ease * Math.PI * 2;
+      this.visualRoot.rotation.z += spin - this.barrelRollSpin;
+      this.barrelRollSpin = spin;
+      if (this.barrelRollProgress >= 1) {
+        this.barrelRollActive = false;
+        this.barrelRollProgress = 0;
+        this.barrelRollSpin = 0;
+      }
+    }
     this.visualRoot.rotation.z += this.surfaceRoll;
     this.visualRoot.rotation.x += this.surfacePitch;
+    if (this.shieldBubble) {
+      const active = this.battleShieldTimer > 0 && !this.demolished;
+      this.shieldBubble.visible = active;
+      if (active) {
+        const pulse = 1 + Math.sin(state.elapsed * 10) * 0.05;
+        this.shieldBubble.scale.setScalar(pulse);
+        this.shieldBubble.material.opacity =
+          0.16 + Math.min(1, this.battleShieldTimer / 5) * 0.12;
+      }
+    }
     this.updateWheels(this.speed * dt);
     this.healthBarGroup.position.set(
       this.position.x,
@@ -4214,6 +4280,13 @@ class Car {
     this.backflipRecovery = 0;
     this.visualRoot.rotation.x = 0;
     this.visualRoot.rotation.z = 0;
+  }
+
+  triggerBarrelRoll(direction = 1) {
+    this.barrelRollActive = true;
+    this.barrelRollProgress = 0;
+    this.barrelRollDirection = direction < 0 ? -1 : 1;
+    this.barrelRollSpin = 0;
   }
 
   setHealthBar(percent, visible) {
@@ -5239,6 +5312,8 @@ function clearModeObjects() {
   modeDecor.splice(0, modeDecor.length);
   battlePickups.forEach((pickup) => disposeModeObject(pickup.group));
   battlePickups.splice(0, battlePickups.length);
+  battleFlags.forEach((flag) => disposeModeObject(flag.group));
+  battleFlags.splice(0, battleFlags.length);
 }
 
 function makeModeMarker({
@@ -5330,6 +5405,7 @@ function makeModeBarrier(
   color = 0x253444,
   height = 3.2,
   solid = true,
+  standable = false,
 ) {
   const barrier = new THREE.Mesh(
     new THREE.BoxGeometry(width, height, depth),
@@ -5347,6 +5423,7 @@ function makeModeBarrier(
     obstacles.push({
       mesh: barrier,
       size: new THREE.Vector3(width, height, depth),
+      standable,
     });
   }
   return barrier;
@@ -5472,6 +5549,25 @@ function makeLavaPlatform(marker, height, color) {
   modeDecor.push(group);
   marker.platformHeight = height + 0.72;
   marker.decor = [...(marker.decor ?? []), group];
+  const launchRamp = makeRamp(height > 3 ? "mega" : "normal");
+  launchRamp.position.set(
+    marker.group.position.x,
+    0,
+    marker.group.position.z - marker.radius * 1.45,
+  );
+  launchRamp.userData.radius = Math.max(
+    launchRamp.userData.radius ?? 9,
+    marker.radius * 0.62,
+  );
+  launchRamp.userData.jumpLift = Math.max(
+    launchRamp.userData.jumpLift ?? 8,
+    8 + height * 1.9,
+  );
+  launchRamp.userData.speedKick = Math.max(
+    launchRamp.userData.speedKick ?? 14,
+    14 + height * 1.4,
+  );
+  ramps.push(launchRamp);
   return group;
 }
 
@@ -5505,6 +5601,56 @@ function makeBattlePickup({ id, label, x, z, color }) {
   return pickup;
 }
 
+function makeBattleFlag(team, x, z) {
+  const color = team === "blue" ? 0x56e9ff : 0xff6666;
+  const group = new THREE.Group();
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.32, 0.32, 8.5, 12),
+    new THREE.MeshStandardMaterial({
+      color: 0xeaf7ff,
+      emissive: color,
+      emissiveIntensity: 0.22,
+      roughness: 0.3,
+    }),
+  );
+  const flag = new THREE.Mesh(
+    new THREE.BoxGeometry(5.2, 2.7, 0.18),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.55,
+      roughness: 0.26,
+    }),
+  );
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(4.8, 4.8, 0.35, 24),
+    new THREE.MeshStandardMaterial({
+      color: team === "blue" ? 0x12364e : 0x4d151b,
+      emissive: color,
+      emissiveIntensity: 0.18,
+      roughness: 0.5,
+    }),
+  );
+  pole.position.y = 4.25;
+  flag.position.set(2.6, 6.4, 0);
+  base.position.y = 0.18;
+  group.add(base, pole, flag);
+  group.position.set(x, 0, z);
+  group.userData.home = new THREE.Vector3(x, 0, z);
+  group.userData.carrier = null;
+  group.userData.team = team;
+  scene.add(group);
+  const flagState = {
+    team,
+    group,
+    home: group.userData.home.clone(),
+    carrier: null,
+    capturedBy: "",
+  };
+  battleFlags.push(flagState);
+  return flagState;
+}
+
 function trackPoints(count = 8, radiusX = 138, radiusZ = 116, startAngle = 0) {
   return Array.from({ length: count }, (_, index) => {
     const angle = startAngle + (index / count) * Math.PI * 2;
@@ -5517,29 +5663,33 @@ function trackPoints(count = 8, radiusX = 138, radiusZ = 116, startAngle = 0) {
 
 function getRaceTrackPoints(mode) {
   const race = [
-    { x: 0, z: -158 },
-    { x: -58, z: -145 },
-    { x: -128, z: -96 },
-    { x: -102, z: -26 },
-    { x: -146, z: 44 },
-    { x: -72, z: 128 },
-    { x: 18, z: 150 },
-    { x: 112, z: 105 },
-    { x: 84, z: 22 },
-    { x: 142, z: -54 },
-    { x: 72, z: -132 },
+    { x: 0, z: -184 },
+    { x: -72, z: -174 },
+    { x: -152, z: -120 },
+    { x: -164, z: -46 },
+    { x: -98, z: 12 },
+    { x: -132, z: 84 },
+    { x: -46, z: 154 },
+    { x: 44, z: 158 },
+    { x: 130, z: 104 },
+    { x: 162, z: 28 },
+    { x: 86, z: -22 },
+    { x: 148, z: -98 },
+    { x: 74, z: -166 },
   ];
   const trial = [
-    { x: 0, z: -174 },
-    { x: -84, z: -128 },
-    { x: -112, z: -38 },
-    { x: -44, z: 22 },
-    { x: -98, z: 102 },
-    { x: 4, z: 158 },
-    { x: 104, z: 92 },
-    { x: 62, z: 8 },
-    { x: 126, z: -78 },
-    { x: 54, z: -152 },
+    { x: 0, z: -188 },
+    { x: -92, z: -154 },
+    { x: -154, z: -76 },
+    { x: -118, z: -8 },
+    { x: -42, z: 34 },
+    { x: -104, z: 112 },
+    { x: -16, z: 166 },
+    { x: 82, z: 132 },
+    { x: 132, z: 54 },
+    { x: 72, z: -14 },
+    { x: 152, z: -94 },
+    { x: 74, z: -166 },
   ];
   return mode.id === GAME_MODE_TIME_TRIAL ? trial : race;
 }
@@ -5667,7 +5817,7 @@ function setupModeSceneObjects() {
   if (mode.scene === "track") {
     const points = getRaceTrackPoints(mode);
     state.modeRun.trackPath = points.map((point) => ({ ...point }));
-    state.modeRun.trackWidth = mode.id === GAME_MODE_TIME_TRIAL ? 29 : 34;
+    state.modeRun.trackWidth = mode.id === GAME_MODE_TIME_TRIAL ? 24 : 28;
     points.forEach((point, index) => {
       const next = points[(index + 1) % points.length];
       makeTrackSegment(
@@ -5720,8 +5870,34 @@ function setupModeSceneObjects() {
         active: index === 0,
       });
     });
-    makeModeBarrier(0, -164, 88, 2.4, secondary, 1.2);
-    [-18, 0, 18].forEach((x) => makeModeRail(x, -157, 2, 18, 0xffffff));
+    const start = points[0];
+    const startNext = points[1] ?? { x: start.x, z: start.z + 1 };
+    const startDx = startNext.x - start.x;
+    const startDz = startNext.z - start.z;
+    const startLen = Math.max(1, Math.hypot(startDx, startDz));
+    const startForward = { x: startDx / startLen, z: startDz / startLen };
+    const startRight = { x: startForward.z, z: -startForward.x };
+    const startAngle = Math.atan2(startDx, startDz);
+    const startGate = makeModeBarrier(
+      start.x - startForward.x * 8,
+      start.z - startForward.z * 8,
+      88,
+      2.4,
+      secondary,
+      1.2,
+      false,
+    );
+    startGate.rotation.y = startAngle;
+    [-18, 0, 18].forEach((x) => {
+      const rail = makeModeRail(
+        start.x - startForward.x * 2 + startRight.x * x,
+        start.z - startForward.z * 2 + startRight.z * x,
+        2,
+        18,
+        0xffffff,
+      );
+      rail.rotation.y = startAngle;
+    });
     return;
   }
 
@@ -5848,6 +6024,8 @@ function setupModeSceneObjects() {
         color: index % 2 === 0 ? primary : secondary,
         active: true,
       });
+      marker.hideMarkerVisual = true;
+      marker.group.visible = false;
       marker.decor = [
         makeBowlingPin(x, z, index % 2 === 0 ? primary : secondary),
       ];
@@ -5856,8 +6034,9 @@ function setupModeSceneObjects() {
   }
 
   if (mode.scene === "battle") {
+    const half = BATTLE_RULES.arenaHalfSize;
     const blueFloor = new THREE.Mesh(
-      new THREE.PlaneGeometry(232, 112),
+      new THREE.PlaneGeometry(half * 2, half),
       new THREE.MeshStandardMaterial({
         color: 0x143e58,
         emissive: 0x0b6f9a,
@@ -5866,7 +6045,7 @@ function setupModeSceneObjects() {
       }),
     );
     const redFloor = new THREE.Mesh(
-      new THREE.PlaneGeometry(232, 112),
+      new THREE.PlaneGeometry(half * 2, half),
       new THREE.MeshStandardMaterial({
         color: 0x5a1d24,
         emissive: 0xa52a32,
@@ -5876,31 +6055,46 @@ function setupModeSceneObjects() {
     );
     blueFloor.rotation.x = -Math.PI / 2;
     redFloor.rotation.x = -Math.PI / 2;
-    blueFloor.position.set(0, 0.018, -56);
-    redFloor.position.set(0, 0.018, 56);
+    blueFloor.position.set(0, 0.018, -half * 0.5);
+    redFloor.position.set(0, 0.018, half * 0.5);
     scene.add(blueFloor, redFloor);
     modeDecor.push(blueFloor, redFloor);
-    makeModeRail(0, 0, 228, 3.2, 0xffffff);
-    makeModeBarrier(0, -116, 232, 3.2, 0x247fa6, 3.2);
-    makeModeBarrier(0, 116, 232, 3.2, 0xa84444, 3.2);
-    makeModeBarrier(-116, 0, 3.2, 232, 0x24384a, 3.2);
-    makeModeBarrier(116, 0, 3.2, 232, 0x4a2828, 3.2);
+    makeModeRail(0, 0, half * 2 - 8, 3.2, 0xffffff);
+    makeModeBarrier(0, -half, half * 2, 4, 0x247fa6, 3.2);
+    makeModeBarrier(0, half, half * 2, 4, 0xa84444, 3.2);
+    makeModeBarrier(-half, 0, 4, half * 2, 0x24384a, 3.2);
+    makeModeBarrier(half, 0, 4, half * 2, 0x4a2828, 3.2);
     [
-      [-64, -34, 30, 8],
-      [64, -34, 30, 8],
-      [-64, 34, 30, 8],
-      [64, 34, 30, 8],
-      [0, -72, 12, 28],
-      [0, 72, 12, 28],
+      [-132, -76, 46, 10],
+      [132, -76, 46, 10],
+      [-132, 76, 46, 10],
+      [132, 76, 46, 10],
+      [-42, -142, 18, 38],
+      [42, 142, 18, 38],
+      [0, -44, 34, 12],
+      [0, 44, 34, 12],
     ].forEach(([x, z, w, d], index) =>
-      makeModeBarrier(x, z, w, d, index < 3 ? primary : secondary, 4.2),
+      makeModeBarrier(
+        x,
+        z,
+        w,
+        d,
+        index % 2 ? secondary : primary,
+        4.2,
+        true,
+        true,
+      ),
     );
+    makeBattleFlag("blue", 0, -half + 34);
+    makeBattleFlag("red", 0, half - 34);
     [
-      ["reload", "Ammo Refill", -88, -4, 0x56e9ff],
-      ["reload", "Ammo Refill", 88, 4, 0xff786f],
-      ["shield", "Shield Bubble", -28, -78, 0x7bff9d],
-      ["shield", "Shield Bubble", 28, 78, 0x7bff9d],
+      ["reload", "Ammo Refill", -124, -14, 0x56e9ff],
+      ["reload", "Ammo Refill", 124, 14, 0xff786f],
+      ["shield", "Shield Bubble", -72, -150, 0x7bff9d],
+      ["shield", "Shield Bubble", 72, 150, 0x7bff9d],
       ["speed", "Speed Cell", 0, 0, 0xffc457],
+      ["reload", "Ammo Refill", 0, -106, 0x56e9ff],
+      ["reload", "Ammo Refill", 0, 106, 0xff786f],
     ].forEach(([id, label, x, z, color]) =>
       makeBattlePickup({ id, label, x, z, color }),
     );
@@ -6201,6 +6395,20 @@ function getMaxSurfaceHeight(x, z) {
 }
 
 function getModeSurfaceHeight(x, z) {
+  if (isBattleMode()) {
+    let bestHeight = 0;
+    obstacles.forEach((obstacle) => {
+      if (!obstacle.standable) return;
+      const { mesh, size } = obstacle;
+      if (
+        Math.abs(x - mesh.position.x) <= size.x * 0.5 + CAR_RADIUS * 0.35 &&
+        Math.abs(z - mesh.position.z) <= size.z * 0.5 + CAR_RADIUS * 0.35
+      ) {
+        bestHeight = Math.max(bestHeight, mesh.position.y + size.y * 0.5);
+      }
+    });
+    return bestHeight;
+  }
   if (!isLavaMode()) return 0;
   let bestHeight = 0;
   modeMarkers.forEach((marker) => {
@@ -6752,12 +6960,12 @@ function getModeSpawn() {
   }
   const mode = getModeDefinition();
   const spawns = {
-    [GAME_MODE_RACE]: { x: 0, z: -142, heading: 0 },
-    [GAME_MODE_TIME_TRIAL]: { x: 0, z: -176, heading: 0 },
+    [GAME_MODE_RACE]: { x: -8, z: -183, heading: -1.43 },
+    [GAME_MODE_TIME_TRIAL]: { x: -10, z: -184, heading: -1.22 },
     [GAME_MODE_STUNT]: { x: -118, z: -118, heading: Math.PI * 0.22 },
     [GAME_MODE_RAMP_RUSH]: { x: -118, z: -118, heading: Math.PI * 0.22 },
     [GAME_MODE_BOOST_BOWLING]: { x: 0, z: -142, heading: 0 },
-    [GAME_MODE_BATTLE]: { x: -48, z: -74, heading: 0 },
+    [GAME_MODE_BATTLE]: { x: -62, z: -146, heading: 0 },
     [GAME_MODE_HUNTER_TAG]: { x: 0, z: -128, heading: 0 },
     [GAME_MODE_BOT_ESCAPE]: { x: 0, z: -128, heading: 0 },
     [GAME_MODE_BOSS]: { x: 0, z: -132, heading: 0 },
@@ -6826,9 +7034,13 @@ function resetLevel() {
   player.backflipActive = false;
   player.backflipProgress = 0;
   player.backflipRecovery = 0;
+  player.barrelRollActive = false;
+  player.barrelRollProgress = 0;
+  player.battleShieldTimer = 0;
   player.lastRampTime = 0;
   player.prevPosition.copy(player.position);
   input.backflip = false;
+  input.laser = false;
   state.steerSmoothed = 0;
   state.lastHitAt = 0;
   state.lastHitByBotId = -1;
@@ -6840,6 +7052,12 @@ function resetLevel() {
 
   player.team = getModeDefinition().id === GAME_MODE_BATTLE ? "blue" : null;
   applyPlayerCustomization();
+  if (getModeDefinition().id === GAME_MODE_LAVA_FLOOR) {
+    state.shield = 1;
+    state.invincible = 2;
+    state.modeRun.lava.height = -1.15;
+    state.modeRun.lava.graceTimer = 2.8;
+  }
   buildWorld();
   spawnBots();
   if (isMaxMode()) {
@@ -6988,6 +7206,7 @@ function configureBattleCar(car, team, role = "laser") {
   car.battleLaserCooldown = 0;
   car.battleReloadTimer = 0;
   car.battleRespawnTimer = 0;
+  car.battleShieldTimer = 0;
   car.rebuildVisual(getTeamCarVisualConfig(team));
   car.visualRoot.scale.setScalar(role === "guard" ? 1.14 : 1.06);
   car.collisionRadius = role === "guard" ? BOT_RADIUS * 1.08 : BOT_RADIUS;
@@ -7001,20 +7220,28 @@ function spawnBattleBots() {
   player.battleAmmo = BATTLE_RULES.maxAmmo;
   player.battleLaserCooldown = 0;
   player.battleReloadTimer = 0;
+  player.battleShieldTimer = 0;
   player.rebuildVisual(getTeamCarVisualConfig("blue"));
   const specs = [
-    { team: "blue", role: "support", x: 42, z: -76, heading: 0, speed: 34 },
-    { team: "blue", role: "guard", x: -86, z: -22, heading: 0, speed: 31 },
+    { team: "blue", role: "support", x: 72, z: -132, heading: 0, speed: 36 },
+    { team: "blue", role: "guard", x: -88, z: -178, heading: 0, speed: 32 },
     {
       team: "red",
       role: "striker",
-      x: -42,
-      z: 76,
+      x: -72,
+      z: 152,
       heading: Math.PI,
-      speed: 35,
+      speed: 36,
     },
-    { team: "red", role: "guard", x: 42, z: 76, heading: Math.PI, speed: 31 },
-    { team: "red", role: "flanker", x: 86, z: 22, heading: Math.PI, speed: 37 },
+    { team: "red", role: "guard", x: 88, z: 178, heading: Math.PI, speed: 32 },
+    {
+      team: "red",
+      role: "flanker",
+      x: 132,
+      z: 92,
+      heading: Math.PI,
+      speed: 38,
+    },
   ];
   specs.forEach((spec) => {
     const bot = makeBot(BATTLE_TEAM_SKINS[spec.team].primary);
@@ -7393,7 +7620,7 @@ function spawnBots() {
           : mode.id === GAME_MODE_BATTLE
             ? `bumper-${i + 1}`
             : "hunter";
-    bot.team = mode.id === GAME_MODE_RACE ? "red" : "hunter";
+    bot.team = mode.id === GAME_MODE_RACE ? "rival" : "hunter";
     if (mode.id === GAME_MODE_BOSS && i === 0) {
       bot.visualRoot.scale.setScalar(1.52);
       bot.collisionRadius = BOT_RADIUS * 1.55;
@@ -8736,7 +8963,7 @@ function scoreMaxGoal(team) {
     if (assistCar) assistCar.matchStats.assists += 1;
   }
   const replayFrames = maxMode.replayBuffer.slice(
-    -Math.min(maxMode.replayBuffer.length, 72),
+    -Math.min(maxMode.replayBuffer.length, MAX_REPLAY_RULES.maxFrames),
   );
   const meta = `${team === "blue" ? "Blue" : "Red"} goal${scorer ? ` by ${scorer.label}` : ""}${assist ? `, assist ${assist.label}` : ""}`;
   maxMode.stats.lastGoal = { team, scorer, assist, replayFrames, meta };
@@ -8759,32 +8986,32 @@ function scoreMaxGoal(team) {
   });
   const goalZ = team === "blue" ? dims.goalLineZ - 8 : -dims.goalLineZ + 8;
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(16, 0.85, 16, 86),
+    new THREE.TorusGeometry(21, 1.25, 16, 96),
     new THREE.MeshBasicMaterial({
       color: team === "blue" ? 0x7feaff : 0xff8f76,
       transparent: true,
-      opacity: 0.86,
+      opacity: 0.92,
       depthWrite: false,
     }),
   );
-  ring.position.set(0, 7.5, goalZ);
+  ring.position.set(0, 8.5, goalZ);
   ring.rotation.x = Math.PI / 2;
-  ring.userData.fxLife = 0.7;
+  ring.userData.fxLife = 2.2;
   scene.add(ring);
   modeDecor.push(ring);
-  state.screenPulse = Math.max(state.screenPulse, 0.55);
-  state.cameraShake = Math.max(state.cameraShake, 0.34);
-  for (let i = 0; i < 64; i += 1) {
+  state.screenPulse = Math.max(state.screenPulse, 0.72);
+  state.cameraShake = Math.max(state.cameraShake, 0.42);
+  for (let i = 0; i < 108; i += 1) {
     spawnFx(
       new THREE.Vector3(0, 1.4 + Math.random() * 4.6, goalZ),
       new THREE.Vector3(
-        (Math.random() - 0.5) * 15,
-        2.8 + Math.random() * 4.8,
-        team === "blue" ? -4 - Math.random() * 5 : 4 + Math.random() * 5,
+        (Math.random() - 0.5) * 22,
+        3.2 + Math.random() * 6.4,
+        team === "blue" ? -5 - Math.random() * 7 : 5 + Math.random() * 7,
       ),
       team === "blue" ? 0x7feaff : 0xff8f76,
-      1.2,
-      0.68,
+      1.45,
+      0.92,
     );
   }
   const winner =
@@ -9313,6 +9540,8 @@ function updateMaxBots(dt) {
 function updateBattleBots(dt) {
   updateBattleActorTimers(dt);
   updateBattlePickups();
+  if (input.laser) fireBattleLaser(player);
+  updateBattleFlags();
   bots.forEach((bot, index) => {
     if (bot.demolished) return;
     const enemies = allBattleCars().filter(
@@ -9331,9 +9560,17 @@ function updateBattleBots(dt) {
       : lowHealth
         ? nearestBattlePickupFor(bot, ["shield"])
         : nearestBattlePickupFor(bot, index % 2 ? ["speed"] : []);
+    const ownFlag = getBattleFlag(bot.team);
+    const enemyFlag = getBattleFlag(bot.team === "red" ? "blue" : "red");
     let destination = target.position;
     let stopRange = 24;
-    if (
+    if (bot.battleCarryingFlag && ownFlag) {
+      destination = ownFlag.home;
+      stopRange = 9;
+    } else if (ownFlag?.carrier && ownFlag.carrier.team !== bot.team) {
+      destination = ownFlag.carrier.position;
+      stopRange = 18;
+    } else if (
       preferredPickup &&
       (lowAmmo || lowHealth || Math.random() < dt * 0.55)
     ) {
@@ -9344,9 +9581,20 @@ function updateBattleBots(dt) {
       destination = new THREE.Vector3(index % 2 ? 64 : -64, 0, side * 72);
       stopRange = 10;
     } else if (bot.role === "guard") {
-      const side = bot.team === "red" ? 1 : -1;
-      destination = new THREE.Vector3(index % 2 ? 34 : -34, 0, side * 38);
+      destination =
+        ownFlag?.home
+          .clone()
+          .add(
+            new THREE.Vector3(
+              index % 2 ? 28 : -28,
+              0,
+              bot.team === "red" ? -18 : 18,
+            ),
+          ) ?? destination;
       stopRange = 13;
+    } else if (enemyFlag && !enemyFlag.carrier) {
+      destination = enemyFlag.group.position;
+      stopRange = 10;
     }
     const distance = driveCarToward(bot, destination, dt, {
       stopRange,
@@ -9407,12 +9655,12 @@ function updateHunterTagBots(dt) {
               HALF_WORLD - 34,
             ),
           );
-        speedMult = 1.18;
+        speedMult = 1.04;
       } else {
         const marked = bots[markedIndex] ?? bot;
         target = player.position.clone().lerp(marked.position, 0.46);
-        stopRange = 10;
-        speedMult = 0.95;
+        stopRange = 13;
+        speedMult = 0.82;
       }
     } else {
       const flank = new THREE.Vector3(
@@ -9421,7 +9669,8 @@ function updateHunterTagBots(dt) {
         index % 3 ? 8 : -8,
       );
       target = player.position.clone().add(flank);
-      speedMult = index === markedIndex ? 1.1 : 1;
+      speedMult = index === markedIndex ? 0.9 : 0.78;
+      stopRange = 10;
     }
     driveCarToward(bot, target, dt, { stopRange, speedMult });
     updateVerticalPhysics(bot, dt);
@@ -9430,7 +9679,8 @@ function updateHunterTagBots(dt) {
     pushCarsApart(player, bot, playerIsIt ? 0.52 : 0.64);
     if (
       !playerIsIt &&
-      bot.position.distanceTo(player.position) < BOT_HIT_RADIUS
+      state.modeRun.tagCooldown <= 0 &&
+      bot.position.distanceTo(player.position) < BOT_HIT_RADIUS * 0.78
     ) {
       handlePlayerHit(bot.botId);
     }
@@ -9812,35 +10062,41 @@ function updateObstacles(entity) {
   obstacles.forEach((obstacle) => {
     const size = obstacle.size;
     const mesh = obstacle.mesh;
+    const topY = mesh.position.y + size.y * 0.5;
+    if (
+      obstacle.standable &&
+      entity.position.y >= topY - 0.32 &&
+      entity.verticalVel <= 1
+    ) {
+      return;
+    }
     if (
       Math.abs(entity.position.x - mesh.position.x) < size.x / 2 + CAR_RADIUS &&
       Math.abs(entity.position.z - mesh.position.z) < size.z / 2 + CAR_RADIUS
     ) {
       const pushX = entity.position.x - mesh.position.x;
       const pushZ = entity.position.z - mesh.position.z;
-      const pushLength = Math.hypot(pushX, pushZ);
+      const overlapX = size.x / 2 + CAR_RADIUS - Math.abs(pushX);
+      const overlapZ = size.z / 2 + CAR_RADIUS - Math.abs(pushZ);
       const push =
-        pushLength > 0.001
-          ? new THREE.Vector3(pushX / pushLength, 0, pushZ / pushLength)
-          : new THREE.Vector3(
-              Math.sin(entity.heading || 0),
-              0,
-              Math.cos(entity.heading || 0),
-            );
+        overlapX < overlapZ
+          ? new THREE.Vector3(Math.sign(pushX || 1), 0, 0)
+          : new THREE.Vector3(0, 0, Math.sign(pushZ || 1));
       entity.position.addScaledVector(push, 2.4);
       entity.speed *= 0.5;
     }
   });
 
+  const worldLimit = isBattleMode() ? BATTLE_RULES.arenaHalfSize : HALF_WORLD;
   entity.position.x = THREE.MathUtils.clamp(
     entity.position.x,
-    -HALF_WORLD + 4,
-    HALF_WORLD - 4,
+    -worldLimit + 4,
+    worldLimit - 4,
   );
   entity.position.z = THREE.MathUtils.clamp(
     entity.position.z,
-    -HALF_WORLD + 4,
-    HALF_WORLD - 4,
+    -worldLimit + 4,
+    worldLimit - 4,
   );
 }
 
@@ -10053,6 +10309,10 @@ function isInsideMarker(marker, radiusBoost = 0) {
 
 function updateModeMarkerVisuals(dt) {
   modeMarkers.forEach((marker) => {
+    if (marker.hideMarkerVisual) {
+      marker.group.visible = false;
+      return;
+    }
     marker.group.userData.phase = (marker.group.userData.phase ?? 0) + dt * 2.2;
     const pulse = marker.active
       ? 1 + Math.sin(marker.group.userData.phase) * 0.08
@@ -10116,9 +10376,10 @@ function applyBattlePickup(car, pickup) {
     car.battleAmmo = BATTLE_RULES.maxAmmo;
     car.battleReloadTimer = 0;
   } else if (pickup.id === "shield") {
+    car.battleShieldTimer = Math.max(car.battleShieldTimer ?? 0, 4.2);
     car.battleHealth = Math.min(
       BATTLE_RULES.maxHealth,
-      (car.battleHealth ?? BATTLE_RULES.maxHealth) + 34,
+      (car.battleHealth ?? BATTLE_RULES.maxHealth) + 20,
     );
   } else if (pickup.id === "speed") {
     car.speed = Math.max(car.speed, 42);
@@ -10144,13 +10405,123 @@ function updateBattlePickups() {
   });
 }
 
+function getBattleFlag(team) {
+  return battleFlags.find((flag) => flag.team === team) ?? null;
+}
+
+function releaseBattleFlag(car) {
+  battleFlags.forEach((flag) => {
+    if (flag.carrier !== car) return;
+    flag.carrier = null;
+    flag.group.userData.carrier = null;
+    flag.group.position.set(car.position.x, 0, car.position.z);
+    if (car) car.battleCarryingFlag = "";
+  });
+}
+
+function resetBattleFlags() {
+  battleFlags.forEach((flag) => {
+    flag.carrier = null;
+    flag.group.userData.carrier = null;
+    flag.group.position.copy(flag.home);
+  });
+  allBattleCars().forEach((car) => {
+    car.battleCarryingFlag = "";
+  });
+  state.modeRun.battle.blueFlagCarrier = "";
+  state.modeRun.battle.redFlagCarrier = "";
+}
+
+function scoreBattleFlag(team) {
+  if (team === "blue") {
+    state.modeRun.battle.blueScore += 1;
+    state.score += 900;
+    setEffectToast("Blue Flag Captured", { pulse: 0.38, shake: 0.24 });
+  } else {
+    state.modeRun.battle.redScore += 1;
+    setEffectToast("Red Flag Captured", { pulse: 0.32, shake: 0.2 });
+  }
+  state.modeRun.battle.flagMessage = `${team.toUpperCase()} flag point`;
+  state.modeRun.progress = Math.max(
+    state.modeRun.battle.blueScore,
+    state.modeRun.battle.redScore,
+  );
+  spawnBurst(
+    (getBattleFlag(team)?.home ?? player.position)
+      .clone()
+      .add(new THREE.Vector3(0, 1, 0)),
+    team === "blue" ? 0x56e9ff : 0xff6666,
+    34,
+    { scale: 0.68, life: 0.48, force: 7.2, lift: 2.8 },
+  );
+  resetBattleFlags();
+  if (state.modeRun.battle.blueScore >= BATTLE_RULES.targetScore)
+    completeModeRun();
+  else if (state.modeRun.battle.redScore >= BATTLE_RULES.targetScore)
+    failModeRun("Red team captured three flags first.");
+}
+
+function updateBattleFlags() {
+  battleFlags.forEach((flag) => {
+    if (flag.carrier && flag.carrier.demolished) {
+      releaseBattleFlag(flag.carrier);
+    }
+    if (flag.carrier && !flag.carrier.demolished) {
+      flag.group.position.set(
+        flag.carrier.position.x,
+        flag.carrier.position.y + 1.2,
+        flag.carrier.position.z,
+      );
+      flag.group.rotation.y = flag.carrier.heading;
+      return;
+    }
+    flag.group.rotation.y += 0.02;
+    allBattleCars().forEach((car) => {
+      if (car.demolished || car.team === flag.team || car.battleCarryingFlag)
+        return;
+      if (car.position.distanceTo(flag.group.position) > 9) return;
+      flag.carrier = car;
+      flag.group.userData.carrier = car;
+      car.battleCarryingFlag = flag.team;
+      state.modeRun.battle.flagMessage =
+        car.team === "blue" ? "You have the red flag" : "Red has the flag";
+      if (car === player)
+        setEffectToast("Red Flag Taken - Return Home", { pulse: 0.28 });
+    });
+  });
+
+  allBattleCars().forEach((car) => {
+    if (!car.battleCarryingFlag || car.demolished) return;
+    const ownFlag = getBattleFlag(car.team);
+    if (!ownFlag) return;
+    if (car.position.distanceTo(ownFlag.home) <= 13) {
+      scoreBattleFlag(car.team);
+    }
+  });
+
+  const blueFlag = getBattleFlag("blue");
+  const redFlag = getBattleFlag("red");
+  state.modeRun.battle.blueFlagCarrier =
+    blueFlag?.carrier === player
+      ? "player"
+      : blueFlag?.carrier
+        ? (blueFlag.carrier.role ?? "red")
+        : "";
+  state.modeRun.battle.redFlagCarrier =
+    redFlag?.carrier === player
+      ? "player"
+      : redFlag?.carrier
+        ? (redFlag.carrier.role ?? "blue")
+        : "";
+}
+
 function resetBowlingPins({ full = true } = {}) {
   modeMarkers
     .filter((marker) => marker.kind === "pin")
     .forEach((marker) => {
       marker.complete = !full && marker.complete;
       marker.active = !marker.complete;
-      marker.group.visible = !marker.complete;
+      marker.group.visible = marker.hideMarkerVisual ? false : !marker.complete;
       marker.decor?.forEach((object) => {
         object.visible = !marker.complete;
         object.rotation.set(0, 0, 0);
@@ -10401,13 +10772,15 @@ function updateTrackMode() {
 
 function updateStuntMode(dt) {
   const mode = getModeDefinition();
-  const steer = Math.abs(getSteer());
+  const steerInput = getSteer();
+  const steer = Math.abs(steerInput);
   const airborne = isCarAirborne(player);
   if (airborne && steer > 0.58 && state.modeRun.comboTimer <= 0) {
     state.modeRun.comboTimer = 0.75;
     state.modeRun.stunt.barrelRolls += 1;
     state.modeRun.stunt.combo += 0.35;
     state.modeRun.stunt.trick = steer > 0.82 ? "Barrel Roll" : "Air Twist";
+    player.triggerBarrelRoll(steerInput < 0 ? -1 : 1);
     state.score += 180 * state.modeRun.stunt.combo;
     state.boost = Math.min(1, state.boost + 0.08);
     setEffectToast(
@@ -10420,15 +10793,39 @@ function updateStuntMode(dt) {
   state.modeRun.comboTimer = Math.max(0, state.modeRun.comboTimer - dt);
   if (state.modeRun.stunt.loopActive) {
     state.modeRun.stunt.loopTimer += dt;
+    const duration = Math.max(0.6, state.modeRun.stunt.loopDuration || 1);
+    const t = THREE.MathUtils.clamp(
+      state.modeRun.stunt.loopTimer / duration,
+      0,
+      1,
+    );
+    const center = state.modeRun.stunt.loopCenter ?? player.position;
+    const heading = state.modeRun.stunt.loopHeading ?? player.heading;
+    const radius = state.modeRun.stunt.loopRadius || 15;
+    const forward = tempVector.set(Math.sin(heading), 0, Math.cos(heading));
+    player.position.x = center.x + forward.x * (t * 2 - 1) * radius;
+    player.position.z = center.z + forward.z * (t * 2 - 1) * radius;
     player.position.y = Math.max(
       player.position.y,
-      2 + Math.sin(state.modeRun.stunt.loopTimer * Math.PI) * 20,
+      1.3 + Math.sin(t * Math.PI) * radius * 1.55,
     );
-    player.speed = Math.max(player.speed, 46);
-    if (state.modeRun.stunt.loopTimer >= 1) {
+    player.heading = THREE.MathUtils.lerp(player.heading, heading, dt * 5);
+    player.moveHeading = player.heading;
+    player.speed = Math.max(player.speed, 52);
+    if (state.modeRun.stunt.loopTimer >= duration) {
       state.modeRun.stunt.loopActive = false;
       state.modeRun.stunt.loopTimer = 0;
+      state.modeRun.stunt.loopCenter = null;
       state.modeRun.stunt.trick = "Loop Exit";
+      player.verticalVel = Math.max(player.verticalVel, 5.5);
+      spawnBurst(
+        player.position.clone().add(new THREE.Vector3(0, 1.1, 0)),
+        0xffc457,
+        36,
+        { scale: 0.72, life: 0.58, force: 8.5, lift: 4.2 },
+      );
+      state.cameraShake = Math.max(state.cameraShake, 0.22);
+      state.screenPulse = Math.max(state.screenPulse, 0.28);
       setEffectToast("Loop Exit Boost", { pulse: 0.28 });
     }
   }
@@ -10446,8 +10843,20 @@ function updateStuntMode(dt) {
       }
       state.modeRun.stunt.loopActive = true;
       state.modeRun.stunt.loopTimer = 0;
+      state.modeRun.stunt.loopDuration = 1.05;
+      state.modeRun.stunt.loopCenter = marker.group.position.clone();
+      state.modeRun.stunt.loopHeading = player.heading;
+      state.modeRun.stunt.loopRadius = marker.radius + 2;
       state.modeRun.stunt.trick = "Loop the Loop";
       player.verticalVel = Math.max(player.verticalVel, 9);
+      player.triggerBarrelRoll(getSteer() < 0 ? -1 : 1);
+      spawnBurst(
+        marker.group.position.clone().add(new THREE.Vector3(0, 2.5, 0)),
+        marker.color,
+        44,
+        { scale: 0.82, life: 0.62, force: 9, lift: 5.4 },
+      );
+      state.screenPulse = Math.max(state.screenPulse, 0.32);
     }
     state.modeRun.stunt.rings += 1;
     state.modeRun.stunt.combo += marker.kind === "loop" ? 0.65 : 0.22;
@@ -10466,10 +10875,10 @@ function updateStuntMode(dt) {
 
 function updateLavaFloorMode(dt) {
   const lava = state.modeRun.lava;
-  lava.height = Math.min(
-    6.5,
-    lava.height + dt * (0.045 + lava.safeZoneIndex * 0.012),
-  );
+  lava.graceTimer = Math.max(0, (lava.graceTimer ?? 0) - dt);
+  const riseRate =
+    lava.graceTimer > 0 ? 0.006 : 0.014 + lava.safeZoneIndex * 0.004;
+  lava.height = Math.min(5.8, lava.height + dt * riseRate);
   modeDecor.forEach((object) => {
     if (object.userData?.lavaFloor) {
       object.position.y = lava.height;
@@ -10490,8 +10899,12 @@ function updateLavaFloorMode(dt) {
       marker.active = index === lava.safeZoneIndex && !marker.complete;
     });
     setEffectToast("Safe Platform", { pulse: 0.24 });
-  } else if (player.position.y < lava.height + 0.35 && state.invincible <= 0) {
-    state.shield = Math.max(0, state.shield - dt * 0.24);
+  } else if (
+    lava.graceTimer <= 0 &&
+    player.position.y < lava.height + 0.35 &&
+    state.invincible <= 0
+  ) {
+    state.shield = Math.max(0, state.shield - dt * 0.11);
     if (state.shield <= 0) {
       state.lastFailReason =
         "The lava caught you before the safe platform. Climb the ramps earlier and guard your line.";
@@ -10499,6 +10912,8 @@ function updateLavaFloorMode(dt) {
       state.invincible = 1.4;
       setEffectToast("Lava Hit", { shake: 0.34, pulse: 0.28 });
     }
+  } else if (lava.graceTimer > 0 && player.position.y < lava.height + 0.35) {
+    setEffectToast("Find the ramp", { pulse: 0.06 });
   }
   bots.forEach((bot, index) => {
     const target = modeMarkers[lava.safeZoneIndex] ?? active;
@@ -10510,7 +10925,7 @@ function updateLavaFloorMode(dt) {
     );
     driveCarToward(bot, target.group.position.clone().add(offset), dt, {
       stopRange: 8,
-      speedMult: 1.05,
+      speedMult: 0.92,
     });
     updateVerticalPhysics(bot, dt);
     bot.update(dt);
@@ -10526,9 +10941,10 @@ function updateHunterTagMode(dt) {
       bots[state.modeRun.taggedBotIndex % Math.max(1, bots.length)];
     if (target && target.position.distanceTo(player.position) < 14) {
       state.modeRun.tagState = "evader";
-      state.modeRun.tagCooldown = 1.2;
+      state.modeRun.tagCooldown = 3.2;
       completeModeMarker(modeMarkers[state.modeRun.markerIndex], 1, 440);
-      setEffectToast("Hunter Tagged Back", { pulse: 0.24 });
+      setEffectToast("Escaping Again", { pulse: 0.3 });
+      state.invincible = Math.max(state.invincible, 1.6);
     }
   } else {
     const marker = modeMarkers[state.modeRun.markerIndex];
@@ -10607,6 +11023,10 @@ function updateBattleStateFromPlayer() {
   state.modeRun.battle.reloadTimer = Number(
     Math.max(0, player.battleReloadTimer ?? 0).toFixed(2),
   );
+  state.modeRun.battle.shield = Number(
+    Math.max(0, player.battleShieldTimer ?? 0).toFixed(2),
+  );
+  state.modeRun.battle.targetScore = BATTLE_RULES.targetScore;
 }
 
 function respawnBattleCar(car) {
@@ -10614,14 +11034,16 @@ function respawnBattleCar(car) {
   const spread = red
     ? bots.filter((bot) => bot.team === "red").indexOf(car)
     : 0;
-  const x = red ? -64 + spread * 42 : car === player ? -48 : 48 + spread * 22;
-  const z = red ? 82 : -82;
+  const half = BATTLE_RULES.arenaHalfSize;
+  const x = red ? -90 + spread * 58 : car === player ? -62 : 54 + spread * 38;
+  const z = red ? half - 42 : -half + 42;
   car.setDemolished(false);
   car.battleHealth = BATTLE_RULES.maxHealth;
-  car.battleAmmo = BATTLE_RULES.maxAmmo;
-  car.battleReloadTimer = 0;
+  car.battleAmmo = Math.ceil(BATTLE_RULES.maxAmmo / 2);
+  car.battleReloadTimer = BATTLE_RULES.reloadSeconds;
   car.battleLaserCooldown = 0;
-  car.setPosition(THREE.MathUtils.clamp(x, -92, 92), 0, z);
+  car.battleShieldTimer = BATTLE_RULES.respawnShieldSeconds;
+  car.setPosition(THREE.MathUtils.clamp(x, -half + 22, half - 22), 0, z);
   car.heading = red ? Math.PI : 0;
   car.moveHeading = car.heading;
   car.speed = 0;
@@ -10629,13 +11051,24 @@ function respawnBattleCar(car) {
   car.battleRespawnTimer = 0;
   car.setHealthBar(1, car !== player);
   if (car === player) {
-    state.invincible = 1.1;
-    setEffectToast("Respawned", { pulse: 0.2 });
+    state.invincible = BATTLE_RULES.respawnShieldSeconds;
+    setEffectToast("Respawn Shield", { pulse: 0.24 });
   }
 }
 
 function applyBattleDamage(target, amount, attacker = player) {
   if (!target || target.demolished || amount <= 0) return false;
+  if ((target.battleShieldTimer ?? 0) > 0) {
+    spawnBurst(
+      target.position.clone().add(new THREE.Vector3(0, 1.1, 0)),
+      target.team === "red" ? 0xff8f76 : 0x7feaff,
+      18,
+      { scale: 0.48, life: 0.32, force: 4.6, lift: 1.8 },
+    );
+    if (target === player)
+      setEffectToast("Shield Bubble", { pulse: 0.16, shake: 0.08 });
+    return false;
+  }
   target.battleHealth = Math.max(
     0,
     (target.battleHealth ?? BATTLE_RULES.maxHealth) - amount,
@@ -10661,42 +11094,42 @@ function applyBattleDamage(target, amount, attacker = player) {
       setEffectToast("Laser Hit", { shake: 0.18, pulse: 0.16 });
     return true;
   }
-  const scoringTeam = attacker.team === "red" ? "red" : "blue";
-  if (scoringTeam === "blue") state.modeRun.battle.blueScore += 1;
-  else state.modeRun.battle.redScore += 1;
   target.setDemolished(true);
+  releaseBattleFlag(target);
   target.battleRespawnTimer = BATTLE_RULES.respawnSeconds;
-  state.modeRun.progress = Math.max(
-    state.modeRun.battle.blueScore,
-    state.modeRun.battle.redScore,
-  );
+  const scoringTeam = attacker.team === "red" ? "red" : "blue";
   state.score += scoringTeam === "blue" ? 360 : 80;
   state.modeRun.battle.lastLaserHit = `${scoringTeam.toUpperCase()} KO`;
   setEffectToast(scoringTeam === "blue" ? "Blue KO" : "Red KO", {
     shake: 0.24,
     pulse: 0.28,
   });
-  if (
-    state.modeRun.battle.blueScore >= BATTLE_RULES.targetScore ||
-    state.modeRun.battle.redScore >= BATTLE_RULES.targetScore
-  ) {
-    if (state.modeRun.battle.blueScore >= BATTLE_RULES.targetScore)
-      completeModeRun();
-    else failModeRun("Red team reached the KO target first.");
-  }
   return true;
 }
 
 function updateBattleActorTimers(dt) {
   allBattleCars().forEach((car) => {
     car.battleLaserCooldown = Math.max(0, (car.battleLaserCooldown ?? 0) - dt);
-    if ((car.battleAmmo ?? 0) <= 0 && (car.battleReloadTimer ?? 0) <= 0) {
+    car.battleShieldTimer = Math.max(0, (car.battleShieldTimer ?? 0) - dt);
+    if (
+      (car.battleAmmo ?? 0) < BATTLE_RULES.maxAmmo &&
+      (car.battleReloadTimer ?? 0) <= 0
+    ) {
       car.battleReloadTimer = BATTLE_RULES.reloadSeconds;
     }
     car.battleReloadTimer = Math.max(0, (car.battleReloadTimer ?? 0) - dt);
-    if ((car.battleAmmo ?? 0) <= 0 && car.battleReloadTimer <= 0) {
-      car.battleAmmo = BATTLE_RULES.maxAmmo;
-      if (car === player) setEffectToast("Ammo Ready", { pulse: 0.14 });
+    if (
+      (car.battleAmmo ?? 0) < BATTLE_RULES.maxAmmo &&
+      car.battleReloadTimer <= 0
+    ) {
+      car.battleAmmo = Math.min(
+        BATTLE_RULES.maxAmmo,
+        (car.battleAmmo ?? 0) + 1,
+      );
+      car.battleReloadTimer =
+        car.battleAmmo < BATTLE_RULES.maxAmmo ? BATTLE_RULES.reloadSeconds : 0;
+      if (car === player && car.battleAmmo === BATTLE_RULES.maxAmmo)
+        setEffectToast("Ammo Full", { pulse: 0.14 });
     }
     if (car.demolished) {
       car.battleRespawnTimer = Math.max(0, (car.battleRespawnTimer ?? 0) - dt);
@@ -10817,8 +11250,9 @@ function pushCarsApart(a, b, strength = 0.5) {
 }
 
 function constrainBattleCar(car) {
-  car.position.x = THREE.MathUtils.clamp(car.position.x, -108, 108);
-  car.position.z = THREE.MathUtils.clamp(car.position.z, -108, 108);
+  const limit = BATTLE_RULES.arenaHalfSize - 8;
+  car.position.x = THREE.MathUtils.clamp(car.position.x, -limit, limit);
+  car.position.z = THREE.MathUtils.clamp(car.position.z, -limit, limit);
   car.group.position.copy(car.position);
 }
 
@@ -11860,7 +12294,7 @@ function updateMatchPanel() {
 function getModeHudStatus(mode = getModeDefinition()) {
   if (isCampaignSurvivalMode()) return getLevel().name;
   if (mode.id === GAME_MODE_HUNTER_TAG) {
-    return state.modeRun.tagState === "it" ? "Tag Back" : "Escape";
+    return state.modeRun.tagState === "it" ? "YOU'RE IT" : "EVADING";
   }
   if (mode.id === GAME_MODE_BATTLE)
     return `${state.modeRun.battle.blueScore}-${state.modeRun.battle.redScore}`;
@@ -11917,13 +12351,16 @@ function updateHud() {
     }
     if (mode.id === GAME_MODE_BATTLE) {
       hudLabelNodes[0].textContent = "Teams";
-      hudLabelNodes[1].textContent = "KOs";
+      hudLabelNodes[1].textContent = "Flags";
       hudLabelNodes[3].textContent = "Ammo";
       hudLabelNodes[5].textContent = "Health";
       hudWorld.textContent = "Blue vs Red";
       hudLevel.textContent = `${state.modeRun.battle.blueScore}-${state.modeRun.battle.redScore}`;
       hudScore.textContent = `${Math.round(player.battleAmmo ?? 0)}/${BATTLE_RULES.maxAmmo}`;
-      hudLives.textContent = `${Math.round(player.battleHealth ?? BATTLE_RULES.maxHealth)}%`;
+      hudLives.textContent =
+        (player.battleShieldTimer ?? 0) > 0
+          ? `Shield ${Math.ceil(player.battleShieldTimer)}`
+          : `${Math.round(player.battleHealth ?? BATTLE_RULES.maxHealth)} HP`;
       hudHearts.innerHTML = "";
     } else if (mode.id === GAME_MODE_BOOST_BOWLING) {
       hudLabelNodes[0].textContent = "Lane";
@@ -12082,11 +12519,11 @@ function handlePlayerHit(sourceBotId = -1) {
   ) {
     state.modeRun.tagState = "it";
     state.modeRun.taggedBotIndex = Math.max(0, sourceBotId);
-    state.modeRun.tagCooldown = 1.4;
+    state.modeRun.tagCooldown = 2.6;
     state.lastFailReason =
       "You were tagged. Chase the marked hunter and tag them back to resume the escape.";
     setEffectToast("You Are It - Tag a Hunter", { shake: 0.4, pulse: 0.3 });
-    state.invincible = 1.2;
+    state.invincible = 2.2;
     return;
   }
 
@@ -12429,8 +12866,10 @@ window.addEventListener("keydown", (event) => {
   if (isActionCode(event.code, "brake")) input.brake = true;
   if (isActionCode(event.code, "drift")) input.drift = true;
   if (isActionCode(event.code, "boost")) input.boost = true;
-  if (isActionCode(event.code, "laser") && !event.repeat)
-    fireBattleLaser(player);
+  if (isActionCode(event.code, "laser")) {
+    input.laser = true;
+    if (!event.repeat) fireBattleLaser(player);
+  }
   if (isActionCode(event.code, "help") && !event.repeat) openModeHelp();
   if (isActionCode(event.code, "targetLunge")) {
     if (isMaxMode() && !event.repeat)
@@ -12480,6 +12919,7 @@ window.addEventListener("keyup", (event) => {
   if (isActionCode(event.code, "brake")) input.brake = false;
   if (isActionCode(event.code, "drift")) input.drift = false;
   if (isActionCode(event.code, "boost")) input.boost = false;
+  if (isActionCode(event.code, "laser")) input.laser = false;
   if (
     isActionCode(event.code, "jumpTrick") ||
     isActionCode(event.code, "altTrick")
@@ -13233,6 +13673,8 @@ window.render_game_to_text = () => {
       speed_mph: Math.round(Math.abs(player.speed) * SPEED_TO_MPH_MULT),
       boost: Number(state.boost.toFixed(2)),
       demolished: Boolean(player.demolished),
+      backflipActive: Boolean(player.backflipActive),
+      barrelRollActive: Boolean(player.barrelRollActive),
       skin: {
         paint: currentCustomization.paint.id,
         accent: currentCustomization.accent.id,
@@ -13336,12 +13778,25 @@ window.render_game_to_text = () => {
         blue: state.modeRun.battle.blueScore,
         red: state.modeRun.battle.redScore,
       },
+      targetScore: BATTLE_RULES.targetScore,
       laserCooldown: Number(
         Math.max(0, player.battleLaserCooldown ?? 0).toFixed(2),
       ),
       reloadTimer: Number(
         Math.max(0, player.battleReloadTimer ?? 0).toFixed(2),
       ),
+      shield: Number(Math.max(0, player.battleShieldTimer ?? 0).toFixed(2)),
+      flags: battleFlags.map((flag) => ({
+        team: flag.team,
+        carrier:
+          flag.carrier === player
+            ? "player"
+            : flag.carrier
+              ? (flag.carrier.role ?? flag.carrier.team)
+              : "",
+        x: Number(flag.group.position.x.toFixed(2)),
+        z: Number(flag.group.position.z.toFixed(2)),
+      })),
       lastLaserHit: state.modeRun.battle.lastLaserHit,
     },
     bowling: {
@@ -13428,7 +13883,7 @@ window.render_game_to_text = () => {
           adaptiveHunters: state.campaignRisk,
         },
     progression: {
-      saveKey: SAVE_STORAGE_KEY,
+      saveKey: "infernoDrift4.localSave",
       worldIndex: state.worldIndex,
       levelIndex: state.levelIndex,
       world: getWorld().name,

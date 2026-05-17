@@ -102,3 +102,13 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Visual QA reviewed latest screenshots: `output/playwright/phase3-play-board.png`, `phase3-battle-arena.png`, `phase3-race.png`, `phase3-stunt-park.png`, `phase3-ramp-rush.png`, `phase3-lava-floor.png`, `phase3-boost-bowling.png`, and `output/web-game/phase3-repair/shot-2.png`.
 - Validation after repair: `node --check script.js`, `node --check smoke_games.mjs`, `npm run format`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run worker:check`, `npm run worker:types`, and the shared `develop-web-game` Playwright client passed. Headless WebGL emitted expected SwiftShader `ReadPixels` warnings only.
 - Follow-up deploy verification: pushed Phase 3 repair to `main`, confirmed GitHub Pages served the matching `script.js` bytes for the new build, and ran live `SMOKE_URL=https://canimal4.github.io/InfernoDrift4/?v=9cd0e26 node smoke_games.mjs` successfully. Online/Cloudflare work remains intentionally deferred until the later phase.
+
+2026-05-17 Phase 3 repair follow-up:
+
+- Continued the offline Phase 3 repair pass after user feedback on Battle Arena, Stunt Park, Max Arena, Hunter Tag, Lava Floor, Race/Time Trial, and Boost Bowling.
+- Reworked Battle Arena further into a larger blue-vs-red capture-the-flag laser-tag match: team flags, score-to-3 win condition, expanded arena, standable cover, rapid-fire hold-F laser input, 10-ammo cap, higher health, respawn shield, ammo restock, shield bubble visuals, and flag-aware bot behavior.
+- Added animated barrel-roll visuals, loop-the-loop guided physics, and loop-entry/exit burst effects for stunt modes while keeping Stunt Park solo-only.
+- Slowed Lava Floor’s rise, added an opening grace window, repaired safe-zone ramps as physical launch ramps, and made Lava bots prioritize elevated safe platforms instead of instant-tag pressure.
+- Made Hunter Tag easier by reducing bot stickiness, adding longer tag-back cooldown, and exposing clearer `YOU'RE IT` / `EVADING` HUD state.
+- Rebuilt Race/Time Trial starts around a cleaner winding bounded track, removed hunter roles from those modes, kept Race rivals as bumping racers only, and kept Time Trial solo with ghost samples.
+- Extended Max Arena replay timing/goal explosion visibility and removed the Boost Bowling pin veil/ring marker while preserving pin animation.
