@@ -51,7 +51,6 @@ const menu = document.getElementById("menu");
 const menuBtn = document.getElementById("menu-btn");
 const menuClose = document.getElementById("menu-close");
 const menuStateLabel = document.getElementById("menu-state-label");
-const menuActions = document.getElementById("menu-actions");
 const menuResume = document.getElementById("menu-resume");
 const menuRestart = document.getElementById("menu-restart");
 const tabButtons = document.querySelectorAll(".tab-btn");
@@ -4994,7 +4993,6 @@ function refreshMenuShell() {
   if (menuStateLabel) {
     menuStateLabel.textContent = state.running ? "Paused" : "Garage / Setup";
   }
-  if (menuActions) menuActions.hidden = !state.running;
   if (menuResume) menuResume.hidden = !state.running;
   renderProgressPanel();
   renderGarageLoadouts();
