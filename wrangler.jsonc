@@ -29,7 +29,7 @@
   "migrations": [
     {
       "tag": "v1",
-      "new_classes": ["InfernoRoom"],
+      "new_sqlite_classes": ["InfernoRoom"],
     },
   ],
 }
