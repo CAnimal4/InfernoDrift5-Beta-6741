@@ -65,6 +65,7 @@ const maxDifficultyField = document.getElementById("max-difficulty-field");
 const maxDifficultySelect = document.getElementById("max-difficulty-select");
 const invertToggle = document.getElementById("invert-toggle");
 const cameraToggle = document.getElementById("camera-toggle");
+const battleCockpitToggle = document.getElementById("battle-cockpit-toggle");
 const rampDensitySelect = document.getElementById("ramp-density-select");
 const modeSettingsHint = document.getElementById("mode-settings-hint");
 const devModeToggle = document.getElementById("dev-mode-toggle");
@@ -1828,6 +1829,7 @@ const settings = {
   maxDifficulty: "classic",
   invertSteer: true,
   cameraFocus: false,
+  battleCockpitCamera: false,
   rampDensity: "normal",
   deviceMode: "auto",
   touchLayout: "classic",
@@ -2035,6 +2037,7 @@ function createModeRunState() {
       reloadTimer: 0,
       shield: 0,
       lastLaserHit: "",
+      lastLaserBlocked: false,
       blueFlagCarrier: "",
       redFlagCarrier: "",
       flagMessage: "",
@@ -2138,6 +2141,8 @@ const state = {
     height: CAMERA_HEIGHT,
     lookAhead: 0,
     ballCam: false,
+    cockpit: false,
+    scope: false,
   },
   noBotsRecoveryTimer: 0,
   backflipQueueTimer: 0,
@@ -3087,6 +3092,7 @@ function savePersistentState() {
       maxDifficulty: settings.maxDifficulty,
       invertSteer: settings.invertSteer,
       cameraFocus: settings.cameraFocus,
+      battleCockpitCamera: settings.battleCockpitCamera,
       rampDensity: settings.rampDensity,
       deviceMode: settings.deviceMode,
       touchLayout: settings.touchLayout,
@@ -3154,6 +3160,8 @@ function loadPersistentState() {
         settings.invertSteer = data.settings.invertSteer;
       if (typeof data.settings.cameraFocus === "boolean")
         settings.cameraFocus = data.settings.cameraFocus;
+      if (typeof data.settings.battleCockpitCamera === "boolean")
+        settings.battleCockpitCamera = data.settings.battleCockpitCamera;
       if (typeof data.settings.rampDensity === "string")
         settings.rampDensity = data.settings.rampDensity;
       if (typeof data.settings.deviceMode === "string")
@@ -6237,6 +6245,7 @@ function makeModeBarrier(
       mesh: barrier,
       size: new THREE.Vector3(width, height, depth),
       standable,
+      blocksLasers: true,
     });
   }
   return barrier;
@@ -10862,6 +10871,7 @@ function updateObstacles(entity) {
   obstacles.forEach((obstacle) => {
     const size = obstacle.size;
     const mesh = obstacle.mesh;
+    const radius = entity.collisionRadius ?? CAR_RADIUS;
     const topY = mesh.position.y + size.y * 0.5;
     if (
       obstacle.standable &&
@@ -10871,19 +10881,30 @@ function updateObstacles(entity) {
       return;
     }
     if (
-      Math.abs(entity.position.x - mesh.position.x) < size.x / 2 + CAR_RADIUS &&
-      Math.abs(entity.position.z - mesh.position.z) < size.z / 2 + CAR_RADIUS
+      Math.abs(entity.position.x - mesh.position.x) < size.x / 2 + radius &&
+      Math.abs(entity.position.z - mesh.position.z) < size.z / 2 + radius
     ) {
       const pushX = entity.position.x - mesh.position.x;
       const pushZ = entity.position.z - mesh.position.z;
-      const overlapX = size.x / 2 + CAR_RADIUS - Math.abs(pushX);
-      const overlapZ = size.z / 2 + CAR_RADIUS - Math.abs(pushZ);
+      const overlapX = size.x / 2 + radius - Math.abs(pushX);
+      const overlapZ = size.z / 2 + radius - Math.abs(pushZ);
       const push =
         overlapX < overlapZ
           ? new THREE.Vector3(Math.sign(pushX || 1), 0, 0)
           : new THREE.Vector3(0, 0, Math.sign(pushZ || 1));
-      entity.position.addScaledVector(push, 2.4);
-      entity.speed *= 0.5;
+      const overlap = Math.min(overlapX, overlapZ);
+      entity.position.addScaledVector(push, overlap + 0.04);
+      const normalSpeed = entity.velocity.dot(push);
+      if (normalSpeed < 0) entity.velocity.addScaledVector(push, -normalSpeed);
+      const tangent =
+        Math.abs(push.x) > 0
+          ? new THREE.Vector3(0, 0, Math.sign(entity.velocity.z || 1))
+          : new THREE.Vector3(Math.sign(entity.velocity.x || 1), 0, 0);
+      const tangentSpeed = Math.abs(entity.velocity.dot(tangent));
+      entity.speed = Math.min(entity.speed * 0.72, tangentSpeed + 8);
+      entity.verticalVel = Math.min(entity.verticalVel ?? 0, 0);
+      entity.prevPosition?.copy(entity.position);
+      entity.group?.position.copy(entity.position);
     }
   });
 
@@ -11136,7 +11157,11 @@ function updateModeMarkerVisuals(dt) {
     object.userData.fxLife = Math.max(0, object.userData.fxLife - dt);
     const alpha = THREE.MathUtils.clamp(object.userData.fxLife / 0.16, 0, 1);
     object.traverse((child) => {
-      if (child.material?.opacity !== undefined) child.material.opacity = alpha;
+      if (child.material?.opacity !== undefined) {
+        if (child.userData.baseOpacity === undefined)
+          child.userData.baseOpacity = child.material.opacity;
+        child.material.opacity = child.userData.baseOpacity * alpha;
+      }
     });
     if (object.userData.fxLife <= 0) {
       modeDecor.splice(i, 1);
@@ -11759,20 +11784,130 @@ function drawBattleLaser(actor, hitPoint, hit = false) {
   const delta = end.clone().sub(start);
   const length = Math.max(1, Math.hypot(delta.x, delta.z));
   const color = actor.team === "red" ? 0xff5b5b : 0x56e9ff;
-  const beam = new THREE.Mesh(
-    new THREE.BoxGeometry(hit ? 0.62 : 0.42, 0.16, length),
+  const angle = Math.atan2(delta.x, delta.z);
+  const group = new THREE.Group();
+  group.position.set((start.x + end.x) * 0.5, 1.05, (start.z + end.z) * 0.5);
+  group.rotation.y = angle;
+
+  const parts = [
+    { width: hit ? 0.74 : 0.5, height: 0.18, opacity: hit ? 0.96 : 0.74 },
+    { width: hit ? 1.8 : 1.25, height: 0.34, opacity: hit ? 0.32 : 0.22 },
+    { width: 0.16, height: 0.08, opacity: 0.72, offset: -0.72 },
+    { width: 0.16, height: 0.08, opacity: 0.72, offset: 0.72 },
+  ];
+  parts.forEach(({ width, height, opacity, offset = 0 }) => {
+    const beam = new THREE.Mesh(
+      new THREE.BoxGeometry(width, height, length),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    );
+    beam.position.x = offset;
+    beam.userData.baseOpacity = opacity;
+    group.add(beam);
+  });
+  const muzzle = new THREE.Mesh(
+    new THREE.TorusGeometry(hit ? 1.05 : 0.82, 0.08, 8, 28),
     new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: hit ? 0.92 : 0.58,
+      opacity: hit ? 0.9 : 0.58,
       depthWrite: false,
+      blending: THREE.AdditiveBlending,
     }),
   );
-  beam.position.set((start.x + end.x) * 0.5, 1.05, (start.z + end.z) * 0.5);
-  beam.rotation.y = Math.atan2(delta.x, delta.z);
-  beam.userData.fxLife = hit ? 0.22 : 0.15;
-  scene.add(beam);
-  modeDecor.push(beam);
+  muzzle.rotation.x = Math.PI / 2;
+  muzzle.position.z = -length * 0.5 + 1.8;
+  muzzle.userData.baseOpacity = hit ? 0.9 : 0.58;
+  group.add(muzzle);
+  const impact = new THREE.Mesh(
+    new THREE.TorusGeometry(hit ? 1.55 : 0.78, 0.1, 8, 30),
+    new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: hit ? 0.82 : 0.34,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  impact.rotation.x = Math.PI / 2;
+  impact.position.z = length * 0.5;
+  impact.userData.baseOpacity = hit ? 0.82 : 0.34;
+  group.add(impact);
+  group.userData.fxLife = hit ? 0.26 : 0.19;
+  scene.add(group);
+  modeDecor.push(group);
+}
+
+function rayAabbDistance2D(
+  origin,
+  direction,
+  center,
+  halfX,
+  halfZ,
+  maxDistance,
+) {
+  let tMin = 0;
+  let tMax = maxDistance;
+  const axes = [
+    {
+      o: origin.x,
+      d: direction.x,
+      min: center.x - halfX,
+      max: center.x + halfX,
+    },
+    {
+      o: origin.z,
+      d: direction.z,
+      min: center.z - halfZ,
+      max: center.z + halfZ,
+    },
+  ];
+  for (const axis of axes) {
+    if (Math.abs(axis.d) < 0.0001) {
+      if (axis.o < axis.min || axis.o > axis.max) return Infinity;
+      continue;
+    }
+    const inv = 1 / axis.d;
+    let t1 = (axis.min - axis.o) * inv;
+    let t2 = (axis.max - axis.o) * inv;
+    if (t1 > t2) [t1, t2] = [t2, t1];
+    tMin = Math.max(tMin, t1);
+    tMax = Math.min(tMax, t2);
+    if (tMin > tMax) return Infinity;
+  }
+  return tMax < 0 ? Infinity : Math.max(0, tMin);
+}
+
+function getBattleLaserBlocker(actor, forward) {
+  let best = null;
+  let bestAlong = BATTLE_RULES.laserRange;
+  const beamPadding = Math.max(0.8, BATTLE_RULES.laserWidth * 0.18);
+  obstacles.forEach((obstacle) => {
+    if (obstacle.blocksLasers === false) return;
+    const { mesh, size } = obstacle;
+    if (!mesh || !size || mesh.position.y + size.y * 0.5 < 0.8) return;
+    const along = rayAabbDistance2D(
+      actor.position,
+      forward,
+      mesh.position,
+      size.x * 0.5 + beamPadding,
+      size.z * 0.5 + beamPadding,
+      BATTLE_RULES.laserRange,
+    );
+    if (along > 0.6 && along < bestAlong) {
+      bestAlong = along;
+      best = {
+        along,
+        hitPoint: actor.position.clone().addScaledVector(forward, along),
+      };
+    }
+  });
+  return best;
 }
 
 function getLaserTarget(actor) {
@@ -11789,6 +11924,8 @@ function getLaserTarget(actor) {
   let best = null;
   let bestAlong = BATTLE_RULES.laserRange;
   let friendlyBlock = Infinity;
+  const coverBlock = getBattleLaserBlocker(actor, forward);
+  if (coverBlock) bestAlong = coverBlock.along;
   allBattleCars().forEach((candidate) => {
     if (candidate === actor || candidate.demolished) return;
     const rel = candidate.position.clone().sub(actor.position);
@@ -11808,6 +11945,15 @@ function getLaserTarget(actor) {
     }
   });
   if (friendlyBlock < bestAlong) return null;
+  if (coverBlock && coverBlock.along <= bestAlong) {
+    return {
+      target: null,
+      along: coverBlock.along,
+      forward,
+      blockedByCover: true,
+      hitPoint: coverBlock.hitPoint,
+    };
+  }
   return best ? { target: best, along: bestAlong, forward } : null;
 }
 
@@ -11961,19 +12107,36 @@ function fireBattleLaser(actor = player) {
     0,
     Math.cos(actor.heading),
   );
-  const hitPoint = lock
-    ? lock.target.position
-    : actor.position.clone().addScaledVector(forward, BATTLE_RULES.laserRange);
-  drawBattleLaser(actor, hitPoint, Boolean(lock));
-  if (lock) applyBattleDamage(lock.target, BATTLE_RULES.laserDamage, actor);
+  const hitPoint = lock?.hitPoint
+    ? lock.hitPoint
+    : lock?.target
+      ? lock.target.position
+      : actor.position
+          .clone()
+          .addScaledVector(forward, BATTLE_RULES.laserRange);
+  const hitEnemy = Boolean(lock?.target);
+  const hitCover = Boolean(lock?.blockedByCover);
+  drawBattleLaser(actor, hitPoint, hitEnemy || hitCover);
+  if (hitEnemy) applyBattleDamage(lock.target, BATTLE_RULES.laserDamage, actor);
+  if (hitCover) {
+    spawnBurst(
+      hitPoint.clone().add(new THREE.Vector3(0, 1.05, 0)),
+      actor.team === "red" ? 0xff8f76 : 0x7feaff,
+      12,
+      { scale: 0.32, life: 0.22, force: 2.4, lift: 0.9 },
+    );
+  }
   if (actor === player) {
     state.cameraShake = Math.max(state.cameraShake, 0.08);
-    state.modeRun.battle.lastLaserHit = lock
-      ? `Hit ${lock.target.team}`
-      : "Laser fired";
+    state.modeRun.battle.lastLaserBlocked = hitCover;
+    state.modeRun.battle.lastLaserHit = hitCover
+      ? "Cover blocked"
+      : hitEnemy
+        ? `Hit ${lock.target.team}`
+        : "Laser fired";
     updateBattleStateFromPlayer();
   }
-  return Boolean(lock);
+  return hitEnemy;
 }
 
 function nearestBattlePickupFor(car, preferredIds = []) {
@@ -12253,6 +12416,17 @@ function updateBoostPads(dt = 0.016) {
 function updateCamera(dt) {
   const deviceAssist = getDeviceAssistTuning();
   const maxProfile = isMaxMode() ? getMaxDifficultyProfile() : null;
+  const battleCockpitActive = settings.battleCockpitCamera && isBattleMode();
+  document.body.classList.toggle(
+    "battle-cockpit",
+    battleCockpitActive && state.running,
+  );
+  document.body.classList.toggle(
+    "battle-cockpit-scope",
+    battleCockpitActive && state.running,
+  );
+  if (player.visualRoot)
+    player.visualRoot.visible = !(battleCockpitActive && state.running);
   const speedMph = Math.abs(player.speed) * SPEED_TO_MPH_MULT;
   const speedRatio = THREE.MathUtils.clamp(
     speedMph / (isMaxMode() ? 86 : 150),
@@ -12272,6 +12446,8 @@ function updateCamera(dt) {
       );
     camera.position.lerp(desired, dt * 4.4);
     camera.lookAt(center.clone().add(new THREE.Vector3(0, 2.2, 0)));
+    state.cameraTelemetry.cockpit = false;
+    state.cameraTelemetry.scope = false;
     return;
   }
   const cameraTarget = player.position.clone();
@@ -12294,6 +12470,40 @@ function updateCamera(dt) {
     0,
     -Math.sin(headingForCamera),
   );
+  if (battleCockpitActive) {
+    const cockpit = player.position
+      .clone()
+      .add(new THREE.Vector3(0, 1.34 + speedRatio * 0.08, 0))
+      .addScaledVector(forward, 1.95)
+      .addScaledVector(
+        right,
+        THREE.MathUtils.clamp(state.steerSmoothed, -1, 1) * 0.12,
+      );
+    const lookTarget = player.position
+      .clone()
+      .add(new THREE.Vector3(0, 1.38, 0))
+      .addScaledVector(forward, 42 + speedRatio * 18);
+    camera.position.lerp(cockpit, dt * 9.2);
+    if (state.cameraShake > 0 && !deviceAssist.reducedMotion) {
+      const shake = state.cameraShake * 0.32;
+      camera.position.x += (Math.random() - 0.5) * shake;
+      camera.position.y += (Math.random() - 0.5) * shake * 0.25;
+      camera.position.z += (Math.random() - 0.5) * shake;
+    }
+    camera.lookAt(lookTarget);
+    const targetFov = 68 + speedRatio * 3.5 + state.screenPulse * 2.4;
+    if (Math.abs(camera.fov - targetFov) > 0.02) {
+      camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, dt * 7.4);
+      camera.updateProjectionMatrix();
+    }
+    state.cameraTelemetry.distance = 0;
+    state.cameraTelemetry.height = 1.34;
+    state.cameraTelemetry.lookAhead = 42 + speedRatio * 18;
+    state.cameraTelemetry.ballCam = false;
+    state.cameraTelemetry.cockpit = true;
+    state.cameraTelemetry.scope = true;
+    return;
+  }
   const speedDistance =
     CAMERA_BACK_DISTANCE + speedRatio * CAMERA_SPEED_DISTANCE_GAIN;
   const speedHeight = CAMERA_HEIGHT + speedRatio * CAMERA_SPEED_HEIGHT_GAIN;
@@ -12368,6 +12578,8 @@ function updateCamera(dt) {
     speedHeight * deviceAssist.cameraHeightMult * gameHeightMult;
   state.cameraTelemetry.lookAhead = lookAhead;
   state.cameraTelemetry.ballCam = ballCamActive;
+  state.cameraTelemetry.cockpit = false;
+  state.cameraTelemetry.scope = false;
 }
 
 function updatePlayfieldReadability(dt) {
@@ -14367,6 +14579,13 @@ cameraToggle.addEventListener("change", (event) => {
   savePersistentState();
 });
 
+if (battleCockpitToggle) {
+  battleCockpitToggle.addEventListener("change", (event) => {
+    settings.battleCockpitCamera = event.target.checked;
+    savePersistentState();
+  });
+}
+
 function handleCustomizationChange(group, key, fallbackId, event) {
   const selected = getOptionById(group, event.target.value, fallbackId);
   const cosmeticKeys = new Set(["paintId", "accentId", "tintId", "glowId"]);
@@ -14680,6 +14899,10 @@ window.render_game_to_text = () => {
         z: Number(flag.group.position.z.toFixed(2)),
       })),
       lastLaserHit: state.modeRun.battle.lastLaserHit,
+      lastLaserBlocked: Boolean(state.modeRun.battle.lastLaserBlocked),
+      coverBlocksLasers: obstacles.filter(
+        (obstacle) => obstacle.blocksLasers !== false,
+      ).length,
     },
     bowling: {
       frame: state.modeRun.bowling.frame,
@@ -14718,6 +14941,9 @@ window.render_game_to_text = () => {
       height: Number(state.cameraTelemetry.height.toFixed(2)),
       lookAhead: Number(state.cameraTelemetry.lookAhead.toFixed(2)),
       ballCam: Boolean(state.cameraTelemetry.ballCam),
+      cockpit: Boolean(state.cameraTelemetry.cockpit),
+      scope: Boolean(state.cameraTelemetry.scope),
+      battleCockpitEnabled: Boolean(settings.battleCockpitCamera),
     },
     ball: maxMode.ball
       ? {
@@ -14950,6 +15176,68 @@ window.__infernodriftTestApi = {
     updateBattleStateFromPlayer();
     return player.battleAmmo;
   },
+  setBattleCockpitCamera: (enabled = true) => {
+    settings.battleCockpitCamera = Boolean(enabled);
+    if (battleCockpitToggle)
+      battleCockpitToggle.checked = settings.battleCockpitCamera;
+    return settings.battleCockpitCamera;
+  },
+  setBattleActorPose: (
+    actor = "player",
+    {
+      x = 0,
+      z = 0,
+      heading = 0,
+      health = BATTLE_RULES.maxHealth,
+      speed = 0,
+      vx = null,
+      vz = null,
+    } = {},
+  ) => {
+    const target =
+      actor === "player"
+        ? player
+        : (bots.find((bot) => bot.team === actor || bot.role === actor) ??
+          bots[0]);
+    if (!target) return false;
+    target.setPosition(Number(x) || 0, 0, Number(z) || 0);
+    target.heading = Number(heading) || 0;
+    target.moveHeading = target.heading;
+    target.speed = Number(speed) || 0;
+    target.velocity.set(
+      Number.isFinite(Number(vx))
+        ? Number(vx)
+        : Math.sin(target.moveHeading) * target.speed,
+      0,
+      Number.isFinite(Number(vz))
+        ? Number(vz)
+        : Math.cos(target.moveHeading) * target.speed,
+    );
+    if (Number.isFinite(Number(health))) target.battleHealth = Number(health);
+    target.setHealthBar(
+      (target.battleHealth ?? BATTLE_RULES.maxHealth) / BATTLE_RULES.maxHealth,
+      target !== player,
+    );
+    updateBattleStateFromPlayer();
+    return true;
+  },
+  getBattleArenaDebug: () => ({
+    coverBlocksLasers: obstacles.filter(
+      (obstacle) => obstacle.blocksLasers !== false,
+    ).length,
+    solidCover: obstacles.map((obstacle) => ({
+      x: Number(obstacle.mesh.position.x.toFixed(2)),
+      z: Number(obstacle.mesh.position.z.toFixed(2)),
+      width: Number(obstacle.size.x.toFixed(2)),
+      depth: Number(obstacle.size.z.toFixed(2)),
+      standable: Boolean(obstacle.standable),
+      blocksLasers: obstacle.blocksLasers !== false,
+    })),
+    lastLaserBlocked: Boolean(state.modeRun.battle.lastLaserBlocked),
+    cockpitEnabled: Boolean(settings.battleCockpitCamera),
+    cockpitActive: Boolean(state.cameraTelemetry.cockpit),
+    scopeActive: Boolean(state.cameraTelemetry.scope),
+  }),
   getBowlingState: () => structuredClone(state.modeRun.bowling),
   forceBowlingRollComplete: (pins = 0) =>
     structuredClone(completeBowlingRoll(Number(pins) || 0)),
@@ -15054,6 +15342,8 @@ if (campaignAiSelect) campaignAiSelect.value = settings.campaignAiMode;
 if (maxDifficultySelect) maxDifficultySelect.value = settings.maxDifficulty;
 invertToggle.checked = settings.invertSteer;
 cameraToggle.checked = settings.cameraFocus;
+if (battleCockpitToggle)
+  battleCockpitToggle.checked = settings.battleCockpitCamera;
 if (rampDensitySelect) rampDensitySelect.value = settings.rampDensity;
 if (devModeToggle) devModeToggle.checked = settings.devMode;
 if (touchLayoutSelect) touchLayoutSelect.value = settings.touchLayout;

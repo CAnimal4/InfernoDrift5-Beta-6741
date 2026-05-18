@@ -404,6 +404,95 @@ body.playing .hud {
   letter-spacing: 0.02em;
 }
 
+.battle-scope {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: none;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at center,
+      transparent 0 26%,
+      rgba(3, 8, 13, 0.2) 37%,
+      rgba(2, 4, 8, 0.55) 100%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(86, 233, 255, 0.08),
+      transparent 18% 82%,
+      rgba(255, 81, 77, 0.08)
+    );
+}
+
+body.battle-cockpit .battle-scope {
+  display: block;
+}
+
+.scope-ring,
+.scope-line,
+.scope-dot,
+.scope-readout {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+}
+
+.scope-ring {
+  width: min(34vw, 280px);
+  aspect-ratio: 1;
+  border: 2px solid rgba(113, 244, 255, 0.76);
+  border-radius: 50%;
+  box-shadow:
+    0 0 18px rgba(86, 233, 255, 0.45),
+    inset 0 0 22px rgba(86, 233, 255, 0.18);
+  transform: translate(-50%, -50%);
+}
+
+.scope-line {
+  background: rgba(119, 246, 255, 0.74);
+  box-shadow: 0 0 12px rgba(86, 233, 255, 0.65);
+  transform: translate(-50%, -50%);
+}
+
+.scope-line-x {
+  width: min(42vw, 360px);
+  height: 1px;
+}
+
+.scope-line-y {
+  width: 1px;
+  height: min(42vw, 360px);
+}
+
+.scope-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff8d8;
+  box-shadow: 0 0 14px rgba(255, 244, 190, 0.9);
+  transform: translate(-50%, -50%);
+}
+
+.scope-readout {
+  transform: translate(-50%, -50%);
+  color: #dffbff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-shadow: 0 0 10px rgba(86, 233, 255, 0.8);
+}
+
+.scope-readout-left {
+  margin-left: min(-23vw, -170px);
+  margin-top: min(17vw, 130px);
+}
+
+.scope-readout-right {
+  margin-left: min(23vw, 170px);
+  margin-top: min(17vw, 130px);
+}
+
 body.max-mode .hud {
   gap: 6px;
 }

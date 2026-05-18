@@ -120,3 +120,12 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Added a Feedback popup that collects type, message, optional diagnostics, and optional 13+ reply email, then submits to the configured `/api/feedback` endpoint or reports not-configured / not-saved errors truthfully.
 - Added matching local and Cloudflare Worker backend support for feedback storage; email delivery remains Resend-secret gated.
 - Changed Garage unlocks to use XP level progression from any mode instead of campaign world completion, with Progress/Garage copy and smoke state exposing the XP-level unlock rule.
+
+2026-05-17 Battle Arena cover/cockpit follow-up:
+
+- Spawned worker Mill for the Battle Arena cover/laser/cockpit scope request and integrated its focused pass.
+- Battle Arena cover now blocks lasers through a ray/AABB occlusion check before enemy damage is applied; blocked shots show a cover impact and are exposed in `render_game_to_text().battle.lastLaserBlocked`.
+- Battle Arena cover collision now resolves by overlap and removes into-wall velocity instead of launching cars, with smoke coverage that drives the player into a block and verifies the car is pushed out safely.
+- Laser visuals now use layered additive beams, side streaks, muzzle rings, and impact rings.
+- Added a Battle Cockpit Scope setting, scope overlay, cockpit camera telemetry, and test API hooks; cockpit mode hides the local car shell so the first-person scope view stays usable.
+- Validation after this follow-up: `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run format`, `npm run worker:check`, `npm run worker:types`, and the required `develop-web-game` Playwright client passed. Visual screenshot reviewed at `output/playwright/battle-cockpit-cover-live.png`.

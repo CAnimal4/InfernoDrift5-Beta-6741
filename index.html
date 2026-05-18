@@ -76,6 +76,15 @@
         </div>
       </div>
 
+      <div class="battle-scope" id="battle-scope" aria-hidden="true">
+        <div class="scope-ring"></div>
+        <div class="scope-line scope-line-x"></div>
+        <div class="scope-line scope-line-y"></div>
+        <div class="scope-dot"></div>
+        <div class="scope-readout scope-readout-left">LOCK</div>
+        <div class="scope-readout scope-readout-right">FIRE</div>
+      </div>
+
       <div class="touch-controls" id="touch-controls">
         <div class="touch-stick-wrap">
           <div id="touch-steer-pad" class="touch-steer-pad" aria-label="Touch Steering">
@@ -337,6 +346,10 @@
               <label class="field toggle">
                 <span>Camera Focus</span>
                 <input id="camera-toggle" type="checkbox" />
+              </label>
+              <label class="field toggle">
+                <span>Battle Cockpit Scope</span>
+                <input id="battle-cockpit-toggle" type="checkbox" />
               </label>
               <label class="field">
                 <span>Device Mode</span>

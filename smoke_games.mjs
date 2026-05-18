@@ -409,6 +409,83 @@ const battleProbe = await page.evaluate(() => {
 assert.ok(battleProbe.ammo <= 2);
 assert.ok(battleProbe.cooldown > 0);
 
+const battleCoverProbe = await page.evaluate(() => {
+  window.__infernodriftTestApi.startMode("battle-arena");
+  window.__infernodriftTestApi.setBattleAmmo(10);
+  window.__infernodriftTestApi.setBattleActorPose("player", {
+    x: 0,
+    z: -80,
+    heading: 0,
+  });
+  window.__infernodriftTestApi.setBattleActorPose("red", {
+    x: 0,
+    z: -18,
+    heading: Math.PI,
+    health: 180,
+  });
+  const hit = window.__infernodriftTestApi.fireBattleLaser();
+  window.advanceTime(80);
+  const state = JSON.parse(window.render_game_to_text());
+  return {
+    hit,
+    ammo: state.battle.ammo,
+    redHealth: state.bots.find((bot) => bot.team === "red")?.health,
+    lastLaserHit: state.battle.lastLaserHit,
+    lastLaserBlocked: state.battle.lastLaserBlocked,
+    coverBlocksLasers: state.battle.coverBlocksLasers,
+    debug: window.__infernodriftTestApi.getBattleArenaDebug(),
+  };
+});
+assert.equal(battleCoverProbe.hit, false);
+assert.equal(battleCoverProbe.redHealth, 180);
+assert.equal(battleCoverProbe.lastLaserBlocked, true);
+assert.ok(battleCoverProbe.coverBlocksLasers >= 8);
+assert.ok(
+  battleCoverProbe.debug.solidCover.every((cover) => cover.blocksLasers),
+);
+assert.ok(
+  battleCoverProbe.debug.solidCover.some((cover) => cover.standable === false),
+);
+
+const battleCoverCollisionProbe = await page.evaluate(() => {
+  window.__infernodriftTestApi.startMode("battle-arena");
+  window.__infernodriftTestApi.setBattleActorPose("player", {
+    x: 0,
+    z: -60,
+    heading: 0,
+    speed: 92,
+  });
+  window.advanceTime(420);
+  const state = JSON.parse(window.render_game_to_text());
+  return {
+    z: state.player.z,
+    speed: state.player.speed_mph,
+    demolished: state.player.demolished,
+  };
+});
+assert.ok(battleCoverCollisionProbe.z <= -51);
+assert.ok(battleCoverCollisionProbe.speed < 90);
+assert.equal(battleCoverCollisionProbe.demolished, false);
+
+const battleCockpitProbe = await page.evaluate(() => {
+  window.__infernodriftTestApi.startMode("battle-arena");
+  window.__infernodriftTestApi.setBattleCockpitCamera(true);
+  window.advanceTime(120);
+  const state = JSON.parse(window.render_game_to_text());
+  const debug = window.__infernodriftTestApi.getBattleArenaDebug();
+  window.__infernodriftTestApi.setBattleCockpitCamera(false);
+  return {
+    camera: state.camera,
+    debug,
+    scopeClass: document.body.classList.contains("battle-cockpit-scope"),
+  };
+});
+assert.equal(battleCockpitProbe.camera.battleCockpitEnabled, true);
+assert.equal(battleCockpitProbe.camera.cockpit, true);
+assert.equal(battleCockpitProbe.camera.scope, true);
+assert.equal(battleCockpitProbe.debug.cockpitActive, true);
+assert.equal(battleCockpitProbe.scopeClass, true);
+
 const bowlingProbe = await page.evaluate(() => {
   window.__infernodriftTestApi.startMode("boost-bowling");
   window.__infernodriftTestApi.forceBowlingRollComplete(10);
