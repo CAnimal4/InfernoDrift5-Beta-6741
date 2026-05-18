@@ -80,6 +80,8 @@ const ALLOWED_TYPES = new Set([
   "friend.list",
   "save.sync",
   "feedback.submit",
+  "moderation.kick",
+  "moderation.ban",
   "reconnect",
 ]);
 
@@ -603,6 +605,26 @@ export function validateClientMessage(raw) {
       (hasOwn(data, "turnstileToken") &&
         (typeof data.turnstileToken !== "string" ||
           data.turnstileToken.length > 2048))
+    ) {
+      error = "invalid_protocol";
+    }
+  }
+  if (data.type === "moderation.kick" || data.type === "moderation.ban") {
+    const keys = new Set(["type", "username", "userId", "reason"]);
+    const hasTarget =
+      (typeof data.username === "string" &&
+        data.username.trim().length >= 1 &&
+        data.username.length <= 24) ||
+      (typeof data.userId === "string" &&
+        data.userId.trim().length >= 1 &&
+        data.userId.length <= 80);
+    if (
+      !onlyKeys(data, keys) ||
+      !hasTarget ||
+      (hasOwn(data, "reason") &&
+        (typeof data.reason !== "string" ||
+          data.reason.trim().length < 1 ||
+          data.reason.length > 180))
     ) {
       error = "invalid_protocol";
     }

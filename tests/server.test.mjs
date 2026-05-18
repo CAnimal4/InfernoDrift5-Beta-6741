@@ -148,6 +148,25 @@ test("protocol accepts known messages and rejects unknown messages", () => {
     true,
   );
   assert.equal(
+    validateClientMessage(
+      JSON.stringify({
+        type: "moderation.kick",
+        username: "RacerOne",
+        reason: "relogin please",
+      }),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    validateClientMessage(
+      JSON.stringify({
+        type: "moderation.ban",
+        userId: "seed-joshua",
+      }),
+    ).ok,
+    true,
+  );
+  assert.equal(
     validateClientMessage(JSON.stringify({ type: "room.create", size: 5 }))
       .error,
     "invalid_protocol",
@@ -216,22 +235,24 @@ test("websocket backend supports password account create and sign in", async (t)
   );
   assert.equal(restored.user.id, created.user.id);
   assert.equal(restored.user.ageGate, 14);
-  assert.equal(Object.keys(app.db.data.usernameClaims).join(","), "accountace");
+  assert.ok(Object.keys(app.db.data.usernameClaims).includes("accountace"));
 
   const clark = await makeWsClient(port);
   clark.ws.send(
     JSON.stringify({
       type: "auth.account",
-      mode: "auto",
+      mode: "signin",
       username: "Clark",
-      password: "secret123",
+      password: "ibelikesheesh",
       age: 13,
     }),
   );
-  await waitForMessage(
+  const clarkAuth = await waitForMessage(
     clark.messages,
-    (msg) => msg.type === "error" && msg.error === "username_reserved",
+    (msg) => msg.type === "auth.ok",
   );
+  assert.equal(clarkAuth.user.badge, "Founder");
+  assert.equal(clarkAuth.user.account, true);
 
   a.ws.terminate();
   wrong.ws.terminate();
@@ -337,8 +358,8 @@ test("websocket backend supports two clients, chat filtering, and private join",
   };
   const a = await makeClient();
   const b = await makeClient();
-  a.ws.send(JSON.stringify({ type: "auth.guest", username: "Alpha" }));
-  b.ws.send(JSON.stringify({ type: "auth.guest", username: "Beta" }));
+  a.ws.send(JSON.stringify({ type: "auth.guest", username: "Alpha", age: 13 }));
+  b.ws.send(JSON.stringify({ type: "auth.guest", username: "Beta", age: 13 }));
   a.ws.send(JSON.stringify({ type: "room.create", mode: "casual", size: 2 }));
   await new Promise((resolve) => setTimeout(resolve, 120));
   const code = a.messages.find((msg) => msg.type === "room.snapshot").room.code;
@@ -430,7 +451,9 @@ test("websocket backend supports queue, age gate, quick chat, leaderboard, and s
     messages.some(
       (msg) =>
         msg.type === "leaderboard.snapshot" &&
-        msg.leaderboard[0]?.username === "Ghost Apex",
+        msg.leaderboard.some(
+          (row) => row.username === "Clark" && row.badge === "Founder",
+        ),
     ),
   );
   assert.ok(
@@ -449,6 +472,138 @@ test("websocket backend supports queue, age gate, quick chat, leaderboard, and s
   );
   ws.terminate();
   await app.close();
+});
+
+test("seeded accounts expose badges and moderator can kick and one-day ban", async (t) => {
+  const app = createInfernoServer({
+    port: 0,
+    dataDir: path.join(os.tmpdir(), `id4-moderation-${Date.now()}`),
+    allowedOrigins: "http://127.0.0.1:5173",
+  });
+  const server = await app.listen();
+  t.after(async () => {
+    await app.close();
+  });
+  const port = server.address().port;
+  const moderator = await makeWsClient(port);
+  const joshua = await makeWsClient(port);
+
+  moderator.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "signin",
+      username: "MODERATOR",
+      password: "thefoxjumpedoverthelazyriver",
+      age: 13,
+    }),
+  );
+  const modAuth = await waitForMessage(
+    moderator.messages,
+    (msg) => msg.type === "auth.ok",
+  );
+  assert.equal(modAuth.user.badge, "MOD");
+  assert.equal(modAuth.user.moderator, true);
+
+  joshua.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "signin",
+      username: "Joshua",
+      password: "footballcards",
+      age: 13,
+    }),
+  );
+  const joshuaAuth = await waitForMessage(
+    joshua.messages,
+    (msg) => msg.type === "auth.ok",
+  );
+  assert.equal(joshuaAuth.user.badge, "Advanced Player");
+
+  moderator.ws.send(
+    JSON.stringify({ type: "leaderboard.get", playlist: "ranked" }),
+  );
+  const leaderboard = await waitForMessage(
+    moderator.messages,
+    (msg) => msg.type === "leaderboard.snapshot",
+  );
+  assert.ok(
+    leaderboard.leaderboard.some(
+      (row) =>
+        row.username === "MODERATOR" &&
+        row.badge === "MOD" &&
+        row.moderator === true,
+    ),
+  );
+  assert.ok(
+    leaderboard.leaderboard.some(
+      (row) => row.username === "Joshua" && row.badge === "Advanced Player",
+    ),
+  );
+
+  moderator.ws.send(
+    JSON.stringify({
+      type: "moderation.kick",
+      username: "Joshua",
+      reason: "relogin test",
+    }),
+  );
+  await waitForMessage(
+    moderator.messages,
+    (msg) => msg.type === "moderation.done" && msg.action === "kick",
+  );
+  await waitForMessage(
+    joshua.messages,
+    (msg) => msg.type === "moderation.kicked",
+  );
+  joshua.ws.terminate();
+
+  const joshuaAgain = await makeWsClient(port);
+  joshuaAgain.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "signin",
+      username: "Joshua",
+      password: "footballcards",
+      age: 13,
+    }),
+  );
+  await waitForMessage(joshuaAgain.messages, (msg) => msg.type === "auth.ok");
+
+  moderator.ws.send(
+    JSON.stringify({
+      type: "moderation.ban",
+      username: "Joshua",
+      reason: "one day test",
+    }),
+  );
+  await waitForMessage(
+    moderator.messages,
+    (msg) => msg.type === "moderation.done" && msg.action === "ban",
+  );
+  await waitForMessage(
+    joshuaAgain.messages,
+    (msg) => msg.type === "moderation.banned",
+  );
+  joshuaAgain.ws.terminate();
+
+  const banned = await makeWsClient(port);
+  banned.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "signin",
+      username: "Joshua",
+      password: "footballcards",
+      age: 13,
+    }),
+  );
+  const error = await waitForMessage(
+    banned.messages,
+    (msg) => msg.type === "error" && msg.error === "account_banned",
+  );
+  assert.ok(error.until);
+
+  moderator.ws.terminate();
+  banned.ws.terminate();
 });
 
 test("websocket backend persists sessions, claims, saves, friends, reports, feedback, and authoritative leaderboards", async (t) => {
@@ -506,7 +661,18 @@ test("websocket backend persists sessions, claims, saves, friends, reports, feed
   );
   await waitForMessage(
     b.messages,
-    (msg) => msg.type === "profile.usernameClaimed" && msg.username === "Clark",
+    (msg) => msg.type === "error" && msg.error === "username_taken",
+  );
+  b.ws.send(
+    JSON.stringify({
+      type: "profile.claimUsername",
+      username: "BravoPrime",
+    }),
+  );
+  await waitForMessage(
+    b.messages,
+    (msg) =>
+      msg.type === "profile.usernameClaimed" && msg.username === "BravoPrime",
   );
 
   a.ws.send(
@@ -540,7 +706,7 @@ test("websocket backend persists sessions, claims, saves, friends, reports, feed
   );
   await waitForMessage(
     a.messages,
-    (msg) => msg.type === "friend.accepted" && msg.username === "Clark",
+    (msg) => msg.type === "friend.accepted" && msg.username === "BravoPrime",
   );
   await waitForMessage(
     b.messages,
@@ -552,7 +718,7 @@ test("websocket backend persists sessions, claims, saves, friends, reports, feed
   a.ws.send(
     JSON.stringify({
       type: "friend.report",
-      username: "Clark",
+      username: "BravoPrime",
       reason: "Repeated bumping after the race ended",
     }),
   );
@@ -560,7 +726,7 @@ test("websocket backend persists sessions, claims, saves, friends, reports, feed
     a.messages,
     (msg) => msg.type === "friend.reported",
   );
-  assert.equal(report.username, "Clark");
+  assert.equal(report.username, "BravoPrime");
   b.ws.send(JSON.stringify({ type: "friend.block", username: "RacerOne" }));
   await waitForMessage(
     b.messages,
@@ -631,8 +797,12 @@ test("websocket backend persists sessions, claims, saves, friends, reports, feed
   assert.equal(app.db.data.feedback.length, 1);
   assert.equal(app.db.data.reports.length, 1);
   assert.equal(
-    Object.keys(app.db.data.usernameClaims).sort().join(","),
-    "clark,racerone",
+    Object.keys(app.db.data.usernameClaims).includes("racerone"),
+    true,
+  );
+  assert.equal(
+    Object.keys(app.db.data.usernameClaims).includes("bravoprime"),
+    true,
   );
 
   a.ws.terminate();

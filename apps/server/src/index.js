@@ -15,7 +15,63 @@ import {
 
 export { sanitizeChat, validateClientMessage };
 
+const SEEDED_ACCOUNTS = [
+  {
+    id: "seed-joshua",
+    username: "Joshua",
+    badge: "Advanced Player",
+    role: "player",
+    xp: 5700,
+    passwordSalt: "seed-joshua-v1",
+    passwordHash:
+      "3b6809b32be81d84a5238f9b083cc0f98de50fdc96479833efdfc2977df062ea",
+  },
+  {
+    id: "seed-tosh",
+    username: "Tosh the Sigma",
+    badge: "Rizzler",
+    role: "player",
+    xp: 4300,
+    passwordSalt: "seed-tosh-v1",
+    passwordHash:
+      "daa6abe0208e5355caa1dd90c895b36725bd94b31e1196bef6687d62d03e2fc1",
+  },
+  {
+    id: "seed-clark",
+    username: "Clark",
+    badge: "Founder",
+    role: "player",
+    xp: 8200,
+    passwordSalt: "seed-clark-v1",
+    passwordHash:
+      "fe8e5287d1ff13adeaa3b041a35781493f43f567d9a531a4a775911c022dc570",
+  },
+  {
+    id: "seed-moderator",
+    username: "MODERATOR",
+    badge: "MOD",
+    role: "moderator",
+    xp: 7600,
+    passwordSalt: "seed-moderator-v1",
+    passwordHash:
+      "73292f1ee357f1ee6c3c951a806f0c1bf469fa2ceebb30fcf9b29135110d3b23",
+  },
+];
+
 const DEFAULT_LEADERBOARD = [
+  ...SEEDED_ACCOUNTS.map((account) => ({
+    id: `seed-xp-${account.id}`,
+    userId: account.id,
+    username: account.username,
+    badge: account.badge,
+    moderator: account.role === "moderator",
+    xp: account.xp,
+    rating: account.xp,
+    score: account.xp,
+    playlist: "all modes",
+    scope: "Total XP",
+    source: "server",
+  })),
   {
     id: "seed-ranked-ghost",
     username: "Ghost Apex",
@@ -54,6 +110,7 @@ const BOT_NAMES = [
   "Flux Bot",
 ];
 
+const BAN_DURATION_MS = 24 * 60 * 60 * 1000;
 const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
@@ -124,9 +181,62 @@ function emptyDb() {
     friends: {},
     friendRequests: {},
     reports: [],
+    moderationLogs: [],
+    bans: {},
     feedback: [],
     leaderboard: DEFAULT_LEADERBOARD,
   };
+}
+
+function seedSystemAccounts(db) {
+  for (const account of SEEDED_ACCOUNTS) {
+    const key = claimKey(account.username);
+    const claimedId = db.usernameClaims[key];
+    const id = claimedId && db.users[claimedId] ? claimedId : account.id;
+    const existing = db.users[id] ?? {};
+    const xp = Math.max(Number(existing.xp) || 0, account.xp);
+    db.users[id] = {
+      ...existing,
+      id,
+      username: account.username,
+      age: Number.isFinite(existing.age) ? existing.age : 13,
+      rating: Math.max(Number(existing.rating) || 0, xp),
+      xp,
+      online: Boolean(existing.online),
+      claimedUsername: account.username,
+      authProvider: "password",
+      passwordSalt: account.passwordSalt,
+      passwordHash: account.passwordHash,
+      badge: account.badge,
+      role: account.role,
+      moderator: account.role === "moderator",
+      deviceId: existing.deviceId ?? "",
+      createdAt: existing.createdAt ?? nowIso(),
+      updatedAt: existing.updatedAt ?? nowIso(),
+    };
+    db.usernameClaims[key] = id;
+    db.leaderboard = [
+      {
+        id: `seed-xp-${id}`,
+        userId: id,
+        username: account.username,
+        badge: account.badge,
+        moderator: account.role === "moderator",
+        xp,
+        totalXp: xp,
+        score: xp,
+        rating: xp,
+        playlist: "all modes",
+        scope: "Total XP",
+        source: "server",
+        updatedAt: db.users[id].updatedAt,
+      },
+      ...db.leaderboard.filter(
+        (row) => row.id !== `seed-xp-${id}` && row.userId !== id,
+      ),
+    ];
+  }
+  db.leaderboard = db.leaderboard.sort(compareLeaderboard);
 }
 
 function normalizeDbShape(data) {
@@ -165,11 +275,17 @@ function normalizeDbShape(data) {
       ? db.friendRequests
       : {};
   db.reports = Array.isArray(db.reports) ? db.reports : [];
+  db.moderationLogs = Array.isArray(db.moderationLogs) ? db.moderationLogs : [];
+  db.bans =
+    db.bans && typeof db.bans === "object" && !Array.isArray(db.bans)
+      ? db.bans
+      : {};
   db.feedback = Array.isArray(db.feedback) ? db.feedback : [];
   db.leaderboard =
     Array.isArray(db.leaderboard) && db.leaderboard.length
       ? db.leaderboard
       : DEFAULT_LEADERBOARD;
+  seedSystemAccounts(db);
   return db;
 }
 
@@ -205,6 +321,9 @@ function publicUser(user) {
     claimed: Boolean(user.claimedUsername),
     account: user.authProvider === "password",
     ageGate: Number.isFinite(user.age) ? user.age : null,
+    badge: user.badge || "",
+    role: user.role || "player",
+    moderator: Boolean(user.moderator || user.role === "moderator"),
   };
 }
 
@@ -467,8 +586,31 @@ export function createInfernoServer(options = {}) {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(payload));
   }
 
+  function clientRecordByUserId(userId) {
+    for (const [id, client] of clients.entries()) {
+      if (client.user?.id === userId) return { id, client };
+    }
+    return null;
+  }
+
   function clientByUserId(userId) {
-    return [...clients.values()].find((client) => client.user.id === userId);
+    return clientRecordByUserId(userId)?.client ?? null;
+  }
+
+  function activeBanForUser(userId) {
+    const ban = db.data.bans?.[userId];
+    if (!ban) return null;
+    const untilMs = Date.parse(ban.until);
+    if (!Number.isFinite(untilMs) || untilMs <= Date.now()) {
+      delete db.data.bans[userId];
+      db.save();
+      return null;
+    }
+    return ban;
+  }
+
+  function isModeratorUser(user) {
+    return Boolean(user?.moderator || user?.role === "moderator");
   }
 
   function isBlockedBetween(fromUserId, toUserId) {
@@ -503,18 +645,25 @@ export function createInfernoServer(options = {}) {
       ? db.data.leaderboard
       : DEFAULT_LEADERBOARD;
     const rankedRows = (rows.length ? rows : DEFAULT_LEADERBOARD)
-      .map((row) => ({
-        id: row.id ?? `server-${claimKey(row.username) || randomUUID()}`,
-        username: normalizeUsername(row.username, "Driver"),
-        xp: getLeaderboardXp(row),
-        totalXp: getLeaderboardXp(row),
-        rating: getLeaderboardXp(row),
-        score: getLeaderboardXp(row),
-        playlist: "all modes",
-        requestedPlaylist: playlist || "all",
-        scope: "Total XP",
-        source: "server",
-      }))
+      .map((row) => {
+        const user = row.userId ? db.data.users[row.userId] : null;
+        const xp = getLeaderboardXp(row);
+        return {
+          id: row.id ?? `server-${claimKey(row.username) || randomUUID()}`,
+          userId: row.userId ?? user?.id ?? "",
+          username: normalizeUsername(row.username, "Driver"),
+          xp,
+          totalXp: xp,
+          rating: xp,
+          score: xp,
+          badge: row.badge || user?.badge || "",
+          moderator: Boolean(row.moderator || isModeratorUser(user)),
+          playlist: "all modes",
+          requestedPlaylist: playlist || "all",
+          scope: "Total XP",
+          source: "server",
+        };
+      })
       .sort(compareLeaderboard)
       .slice(0, 10);
     return rankedRows;
@@ -527,6 +676,7 @@ export function createInfernoServer(options = {}) {
         id: `bot-${room.id}-${index + 1}`,
         username: name,
         rating: 900 + index * 25,
+        badge: "BOT",
         bot: true,
       }),
     );
@@ -690,6 +840,9 @@ export function createInfernoServer(options = {}) {
       claimedUsername: existing.claimedUsername ?? null,
       createdAt: existing.createdAt ?? nowIso(),
       updatedAt: nowIso(),
+      badge: existing.badge || "",
+      role: existing.role || "player",
+      moderator: Boolean(existing.moderator || existing.role === "moderator"),
     };
     db.data.users[userId] = user;
     db.data.sessions[sessionToken] = {
@@ -712,19 +865,22 @@ export function createInfernoServer(options = {}) {
     const key = claimKey(username);
     if (!key || username.length < 2)
       return { ok: false, error: "invalid_username" };
+    const ownerId = db.data.usernameClaims[key];
+    const existing = ownerId ? db.data.users[ownerId] : null;
     if (
       key === "clark" &&
+      (!existing || existing.id !== "seed-clark") &&
       (!clarkReservationToken || msg.turnstileToken !== clarkReservationToken)
     ) {
       return { ok: false, error: "username_reserved" };
     }
-    const ownerId = db.data.usernameClaims[key];
-    const existing = ownerId ? db.data.users[ownerId] : null;
     const mode = msg.mode ?? "auto";
     if (!existing && mode === "signin")
       return { ok: false, error: "account_not_found" };
     if (existing && !existing.passwordHash)
       return { ok: false, error: "account_requires_upgrade" };
+    const ban = existing ? activeBanForUser(existing.id) : null;
+    if (ban) return { ok: false, error: "account_banned", until: ban.until };
 
     let user = existing;
     let restored = false;
@@ -758,6 +914,9 @@ export function createInfernoServer(options = {}) {
         authProvider: "password",
         passwordSalt: salt,
         passwordHash: await hashPassword(msg.password, salt),
+        badge: "",
+        role: "player",
+        moderator: false,
         createdAt: nowIso(),
         updatedAt: nowIso(),
       };
@@ -934,6 +1093,8 @@ export function createInfernoServer(options = {}) {
         id: `xp-${client.user.id}`,
         userId: client.user.id,
         username: client.user.username,
+        badge: client.user.badge || "",
+        moderator: isModeratorUser(client.user),
         xp: totalXp,
         totalXp,
         score: totalXp,
@@ -962,6 +1123,70 @@ export function createInfernoServer(options = {}) {
       schemaVersion: row.schemaVersion,
       payload: row.payload,
       serverUpdatedAt: row.serverUpdatedAt,
+    });
+  }
+
+  function handleModerationAction(client, msg, action) {
+    if (!checkRate(client, "moderation", 10, 60_000)) {
+      return send(client.ws, { type: "error", error: "rate_limited" });
+    }
+    if (!isModeratorUser(client.user)) {
+      return send(client.ws, { type: "error", error: "moderator_required" });
+    }
+    const target =
+      (msg.userId && db.data.users[msg.userId]) ||
+      findUserByUsername(msg.username || "");
+    if (!target) {
+      return send(client.ws, { type: "error", error: "player_not_found" });
+    }
+    if (target.id === client.user.id) {
+      return send(client.ws, {
+        type: "error",
+        error: "moderation_self_rejected",
+      });
+    }
+    const reason = sanitizeChat(msg.reason || "Moderator action");
+    const record = {
+      id: randomUUID(),
+      action,
+      moderatorUserId: client.user.id,
+      moderatorUsername: client.user.username,
+      targetUserId: target.id,
+      targetUsername: target.username,
+      reason: reason === "[blocked]" ? "Moderator action" : reason,
+      createdAt: nowIso(),
+    };
+    if (action === "ban") {
+      record.until = new Date(Date.now() + BAN_DURATION_MS).toISOString();
+      db.data.bans[target.id] = {
+        userId: target.id,
+        username: target.username,
+        until: record.until,
+        byUserId: client.user.id,
+        reason: record.reason,
+        createdAt: record.createdAt,
+      };
+    }
+    db.data.moderationLogs.push(record);
+    db.save();
+
+    const targetRecord = clientRecordByUserId(target.id);
+    if (targetRecord) {
+      leaveRoom(targetRecord.id);
+      send(targetRecord.client.ws, {
+        type: action === "ban" ? "moderation.banned" : "moderation.kicked",
+        username: target.username,
+        until: record.until || null,
+        reason: record.reason,
+      });
+      targetRecord.client.ws.close(action === "ban" ? 4003 : 4002, action);
+    }
+    send(client.ws, {
+      type: "moderation.done",
+      action,
+      username: target.username,
+      userId: target.id,
+      until: record.until || null,
     });
   }
 
@@ -1027,6 +1252,16 @@ export function createInfernoServer(options = {}) {
             msg.deviceId = client.user.deviceId ?? "";
           }
           const auth = createOrRestoreUser(client, msg);
+          const ban = activeBanForUser(auth.user.id);
+          if (ban) {
+            send(ws, {
+              type: "error",
+              error: "account_banned",
+              until: ban.until,
+            });
+            ws.close(4003, "banned");
+            return;
+          }
           send(ws, {
             type: msg.type === "reconnect" ? "reconnect.ok" : "auth.ok",
             user: publicUser(auth.user),
@@ -1047,7 +1282,12 @@ export function createInfernoServer(options = {}) {
 
         if (msg.type === "auth.account") {
           const auth = await handleAccountAuth(client, msg);
-          if (!auth.ok) return send(ws, { type: "error", error: auth.error });
+          if (!auth.ok)
+            return send(ws, {
+              type: "error",
+              error: auth.error,
+              until: auth.until || null,
+            });
           send(ws, {
             type: "auth.ok",
             user: publicUser(auth.user),
@@ -1117,8 +1357,7 @@ export function createInfernoServer(options = {}) {
             return send(ws, { type: "error", error: "rate_limited" });
           if (
             msg.type === "chat.send" &&
-            Number.isInteger(client.user.age) &&
-            client.user.age < 13
+            (!Number.isInteger(client.user.age) || client.user.age < 13)
           ) {
             return send(ws, { type: "error", error: "chat_requires_13_plus" });
           }
@@ -1133,6 +1372,8 @@ export function createInfernoServer(options = {}) {
             type: "chat.message",
             from: client.user.username,
             userId: client.user.id,
+            badge: client.user.badge || "",
+            moderator: isModeratorUser(client.user),
             text,
             quick: msg.type === "quick.send",
           };
@@ -1158,6 +1399,8 @@ export function createInfernoServer(options = {}) {
               players: [...room.players].map((playerId) => ({
                 id: clients.get(playerId)?.user.id,
                 username: clients.get(playerId)?.user.username,
+                badge: clients.get(playerId)?.user.badge || "",
+                moderator: isModeratorUser(clients.get(playerId)?.user),
                 input: clients.get(playerId)?.latestInput ?? null,
               })),
             });
@@ -1205,6 +1448,16 @@ export function createInfernoServer(options = {}) {
 
         if (msg.type === "feedback.submit") {
           await handleFeedbackSubmit(client, msg);
+          return;
+        }
+
+        if (msg.type === "moderation.kick") {
+          handleModerationAction(client, msg, "kick");
+          return;
+        }
+
+        if (msg.type === "moderation.ban") {
+          handleModerationAction(client, msg, "ban");
         }
       })().catch(() => send(ws, { type: "error", error: "server_error" }));
     });

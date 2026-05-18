@@ -65,7 +65,63 @@ async function hashPassword(password, salt) {
   return bytesToHex(bits);
 }
 
+const SEEDED_ACCOUNTS = [
+  {
+    id: "seed-joshua",
+    username: "Joshua",
+    badge: "Advanced Player",
+    role: "player",
+    xp: 5700,
+    passwordSalt: "seed-joshua-v1",
+    passwordHash:
+      "3b6809b32be81d84a5238f9b083cc0f98de50fdc96479833efdfc2977df062ea",
+  },
+  {
+    id: "seed-tosh",
+    username: "Tosh the Sigma",
+    badge: "Rizzler",
+    role: "player",
+    xp: 4300,
+    passwordSalt: "seed-tosh-v1",
+    passwordHash:
+      "daa6abe0208e5355caa1dd90c895b36725bd94b31e1196bef6687d62d03e2fc1",
+  },
+  {
+    id: "seed-clark",
+    username: "Clark",
+    badge: "Founder",
+    role: "player",
+    xp: 8200,
+    passwordSalt: "seed-clark-v1",
+    passwordHash:
+      "fe8e5287d1ff13adeaa3b041a35781493f43f567d9a531a4a775911c022dc570",
+  },
+  {
+    id: "seed-moderator",
+    username: "MODERATOR",
+    badge: "MOD",
+    role: "moderator",
+    xp: 7600,
+    passwordSalt: "seed-moderator-v1",
+    passwordHash:
+      "73292f1ee357f1ee6c3c951a806f0c1bf469fa2ceebb30fcf9b29135110d3b23",
+  },
+];
+
 const DEFAULT_LEADERBOARD = [
+  ...SEEDED_ACCOUNTS.map((account) => ({
+    id: `seed-xp-${account.id}`,
+    userId: account.id,
+    username: account.username,
+    badge: account.badge,
+    moderator: account.role === "moderator",
+    xp: account.xp,
+    rating: account.xp,
+    score: account.xp,
+    playlist: "all modes",
+    scope: "Total XP",
+    source: "server",
+  })),
   {
     id: "seed-ranked-ghost",
     username: "Ghost Apex",
@@ -104,6 +160,7 @@ const BOT_NAMES = [
   "Flux Bot",
 ];
 
+const BAN_DURATION_MS = 24 * 60 * 60 * 1000;
 const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
@@ -116,9 +173,62 @@ function emptyData() {
     friends: {},
     friendRequests: {},
     reports: [],
+    moderationLogs: [],
+    bans: {},
     feedback: [],
     leaderboard: DEFAULT_LEADERBOARD,
   };
+}
+
+function seedSystemAccounts(state) {
+  for (const account of SEEDED_ACCOUNTS) {
+    const key = claimKey(account.username);
+    const claimedId = state.usernameClaims[key];
+    const id = claimedId && state.users[claimedId] ? claimedId : account.id;
+    const existing = state.users[id] ?? {};
+    const xp = Math.max(Number(existing.xp) || 0, account.xp);
+    state.users[id] = {
+      ...existing,
+      id,
+      username: account.username,
+      age: Number.isFinite(existing.age) ? existing.age : 13,
+      rating: Math.max(Number(existing.rating) || 0, xp),
+      xp,
+      online: Boolean(existing.online),
+      claimedUsername: account.username,
+      authProvider: "password",
+      passwordSalt: account.passwordSalt,
+      passwordHash: account.passwordHash,
+      badge: account.badge,
+      role: account.role,
+      moderator: account.role === "moderator",
+      deviceId: existing.deviceId ?? "",
+      createdAt: existing.createdAt ?? nowIso(),
+      updatedAt: existing.updatedAt ?? nowIso(),
+    };
+    state.usernameClaims[key] = id;
+    state.leaderboard = [
+      {
+        id: `seed-xp-${id}`,
+        userId: id,
+        username: account.username,
+        badge: account.badge,
+        moderator: account.role === "moderator",
+        xp,
+        totalXp: xp,
+        score: xp,
+        rating: xp,
+        playlist: "all modes",
+        scope: "Total XP",
+        source: "server",
+        updatedAt: state.users[id].updatedAt,
+      },
+      ...state.leaderboard.filter(
+        (row) => row.id !== `seed-xp-${id}` && row.userId !== id,
+      ),
+    ];
+  }
+  state.leaderboard = state.leaderboard.sort(compareLeaderboard);
 }
 
 function normalizeData(data) {
@@ -163,11 +273,19 @@ function normalizeData(data) {
       ? state.friendRequests
       : {};
   state.reports = Array.isArray(state.reports) ? state.reports : [];
+  state.moderationLogs = Array.isArray(state.moderationLogs)
+    ? state.moderationLogs
+    : [];
+  state.bans =
+    state.bans && typeof state.bans === "object" && !Array.isArray(state.bans)
+      ? state.bans
+      : {};
   state.feedback = Array.isArray(state.feedback) ? state.feedback : [];
   state.leaderboard =
     Array.isArray(state.leaderboard) && state.leaderboard.length
       ? state.leaderboard
       : DEFAULT_LEADERBOARD;
+  seedSystemAccounts(state);
   return state;
 }
 
@@ -214,6 +332,9 @@ function publicUser(user) {
     claimed: Boolean(user.claimedUsername),
     account: user.authProvider === "password",
     ageGate: Number.isFinite(user.age) ? user.age : null,
+    badge: user.badge || "",
+    role: user.role || "player",
+    moderator: Boolean(user.moderator || user.role === "moderator"),
   };
 }
 
@@ -422,6 +543,28 @@ export class InfernoRoom {
     );
   }
 
+  clientRecordByUserId(userId) {
+    for (const [id, session] of this.sessions.entries()) {
+      if (session.user?.id === userId) return { id, session };
+    }
+    return null;
+  }
+
+  activeBanForUser(userId) {
+    const ban = this.data.bans?.[userId];
+    if (!ban) return null;
+    const untilMs = Date.parse(ban.until);
+    if (!Number.isFinite(untilMs) || untilMs <= Date.now()) {
+      delete this.data.bans[userId];
+      return null;
+    }
+    return ban;
+  }
+
+  isModeratorUser(user) {
+    return Boolean(user?.moderator || user?.role === "moderator");
+  }
+
   isBlockedBetween(fromUserId, toUserId) {
     const fromState = this.data.friends[fromUserId] ?? {};
     const toState = this.data.friends[toUserId] ?? {};
@@ -488,6 +631,9 @@ export class InfernoRoom {
       claimedUsername: existing.claimedUsername ?? null,
       createdAt: existing.createdAt ?? nowIso(),
       updatedAt: nowIso(),
+      badge: existing.badge || "",
+      role: existing.role || "player",
+      moderator: Boolean(existing.moderator || existing.role === "moderator"),
     };
     const sessionToken = restoredSession ? token : crypto.randomUUID();
     this.data.users[userId] = user;
@@ -511,20 +657,23 @@ export class InfernoRoom {
     const key = claimKey(username);
     if (!key || username.length < 2)
       return { ok: false, error: "invalid_username" };
+    const ownerId = this.data.usernameClaims[key];
+    const existing = ownerId ? this.data.users[ownerId] : null;
     if (
       key === "clark" &&
+      (!existing || existing.id !== "seed-clark") &&
       (!this.env.CLARK_RESERVATION_TOKEN ||
         msg.turnstileToken !== this.env.CLARK_RESERVATION_TOKEN)
     ) {
       return { ok: false, error: "username_reserved" };
     }
-    const ownerId = this.data.usernameClaims[key];
-    const existing = ownerId ? this.data.users[ownerId] : null;
     const mode = msg.mode ?? "auto";
     if (!existing && mode === "signin")
       return { ok: false, error: "account_not_found" };
     if (existing && !existing.passwordHash)
       return { ok: false, error: "account_requires_upgrade" };
+    const ban = existing ? this.activeBanForUser(existing.id) : null;
+    if (ban) return { ok: false, error: "account_banned", until: ban.until };
 
     let user = existing;
     let restored = false;
@@ -558,6 +707,9 @@ export class InfernoRoom {
         authProvider: "password",
         passwordSalt: salt,
         passwordHash: await hashPassword(msg.password, salt),
+        badge: "",
+        role: "player",
+        moderator: false,
         createdAt: nowIso(),
         updatedAt: nowIso(),
       };
@@ -628,6 +780,17 @@ export class InfernoRoom {
         msg.deviceId = session.user.deviceId ?? "";
       }
       const auth = this.createOrRestoreUser(session, msg);
+      const ban = this.activeBanForUser(auth.user.id);
+      if (ban) {
+        await this.persist();
+        send(session.ws, {
+          type: "error",
+          error: "account_banned",
+          until: ban.until,
+        });
+        session.ws.close(4003, "banned");
+        return;
+      }
       await this.persist();
       send(session.ws, {
         type: msg.type === "reconnect" ? "reconnect.ok" : "auth.ok",
@@ -642,7 +805,11 @@ export class InfernoRoom {
     if (msg.type === "auth.account") {
       const auth = await this.handleAccountAuth(session, msg);
       if (!auth.ok)
-        return send(session.ws, { type: "error", error: auth.error });
+        return send(session.ws, {
+          type: "error",
+          error: auth.error,
+          until: auth.until || null,
+        });
       await this.persist();
       send(session.ws, {
         type: "auth.ok",
@@ -752,6 +919,14 @@ export class InfernoRoom {
     }
     if (msg.type === "feedback.submit") {
       await this.handleFeedbackSubmit(session, msg);
+      return;
+    }
+    if (msg.type === "moderation.kick") {
+      await this.handleModerationAction(session, msg, "kick");
+      return;
+    }
+    if (msg.type === "moderation.ban") {
+      await this.handleModerationAction(session, msg, "ban");
     }
   }
 
@@ -763,8 +938,7 @@ export class InfernoRoom {
     }
     if (
       msg.type === "chat.send" &&
-      Number.isInteger(session.user.age) &&
-      session.user.age < 13
+      (!Number.isInteger(session.user.age) || session.user.age < 13)
     ) {
       send(session.ws, { type: "error", error: "chat_requires_13_plus" });
       return;
@@ -782,6 +956,8 @@ export class InfernoRoom {
         type: "chat.message",
         from: session.user.username,
         userId: session.user.id,
+        badge: session.user.badge || "",
+        moderator: this.isModeratorUser(session.user),
         text,
         quick: msg.type === "quick.send",
       },
@@ -804,6 +980,8 @@ export class InfernoRoom {
         id: `xp-${session.user.id}`,
         userId: session.user.id,
         username: session.user.username,
+        badge: session.user.badge || "",
+        moderator: this.isModeratorUser(session.user),
         xp: totalXp,
         totalXp,
         score: totalXp,
@@ -832,6 +1010,70 @@ export class InfernoRoom {
       payload: row.payload,
       serverUpdatedAt: row.serverUpdatedAt,
     });
+  }
+
+  async handleModerationAction(session, msg, action) {
+    if (!this.checkRate(session, "moderation", 10, 60_000)) {
+      return send(session.ws, { type: "error", error: "rate_limited" });
+    }
+    if (!this.isModeratorUser(session.user)) {
+      return send(session.ws, { type: "error", error: "moderator_required" });
+    }
+    const target =
+      (msg.userId && this.data.users[msg.userId]) ||
+      this.findUserByUsername(msg.username || "");
+    if (!target) {
+      return send(session.ws, { type: "error", error: "player_not_found" });
+    }
+    if (target.id === session.user.id) {
+      return send(session.ws, {
+        type: "error",
+        error: "moderation_self_rejected",
+      });
+    }
+    const reason = sanitizeChat(msg.reason || "Moderator action");
+    const record = {
+      id: crypto.randomUUID(),
+      action,
+      moderatorUserId: session.user.id,
+      moderatorUsername: session.user.username,
+      targetUserId: target.id,
+      targetUsername: target.username,
+      reason: reason === "[blocked]" ? "Moderator action" : reason,
+      createdAt: nowIso(),
+    };
+    if (action === "ban") {
+      record.until = new Date(Date.now() + BAN_DURATION_MS).toISOString();
+      this.data.bans[target.id] = {
+        userId: target.id,
+        username: target.username,
+        until: record.until,
+        byUserId: session.user.id,
+        reason: record.reason,
+        createdAt: record.createdAt,
+      };
+    }
+    this.data.moderationLogs.push(record);
+    await this.persist();
+    const targetRecord = this.clientRecordByUserId(target.id);
+    if (targetRecord) {
+      send(targetRecord.session.ws, {
+        type: action === "ban" ? "moderation.banned" : "moderation.kicked",
+        username: target.username,
+        until: record.until || null,
+        reason: record.reason,
+      });
+      targetRecord.session.ws.close(action === "ban" ? 4003 : 4002, action);
+      this.sessions.delete(targetRecord.id);
+    }
+    send(session.ws, {
+      type: "moderation.done",
+      action,
+      username: target.username,
+      userId: target.id,
+      until: record.until || null,
+    });
+    this.broadcast(this.roomSnapshot());
   }
 
   async handleFriendRequest(session, msg) {
@@ -1005,18 +1247,26 @@ export class InfernoRoom {
       ? this.data.leaderboard
       : DEFAULT_LEADERBOARD;
     return (rows.length ? rows : DEFAULT_LEADERBOARD)
-      .map((row) => ({
-        id: row.id ?? `server-${claimKey(row.username) || crypto.randomUUID()}`,
-        username: normalizeUsername(row.username, "Driver"),
-        xp: getLeaderboardXp(row),
-        totalXp: getLeaderboardXp(row),
-        rating: getLeaderboardXp(row),
-        score: getLeaderboardXp(row),
-        playlist: "all modes",
-        requestedPlaylist: playlist || "all",
-        scope: "Total XP",
-        source: "server",
-      }))
+      .map((row) => {
+        const user = row.userId ? this.data.users[row.userId] : null;
+        const xp = getLeaderboardXp(row);
+        return {
+          id:
+            row.id ?? `server-${claimKey(row.username) || crypto.randomUUID()}`,
+          userId: row.userId ?? user?.id ?? "",
+          username: normalizeUsername(row.username, "Driver"),
+          xp,
+          totalXp: xp,
+          rating: xp,
+          score: xp,
+          badge: row.badge || user?.badge || "",
+          moderator: Boolean(row.moderator || this.isModeratorUser(user)),
+          playlist: "all modes",
+          requestedPlaylist: playlist || "all",
+          scope: "Total XP",
+          source: "server",
+        };
+      })
       .sort(compareLeaderboard)
       .slice(0, 10);
   }
@@ -1030,6 +1280,7 @@ export class InfernoRoom {
       id: `bot-${this.room.id}-${index + 1}`,
       username: name,
       rating: 900 + index * 25,
+      badge: "BOT",
       bot: true,
     }));
   }
@@ -1057,6 +1308,8 @@ export class InfernoRoom {
       players: [...this.sessions.values()].map((session) => ({
         id: session.user.id,
         username: session.user.username,
+        badge: session.user.badge || "",
+        moderator: this.isModeratorUser(session.user),
         input: session.latestInput,
       })),
     };

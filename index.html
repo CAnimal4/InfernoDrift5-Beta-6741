@@ -280,18 +280,14 @@
             <section class="tab-panel" id="tab-online">
               <div class="online-layout">
                 <div class="online-panel">
-                  <div class="custom-section-title">Connection</div>
-                  <label class="field">
-                    <span>Backend URL</span>
-                    <input id="online-backend-url" type="url" placeholder="wss://example.com/ws" autocomplete="url" />
-                  </label>
-                  <div class="online-status" id="online-status">Offline: no backend configured</div>
+                  <div class="custom-section-title">Account & Online</div>
+                  <div class="online-status" id="online-status">Backend ready when local server is running</div>
                   <div class="cta-row compact-actions">
                     <button class="primary" id="online-connect" type="button">Connect</button>
                     <button class="ghost" id="online-disconnect" type="button">Disconnect</button>
                   </div>
                   <label class="field">
-                    <span>Guest Name</span>
+                    <span>Online Name</span>
                     <input id="online-username" type="text" maxlength="24" placeholder="Guest Racer" autocomplete="nickname" />
                   </label>
                   <label class="field">
@@ -300,6 +296,14 @@
                   </label>
                   <button class="ghost" id="online-claim" type="button">Claim Username</button>
                   <p class="hint" id="online-age-note">Under-13 players can use quick chat only.</p>
+                  <details class="advanced-online-settings">
+                    <summary>Server settings</summary>
+                    <label class="field">
+                      <span>Backend URL</span>
+                      <input id="online-backend-url" type="url" placeholder="ws://127.0.0.1:8787/ws" autocomplete="url" />
+                    </label>
+                    <p class="hint">Local testing uses ws://127.0.0.1:8787/ws automatically. Hosted online appears here after Cloudflare is verified.</p>
+                  </details>
                 </div>
                 <div class="online-panel">
                   <div class="custom-section-title">Rooms</div>

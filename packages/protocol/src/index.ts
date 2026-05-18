@@ -275,6 +275,26 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
     diagnostics: safePayloadSchema.optional(),
     turnstileToken: z.string().max(2048).optional(),
   }),
+  z
+    .object({
+      type: z.literal("moderation.kick"),
+      username: z.string().min(1).max(24).optional(),
+      userId: z.string().min(1).max(80).optional(),
+      reason: z.string().min(1).max(180).optional(),
+    })
+    .refine((message) => Boolean(message.username || message.userId), {
+      message: "target_required",
+    }),
+  z
+    .object({
+      type: z.literal("moderation.ban"),
+      username: z.string().min(1).max(24).optional(),
+      userId: z.string().min(1).max(80).optional(),
+      reason: z.string().min(1).max(180).optional(),
+    })
+    .refine((message) => Boolean(message.username || message.userId), {
+      message: "target_required",
+    }),
   z.object({
     type: z.literal("reconnect"),
     sessionToken: z.string().min(8).max(128),

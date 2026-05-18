@@ -561,7 +561,12 @@ const sharedXpProgress = await page.evaluate(() => {
 assert.ok(sharedXpProgress.afterCampaign > 0);
 assert.ok(sharedXpProgress.bowlingGain > 0);
 assert.equal(sharedXpProgress.afterBowling, sharedXpProgress.totalXp);
-assert.equal(sharedXpProgress.leaderboard[0].xp, sharedXpProgress.afterBowling);
+assert.ok(
+  sharedXpProgress.leaderboard.some(
+    (row) => row.xp === sharedXpProgress.afterBowling,
+  ),
+);
+assert.ok(sharedXpProgress.leaderboard.length > 1);
 
 const garageUnlockState = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();

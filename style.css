@@ -76,7 +76,7 @@ canvas {
 .remote-name-layer {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 12;
   pointer-events: none;
   overflow: hidden;
 }
@@ -105,7 +105,14 @@ canvas {
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   will-change: transform, opacity;
+}
+
+.remote-name-tag .moderation-menu-btn {
+  pointer-events: auto;
 }
 
 .remote-name-tag::after {
@@ -853,6 +860,19 @@ body:has(#overlay.show) .remote-name-layer {
   background: rgba(255, 255, 255, 0.035);
 }
 
+.advanced-online-settings {
+  border-top: 1px solid rgba(126, 178, 255, 0.12);
+  padding-top: 8px;
+}
+
+.advanced-online-settings summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .feedback-panel {
   max-width: min(92vw, 620px);
   text-align: left;
@@ -953,6 +973,23 @@ body:has(#overlay.show) .remote-name-layer {
   background: rgba(255, 255, 255, 0.045);
 }
 
+.chat-sender,
+.leaderboard-name,
+.online-player-name {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+
+.chat-sender strong,
+.leaderboard-name strong,
+.online-player-name strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chat-message strong {
   color: var(--ink);
   font-size: 0.78rem;
@@ -971,11 +1008,65 @@ body:has(#overlay.show) .remote-name-layer {
 
 .online-row {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 7px 8px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.04);
+}
+
+.player-badge {
+  display: inline-grid;
+  place-items: center;
+  min-height: 18px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(126, 178, 255, 0.28);
+  color: #d9f6ff;
+  background: rgba(126, 178, 255, 0.11);
+  font-size: 0.62rem;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.badge-founder {
+  border-color: rgba(255, 196, 87, 0.48);
+  color: #ffe6a8;
+  background: rgba(255, 196, 87, 0.15);
+}
+
+.badge-mod {
+  border-color: rgba(255, 101, 64, 0.5);
+  color: #ffd9cf;
+  background: rgba(255, 101, 64, 0.14);
+}
+
+.badge-rizzler {
+  border-color: rgba(255, 126, 228, 0.42);
+  color: #ffe2fb;
+  background: rgba(255, 126, 228, 0.12);
+}
+
+.badge-advanced-player {
+  border-color: rgba(74, 255, 166, 0.36);
+  color: #d7ffe9;
+  background: rgba(74, 255, 166, 0.1);
+}
+
+.moderation-menu-btn {
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .account-start-card {

@@ -276,6 +276,9 @@ const LEGACY_SAVE_STORAGE_KEYS = ["infernoDrift3.save.v1"];
 const ONLINE_STORAGE_KEY = "infernoDrift4.online.v1";
 const FEEDBACK_STORAGE_KEY = "infernoDrift4.feedback.v1";
 const ONLINE_PROTOCOL_VERSION = 1;
+const DEFAULT_PRODUCTION_BACKEND_URL =
+  "wss://infernodrift4-online.clarkbythebay.workers.dev/ws";
+const DEFAULT_LOCAL_BACKEND_URL = "ws://127.0.0.1:8787/ws";
 const QUICK_CHAT_MESSAGES = [
   "Nice drift!",
   "Defending",
@@ -283,6 +286,49 @@ const QUICK_CHAT_MESSAGES = [
   "Passing left",
   "One more run",
   "Good save",
+];
+const SEEDED_LEADERBOARD_ROWS = [
+  {
+    id: "seed-clark",
+    userId: "seed-clark",
+    username: "Clark",
+    badge: "Founder",
+    xp: 8200,
+    totalXp: 8200,
+    source: "server",
+    scope: "Total XP",
+  },
+  {
+    id: "seed-moderator",
+    userId: "seed-moderator",
+    username: "MODERATOR",
+    badge: "MOD",
+    moderator: true,
+    xp: 7600,
+    totalXp: 7600,
+    source: "server",
+    scope: "Total XP",
+  },
+  {
+    id: "seed-joshua",
+    userId: "seed-joshua",
+    username: "Joshua",
+    badge: "Advanced Player",
+    xp: 5700,
+    totalXp: 5700,
+    source: "server",
+    scope: "Total XP",
+  },
+  {
+    id: "seed-tosh",
+    userId: "seed-tosh",
+    username: "Tosh the Sigma",
+    badge: "Rizzler",
+    xp: 4300,
+    totalXp: 4300,
+    source: "server",
+    scope: "Total XP",
+  },
 ];
 const GAME_MODE_ID33 = "infernodrift33";
 const GAME_MODE_MAX1 = "infernodriftmax1";
@@ -1907,12 +1953,14 @@ const gamepadState = {
 
 const onlineState = {
   backendUrl: "",
+  backendDefaulted: false,
   feedbackUrl: "",
   status: "offline",
   statusText: "Offline: no backend configured",
   socket: null,
   reconnectTimer: 0,
   reconnectAttempts: 0,
+  autoConnectAttempted: false,
   lastError: "",
   lastMessageType: "",
   user: null,
@@ -1934,6 +1982,8 @@ const onlineState = {
   friends: [],
   recentPlayers: [],
   remoteSnapshots: [],
+  lastModerationStatus: "",
+  moderationAction: null,
   pending: [],
   inputSeq: 0,
   lastSnapshotAt: 0,
@@ -3404,6 +3454,13 @@ function normalizeOnlineBackendUrl(value) {
   return raw;
 }
 
+function getDefaultOnlineBackendUrl() {
+  const configured =
+    getRuntimeParam("online", "onlineUrl", "ws") || window.INFERNO_ONLINE_URL;
+  if (configured) return normalizeOnlineBackendUrl(configured);
+  return DEFAULT_PRODUCTION_BACKEND_URL;
+}
+
 function deriveFeedbackUrl(backendUrl) {
   try {
     if (!backendUrl) return "";
@@ -3421,12 +3478,15 @@ function deriveFeedbackUrl(backendUrl) {
 function loadOnlineConfig() {
   const onlinePrefs = readLocalJson(ONLINE_STORAGE_KEY, {});
   const feedbackPrefs = readLocalJson(FEEDBACK_STORAGE_KEY, {});
-  const configuredBackend =
+  const explicitBackend =
     getRuntimeParam("online", "onlineUrl", "ws") ||
     window.INFERNO_ONLINE_URL ||
     onlinePrefs.backendUrl ||
     "";
+  const configuredBackend = explicitBackend || getDefaultOnlineBackendUrl();
   onlineState.backendUrl = normalizeOnlineBackendUrl(configuredBackend);
+  onlineState.backendDefaulted =
+    !explicitBackend && onlineState.backendUrl === DEFAULT_LOCAL_BACKEND_URL;
   onlineState.feedbackUrl =
     getRuntimeParam("feedback", "feedbackUrl") ||
     window.INFERNO_FEEDBACK_URL ||
@@ -3443,6 +3503,9 @@ function loadOnlineConfig() {
     : null;
   if (onlineBackendUrlInput)
     onlineBackendUrlInput.value = onlineState.backendUrl;
+  if (onlineState.backendUrl && onlineState.status === "offline") {
+    onlineState.statusText = `Backend ready: ${onlineState.backendUrl}`;
+  }
   if (onlineUsernameInput) onlineUsernameInput.value = onlineState.username;
   if (onlineAgeInput && onlineState.age !== null)
     onlineAgeInput.value = String(onlineState.age);
@@ -3615,6 +3678,12 @@ function startGuestProfile() {
   onlineState.accountStatus = `${onlineState.username} is a temporary guest. Progress saves only for this browser tab.`;
   if (onlineUsernameInput) onlineUsernameInput.value = onlineState.username;
   syncStartAccountFields();
+  if (onlineState.backendUrl && !onlineState.backendDefaulted) {
+    setStartAccountStatus(
+      `${onlineState.username} is entering as a temporary online guest...`,
+    );
+    connectOnline();
+  }
   try {
     sessionStorage.removeItem(SAVE_STORAGE_KEY);
   } catch {
@@ -3798,7 +3867,7 @@ function handleOnlineMessage(raw) {
     onlineState.guestTemporary = onlineState.profileMode === "guest";
     onlineState.accountStatus =
       onlineState.profileMode === "account"
-        ? `Signed in as ${onlineState.user?.username || onlineState.username}.`
+        ? `Signed in as ${onlineState.user?.username || onlineState.username}${onlineState.user?.badge ? ` · ${onlineState.user.badge}` : ""}.`
         : `${onlineState.user?.username || onlineState.username} is playing as guest.`;
     syncStartAccountFields();
     setOnlineStatus(
@@ -3834,6 +3903,9 @@ function handleOnlineMessage(raw) {
   } else if (message.type === "chat.message") {
     pushOnlineChatMessage({
       from: message.from || "Server",
+      userId: message.userId || "",
+      badge: message.badge || "",
+      moderator: Boolean(message.moderator),
       text: message.text || "",
       quick: Boolean(message.quick),
     });
@@ -3866,6 +3938,25 @@ function handleOnlineMessage(raw) {
     }
     setOnlineStatus("error", "Online backend rejected request", error);
     pushOnlineChatMessage({ from: "System", text: error, quick: true });
+  } else if (
+    message.type === "moderation.kicked" ||
+    message.type === "moderation.banned"
+  ) {
+    const text =
+      message.type === "moderation.banned"
+        ? `You were banned until ${message.until || "tomorrow"}.`
+        : "You were kicked by a moderator. Please sign in again.";
+    onlineState.lastModerationStatus = text;
+    setOnlineStatus("error", text);
+    pushOnlineChatMessage({ from: "System", text, quick: true });
+    disconnectOnline({ manual: false });
+  } else if (message.type === "moderation.done") {
+    onlineState.lastModerationStatus = `${message.action || "Updated"} ${message.username || message.userId || "player"}`;
+    pushOnlineChatMessage({
+      from: "Moderation",
+      text: onlineState.lastModerationStatus,
+      quick: true,
+    });
   }
   updateOnlineUi();
 }
@@ -3879,6 +3970,8 @@ function updateRemoteSnapshotsFromRoom(room) {
       .map((remote, index) => ({
         id: remote.id,
         username: remote.username,
+        badge: remote.badge || "",
+        moderator: Boolean(remote.moderator),
         team: index % 2 === 0 ? "blue" : "red",
         x: player.position.x + 7 + index * 5,
         y: 0,
@@ -3897,6 +3990,8 @@ function updateRemoteSnapshotsFromMatch() {
       .map((remote, index) => ({
         id: remote.id,
         username: remote.username,
+        badge: remote.badge || "",
+        moderator: Boolean(remote.moderator),
         team: index % 2 === 0 ? "blue" : "red",
         x: Number(remote.input?.x ?? player.position.x + 8 + index * 4),
         y: 0,
@@ -3934,6 +4029,9 @@ function sendOnlineInputFrame(dt = 1 / 60) {
 function pushOnlineChatMessage(message) {
   const clean = {
     from: sanitizeRemoteUsername(message.from || "System"),
+    userId: String(message.userId || ""),
+    badge: sanitizeBadgeLabel(message.badge),
+    moderator: Boolean(message.moderator),
     text: String(message.text || "")
       .replace(/[<>]/g, "")
       .slice(0, 180),
@@ -3984,8 +4082,14 @@ function renderChatLog(target) {
   messages.forEach((message) => {
     const row = document.createElement("div");
     row.className = "chat-message";
-    const from = document.createElement("strong");
-    from.textContent = message.quick ? `${message.from} · Quick` : message.from;
+    const from = document.createElement("span");
+    from.className = "chat-sender";
+    renderPlayerNameInline(from, {
+      username: message.quick ? `${message.from} · Quick` : message.from,
+      userId: message.userId,
+      badge: message.badge,
+      moderator: message.moderator,
+    });
     const text = document.createElement("span");
     text.textContent = message.text;
     row.append(from, text);
@@ -4027,6 +4131,31 @@ function renderOnlineRows(target, rows, emptyText, formatter) {
   });
 }
 
+function renderOnlinePlayerRows(target, rows, emptyText, rightFormatter) {
+  if (!target) return;
+  target.replaceChildren();
+  if (!rows.length) {
+    target.textContent = emptyText;
+    return;
+  }
+  rows.forEach((row) => {
+    const item = document.createElement("div");
+    item.className = "online-row player-row";
+    const leftNode = document.createElement("span");
+    leftNode.className = "online-player-name";
+    renderPlayerNameInline(leftNode, {
+      username: row.username || row.name || "Player",
+      userId: row.userId || row.id,
+      badge: row.badge,
+      moderator: row.moderator,
+    });
+    const rightNode = document.createElement("strong");
+    rightNode.textContent = rightFormatter(row);
+    item.append(leftNode, rightNode);
+    target.appendChild(item);
+  });
+}
+
 function getLeaderboardXp(row) {
   return Math.max(
     0,
@@ -4034,6 +4163,10 @@ function getLeaderboardXp(row) {
       Number(row?.totalXp ?? row?.xp ?? row?.score ?? row?.rating) || 0,
     ),
   );
+}
+
+function compareLeaderboard(a, b) {
+  return getLeaderboardXp(b) - getLeaderboardXp(a);
 }
 
 function getLeaderboardTier(row, index = 0) {
@@ -4046,17 +4179,26 @@ function getLeaderboardTier(row, index = 0) {
 }
 
 function getLocalXpLeaderboardRows() {
+  const playerXp = getProgressionTotalXp();
+  const playerRow = {
+    id: "local-player-xp",
+    userId: onlineState.user?.id || "",
+    username: onlineState.username || "Guest Racer",
+    badge: onlineState.user?.badge || "",
+    moderator: isCurrentOnlineModerator(),
+    xp: playerXp,
+    totalXp: playerXp,
+    playlist: "all modes",
+    source: onlineState.guestTemporary ? "guest" : "local",
+    scope: "Total XP",
+  };
   return [
+    ...SEEDED_LEADERBOARD_ROWS,
     {
-      id: "local-player-xp",
-      username: onlineState.username || "Guest Racer",
-      xp: getProgressionTotalXp(),
-      totalXp: getProgressionTotalXp(),
-      playlist: "all modes",
-      source: onlineState.guestTemporary ? "guest" : "local",
-      scope: "Total XP",
+      ...playerRow,
+      id: playerRow.userId ? `local-${playerRow.userId}` : playerRow.id,
     },
-  ];
+  ].sort(compareLeaderboard);
 }
 
 function renderLeaderboardRows(target, rows, emptyText) {
@@ -4075,8 +4217,14 @@ function renderLeaderboardRows(target, rows, emptyText) {
     rank.textContent = `#${index + 1}`;
     const middle = document.createElement("div");
     middle.className = "leaderboard-racer";
-    const name = document.createElement("strong");
-    name.textContent = row.username || "Player";
+    const name = document.createElement("span");
+    name.className = "leaderboard-name";
+    renderPlayerNameInline(name, {
+      username: row.username || "Player",
+      userId: row.userId || row.id,
+      badge: row.badge,
+      moderator: row.moderator,
+    });
     const meta = document.createElement("span");
     meta.textContent = `${row.scope || "Total XP"} · ${row.source === "server" ? "server" : row.source === "guest" ? "guest session" : "local"}`;
     middle.append(name, meta);
@@ -4142,20 +4290,17 @@ function updateOnlineUi() {
     leaderboardRows,
     "Finish any run to enter the XP leaderboard.",
   );
-  renderOnlineRows(
+  renderOnlinePlayerRows(
     onlineFriends,
     onlineState.friends,
     "No friends from backend yet.",
-    (row) => [row.username || row.name || "Friend", row.online ? "Online" : ""],
+    (row) => (row.online ? "Online" : ""),
   );
-  renderOnlineRows(
+  renderOnlinePlayerRows(
     onlineRecent,
     onlineState.recentPlayers,
     "No recent players yet.",
-    (row) => [
-      row.username || row.name || "Player",
-      row.online === false ? "Offline" : "Recent",
-    ],
+    (row) => (row.online === false ? "Offline" : "Recent"),
   );
   if (chatPopout) chatPopout.hidden = !onlineState.chatOpen;
 }
@@ -4203,7 +4348,10 @@ function closeFeedbackModal() {
 
 async function submitFeedback() {
   const configuredUrl =
-    onlineState.feedbackUrl || deriveFeedbackUrl(onlineState.backendUrl);
+    onlineState.feedbackUrl ||
+    (!onlineState.backendDefaulted || isOnlineSocketOpen()
+      ? deriveFeedbackUrl(onlineState.backendUrl)
+      : "");
   const message = String(feedbackMessage?.value || "").trim();
   if (!message) {
     onlineState.lastFeedbackStatus = "error";
@@ -4624,7 +4772,8 @@ function setActiveTab(tabName = "settings") {
   }
   if (tabName === "progress") renderProgressPanel();
   if (tabName === "controls") renderControlsUi();
-  if (tabName === "online" || tabName === "leaderboard") updateOnlineUi();
+  if (tabName === "online") updateOnlineUi();
+  if (tabName === "leaderboard") updateOnlineUi();
 }
 
 function setActiveGameMode(mode, { save = true, reset = false } = {}) {
@@ -5649,6 +5798,30 @@ function sanitizeRemoteUsername(value) {
   );
 }
 
+function sanitizeBadgeLabel(value) {
+  return String(value ?? "")
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[^a-z0-9 _.-]/gi, "")
+    .slice(0, 24);
+}
+
+function isCurrentOnlineModerator() {
+  return Boolean(
+    onlineState.user?.moderator || onlineState.user?.role === "moderator",
+  );
+}
+
+function makeBadgeNode(label) {
+  const badge = sanitizeBadgeLabel(label);
+  if (!badge) return null;
+  const node = document.createElement("span");
+  node.className = `player-badge badge-${badge.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  node.textContent = badge;
+  return node;
+}
+
 function getRemotePlayerColor(team) {
   if (team === "red") return 0xff7f7f;
   if (team === "blue") return 0x78f0ff;
@@ -5666,6 +5839,66 @@ function makeRemoteCar(team = "neutral") {
   car.healthBarGroup.visible = false;
   scene.add(car.group);
   return car;
+}
+
+function createModeratorButton(target = {}) {
+  if (!isCurrentOnlineModerator()) return null;
+  const targetUsername = sanitizeRemoteUsername(target.username || target.name);
+  const targetUserId = String(target.userId || target.id || "");
+  if (!targetUsername || targetUserId === onlineState.user?.id) return null;
+  const button = document.createElement("button");
+  button.className = "moderation-menu-btn";
+  button.type = "button";
+  button.textContent = "⋯";
+  button.title = `Moderation actions for ${targetUsername}`;
+  button.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+  bindPressAction(button, () =>
+    promptModerationAction({
+      username: targetUsername,
+      userId: targetUserId,
+    }),
+  );
+  return button;
+}
+
+function renderPlayerNameInline(target, data = {}) {
+  target.replaceChildren();
+  const name = document.createElement("strong");
+  name.textContent = sanitizeRemoteUsername(data.username || data.name);
+  target.appendChild(name);
+  const badge = makeBadgeNode(data.badge);
+  if (badge) target.appendChild(badge);
+  const modButton = createModeratorButton(data);
+  if (modButton) target.appendChild(modButton);
+}
+
+function sendModerationAction(action, target) {
+  if (!isCurrentOnlineModerator()) return false;
+  const payload = {
+    type: action === "ban" ? "moderation.ban" : "moderation.kick",
+    reason: action === "ban" ? "One-day moderation ban" : "Moderator kick",
+  };
+  if (target.userId) payload.userId = target.userId;
+  else payload.username = target.username;
+  sendOnlineMessage(payload);
+  onlineState.lastModerationStatus = `${action === "ban" ? "Banned" : "Kicked"} ${target.username || target.userId}`;
+  updateOnlineUi();
+  return true;
+}
+
+function promptModerationAction(target) {
+  const username = sanitizeRemoteUsername(target.username || target.userId);
+  if (!username) return;
+  const choice = window.prompt(
+    `Moderator action for ${username}: type KICK or BAN`,
+    "KICK",
+  );
+  if (!choice) return;
+  const action = choice.trim().toLowerCase();
+  if (action === "kick") sendModerationAction("kick", target);
+  if (action === "ban") sendModerationAction("ban", target);
 }
 
 function removeRemotePlayer(id) {
@@ -5686,6 +5919,8 @@ function setRemoteHumanPlayers(players = []) {
     const username = sanitizeRemoteUsername(
       playerData.username ?? playerData.name,
     );
+    const badge = sanitizeBadgeLabel(playerData.badge);
+    const moderator = Boolean(playerData.moderator);
     const team = ["blue", "red", "neutral"].includes(playerData.team)
       ? playerData.team
       : "neutral";
@@ -5694,11 +5929,12 @@ function setRemoteHumanPlayers(players = []) {
     if (!remote) {
       const tag = document.createElement("div");
       tag.className = `remote-name-tag team-${team}`;
-      tag.textContent = username;
       remoteNameLayer.appendChild(tag);
       remote = {
         id,
         username,
+        badge,
+        moderator,
         team,
         car: makeRemoteCar(team),
         tag,
@@ -5707,10 +5943,17 @@ function setRemoteHumanPlayers(players = []) {
         visible: false,
       };
       remotePlayers.set(id, remote);
+      renderPlayerNameInline(tag, { ...playerData, username, badge });
     }
-    if (remote.username !== username) {
+    if (
+      remote.username !== username ||
+      remote.badge !== badge ||
+      remote.moderator !== moderator
+    ) {
       remote.username = username;
-      remote.tag.textContent = username;
+      remote.badge = badge;
+      remote.moderator = moderator;
+      renderPlayerNameInline(remote.tag, { ...playerData, username, badge });
     }
     if (remote.team !== team) {
       remote.team = team;
@@ -15413,7 +15656,9 @@ window.render_game_to_text = () => {
       configured: Boolean(onlineState.backendUrl),
       backendUrl: onlineState.backendUrl,
       feedbackConfigured: Boolean(
-        onlineState.feedbackUrl || deriveFeedbackUrl(onlineState.backendUrl),
+        onlineState.feedbackUrl ||
+        (!onlineState.backendDefaulted &&
+          deriveFeedbackUrl(onlineState.backendUrl)),
       ),
       feedbackStatus: onlineState.lastFeedbackStatus,
       feedback: {
@@ -15426,6 +15671,11 @@ window.render_game_to_text = () => {
       guestTemporary: Boolean(onlineState.guestTemporary),
       accountStatus: onlineState.accountStatus,
       username: onlineState.user?.username || onlineState.username,
+      badge: onlineState.user?.badge || "",
+      moderator: isCurrentOnlineModerator(),
+      moderation: {
+        lastStatus: onlineState.lastModerationStatus,
+      },
       ageGate: {
         age: onlineState.age,
         freeChat13Plus: canUseOnlineFreeChat(),
@@ -15727,6 +15977,8 @@ window.__infernodriftTestApi = {
     configured: Boolean(onlineState.backendUrl),
     authenticated: Boolean(onlineState.user),
     username: onlineState.user?.username || onlineState.username,
+    badge: onlineState.user?.badge || "",
+    moderator: isCurrentOnlineModerator(),
     age: onlineState.age,
     freeChat13Plus: canUseOnlineFreeChat(),
     room: onlineState.room,
@@ -15739,6 +15991,8 @@ window.__infernodriftTestApi = {
     feedbackStatus: onlineState.lastFeedbackStatus,
     lastError: onlineState.lastError,
   }),
+  sendModerationAction: (action = "kick", target = {}) =>
+    sendModerationAction(action, target),
 };
 
 loadOnlineConfig();
