@@ -1,7 +1,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, webcrypto } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import {
@@ -53,6 +53,42 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+const cryptoRuntime = globalThis.crypto ?? webcrypto;
+const textEncoder = new TextEncoder();
+
+function bytesToHex(bytes) {
+  return [...new Uint8Array(bytes)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function randomHex(byteLength = 16) {
+  const bytes = new Uint8Array(byteLength);
+  cryptoRuntime.getRandomValues(bytes);
+  return bytesToHex(bytes);
+}
+
+async function hashPassword(password, salt) {
+  const key = await cryptoRuntime.subtle.importKey(
+    "raw",
+    textEncoder.encode(String(password)),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await cryptoRuntime.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: textEncoder.encode(String(salt)),
+      iterations: 120000,
+      hash: "SHA-256",
+    },
+    key,
+    256,
+  );
+  return bytesToHex(bits);
 }
 
 function loadLocalEnvFile(file = ".env") {
@@ -160,6 +196,8 @@ function publicUser(user) {
     rating: Number.isFinite(user.rating) ? user.rating : 1000,
     online: Boolean(user.online),
     claimed: Boolean(user.claimedUsername),
+    account: user.authProvider === "password",
+    ageGate: Number.isFinite(user.age) ? user.age : null,
   };
 }
 
@@ -633,6 +671,79 @@ export function createInfernoServer(options = {}) {
     return { user, sessionToken, restored: Boolean(restoredUser) };
   }
 
+  async function handleAccountAuth(client, msg) {
+    if (!checkRate(client, "auth", 8, 60_000))
+      return { ok: false, error: "rate_limited" };
+    const username = normalizeUsername(msg.username, "");
+    const key = claimKey(username);
+    if (!key || username.length < 2)
+      return { ok: false, error: "invalid_username" };
+    if (
+      key === "clark" &&
+      (!clarkReservationToken || msg.turnstileToken !== clarkReservationToken)
+    ) {
+      return { ok: false, error: "username_reserved" };
+    }
+    const ownerId = db.data.usernameClaims[key];
+    const existing = ownerId ? db.data.users[ownerId] : null;
+    const mode = msg.mode ?? "auto";
+    if (!existing && mode === "signin")
+      return { ok: false, error: "account_not_found" };
+    if (existing && !existing.passwordHash)
+      return { ok: false, error: "account_requires_upgrade" };
+
+    let user = existing;
+    let restored = false;
+    if (existing) {
+      const passwordHash = await hashPassword(
+        msg.password,
+        existing.passwordSalt,
+      );
+      if (passwordHash !== existing.passwordHash) {
+        return { ok: false, error: "invalid_credentials" };
+      }
+      restored = true;
+      user = {
+        ...existing,
+        username: existing.username || username,
+        age: Number(msg.age),
+        online: true,
+        updatedAt: nowIso(),
+      };
+    } else {
+      const salt = randomHex(16);
+      user = {
+        id: randomUUID(),
+        username,
+        age: Number(msg.age),
+        deviceId: msg.deviceId ?? "",
+        rating: 1000,
+        online: true,
+        claimedUsername: username,
+        authProvider: "password",
+        passwordSalt: salt,
+        passwordHash: await hashPassword(msg.password, salt),
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      };
+    }
+    const sessionToken = randomUUID();
+    db.data.users[user.id] = user;
+    db.data.usernameClaims[key] = user.id;
+    db.data.sessions[sessionToken] = {
+      token: sessionToken,
+      userId: user.id,
+      deviceId: msg.deviceId ?? user.deviceId ?? "",
+      account: true,
+      createdAt: nowIso(),
+      lastSeenAt: nowIso(),
+    };
+    db.save();
+    client.user = user;
+    client.sessionToken = sessionToken;
+    return { ok: true, user, sessionToken, restored };
+  }
+
   function claimUsername(client, msg) {
     const username = normalizeUsername(msg.username, "");
     const key = claimKey(username);
@@ -871,6 +982,20 @@ export function createInfernoServer(options = {}) {
             );
             if (room && room.players.size < room.size) joinRoom(id, room);
           }
+          return;
+        }
+
+        if (msg.type === "auth.account") {
+          const auth = await handleAccountAuth(client, msg);
+          if (!auth.ok) return send(ws, { type: "error", error: auth.error });
+          send(ws, {
+            type: "auth.ok",
+            user: publicUser(auth.user),
+            sessionToken: auth.sessionToken,
+            restored: auth.restored,
+            save: db.data.saves[auth.user.id] ?? null,
+          });
+          send(ws, friendsSnapshot(client));
           return;
         }
 

@@ -30,6 +30,41 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+const textEncoder = new TextEncoder();
+
+function bytesToHex(bytes) {
+  return [...new Uint8Array(bytes)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function randomHex(byteLength = 16) {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return bytesToHex(bytes);
+}
+
+async function hashPassword(password, salt) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    textEncoder.encode(String(password)),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: textEncoder.encode(String(salt)),
+      iterations: 120000,
+      hash: "SHA-256",
+    },
+    key,
+    256,
+  );
+  return bytesToHex(bits);
+}
+
 const DEFAULT_LEADERBOARD = [
   {
     id: "seed-ranked-ghost",
@@ -142,6 +177,8 @@ function publicUser(user) {
     rating: Number.isFinite(user.rating) ? user.rating : 1000,
     online: Boolean(user.online),
     claimed: Boolean(user.claimedUsername),
+    account: user.authProvider === "password",
+    ageGate: Number.isFinite(user.age) ? user.age : null,
   };
 }
 
@@ -430,6 +467,80 @@ export class InfernoRoom {
     return { user, sessionToken, restored: Boolean(restoredUser) };
   }
 
+  async handleAccountAuth(session, msg) {
+    if (!this.checkRate(session, "auth", 8, 60_000)) {
+      return { ok: false, error: "rate_limited" };
+    }
+    const username = normalizeUsername(msg.username, "");
+    const key = claimKey(username);
+    if (!key || username.length < 2)
+      return { ok: false, error: "invalid_username" };
+    if (
+      key === "clark" &&
+      (!this.env.CLARK_RESERVATION_TOKEN ||
+        msg.turnstileToken !== this.env.CLARK_RESERVATION_TOKEN)
+    ) {
+      return { ok: false, error: "username_reserved" };
+    }
+    const ownerId = this.data.usernameClaims[key];
+    const existing = ownerId ? this.data.users[ownerId] : null;
+    const mode = msg.mode ?? "auto";
+    if (!existing && mode === "signin")
+      return { ok: false, error: "account_not_found" };
+    if (existing && !existing.passwordHash)
+      return { ok: false, error: "account_requires_upgrade" };
+
+    let user = existing;
+    let restored = false;
+    if (existing) {
+      const passwordHash = await hashPassword(
+        msg.password,
+        existing.passwordSalt,
+      );
+      if (passwordHash !== existing.passwordHash) {
+        return { ok: false, error: "invalid_credentials" };
+      }
+      restored = true;
+      user = {
+        ...existing,
+        username: existing.username || username,
+        age: Number(msg.age),
+        online: true,
+        updatedAt: nowIso(),
+      };
+    } else {
+      const salt = randomHex(16);
+      user = {
+        id: crypto.randomUUID(),
+        username,
+        age: Number(msg.age),
+        deviceId: msg.deviceId ?? "",
+        rating: 1000,
+        online: true,
+        claimedUsername: username,
+        authProvider: "password",
+        passwordSalt: salt,
+        passwordHash: await hashPassword(msg.password, salt),
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      };
+    }
+    const sessionToken = crypto.randomUUID();
+    this.data.users[user.id] = user;
+    this.data.usernameClaims[key] = user.id;
+    this.data.sessions[sessionToken] = {
+      token: sessionToken,
+      userId: user.id,
+      deviceId: msg.deviceId ?? user.deviceId ?? "",
+      account: true,
+      createdAt: nowIso(),
+      lastSeenAt: nowIso(),
+    };
+    session.user = user;
+    session.sessionToken = sessionToken;
+    return { ok: true, user, sessionToken, restored };
+  }
+
   claimUsername(session, msg) {
     const username = normalizeUsername(msg.username, "");
     const key = claimKey(username);
@@ -489,6 +600,22 @@ export class InfernoRoom {
         save: this.data.saves[auth.user.id] ?? null,
       });
       send(session.ws, this.friendsSnapshot(session));
+      return;
+    }
+    if (msg.type === "auth.account") {
+      const auth = await this.handleAccountAuth(session, msg);
+      if (!auth.ok)
+        return send(session.ws, { type: "error", error: auth.error });
+      await this.persist();
+      send(session.ws, {
+        type: "auth.ok",
+        user: publicUser(auth.user),
+        sessionToken: auth.sessionToken,
+        restored: auth.restored,
+        save: this.data.saves[auth.user.id] ?? null,
+      });
+      send(session.ws, this.friendsSnapshot(session));
+      this.broadcast(this.roomSnapshot());
       return;
     }
     if (msg.type === "profile.claimUsername") {

@@ -45,9 +45,9 @@ await page.evaluate(() => {
       id: "friend-1",
       username: "Clark",
       team: "blue",
-      x: state.player.x + 2,
+      x: state.player.x,
       y: 0,
-      z: state.player.z,
+      z: state.player.z + 30,
       heading: 0,
       speed: 24,
     },
@@ -129,6 +129,22 @@ assert.equal(onlineUiState.ui.tab, "online");
 assert.equal(onlineUiState.online.username, "SmokeRacer");
 assert.equal(onlineUiState.online.ageGate.under13QuickChatOnly, true);
 assert.equal(await page.locator("#online-chat-input").isDisabled(), true);
+await page.locator("#online-friend-name").fill("");
+await page.locator("#online-friend-name").focus();
+await page.keyboard.type("cfh");
+assert.equal(await page.locator("#online-friend-name").inputValue(), "cfh");
+onlineUiState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
+assert.equal(onlineUiState.online.chat.popoutOpen, false);
+await page.locator('[data-tab="leaderboard"]').click({ force: true });
+await page.waitForTimeout(120);
+onlineUiState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
+assert.equal(onlineUiState.ui.tab, "leaderboard");
+assert.equal(await page.locator("#online-leaderboard").isVisible(), true);
+await page.locator('[data-tab="online"]').click({ force: true });
 await page.keyboard.press("c");
 await page.waitForTimeout(180);
 onlineUiState = JSON.parse(
@@ -332,6 +348,16 @@ for (const modeId of requiredModes) {
   assert.equal(helpState.visible, true);
   assert.ok(helpState.title);
   assert.ok(helpState.objective);
+  const helpUiState = JSON.parse(
+    await page.evaluate(() => window.render_game_to_text()),
+  );
+  assert.equal(helpUiState.modeHelp.visible, true);
+  assert.equal(helpUiState.modeHelp.placement, "bottom-right");
+  assert.equal(
+    await page.locator("#menu").evaluate((el) => el.classList.contains("show")),
+    false,
+  );
+  assert.equal(await page.locator("#mode-help-card").isVisible(), true);
   if (modeId === "race") {
     assert.equal(state.modeInfo.scene, "track");
     assert.ok(state.track.checkpoints >= 9);

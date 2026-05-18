@@ -49,6 +49,25 @@ test("shared protocol gates free chat at 13 plus and keeps quick chat available"
     parseClientMessage({ type: "quick.send", text: "Again?" }).ok,
     true,
   );
+  assert.equal(
+    parseClientMessage({
+      type: "auth.account",
+      mode: "auto",
+      username: "Drifter",
+      password: "secret123",
+      age: 13,
+    }).ok,
+    true,
+  );
+  assert.equal(
+    parseClientMessage({
+      type: "auth.account",
+      username: "Drifter",
+      password: "short",
+      age: 13,
+    }).ok,
+    false,
+  );
 });
 
 test("username normalization blocks unsafe names without granting Clark admin semantics", () => {

@@ -82,5 +82,7 @@ GitHub Pages deploys the `dist/` artifact produced by `npm run build:web`.
 GitHub Pages hosts only the static client. Cloudflare Workers + Durable Objects are the intended hosted backend, but hosted online remains blocked until:
 
 - GitHub secrets `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are configured.
+- The `infernodrift4` D1 database (`830d1cce-a09c-4112-8a28-24b421c4acda`) has remote migrations applied.
+- Worker secrets such as `RESEND_API_KEY` and a production session secret are configured when those features are claimed live.
 - A concrete `wss://.../ws` Worker endpoint passes `INFERNO_ONLINE_SMOKE_URL=wss://.../ws node smoke_online_local.mjs`.
 - The deployed Pages game is tested with that endpoint in a two-client browser flow.

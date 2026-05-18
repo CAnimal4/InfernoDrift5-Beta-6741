@@ -13,3 +13,4 @@ output/web-game-audit*/
 test-results/
 .DS_Store
 .env
+.wrangler/

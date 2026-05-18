@@ -177,6 +177,17 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
     sessionToken: z.string().min(8).max(128).optional(),
   }),
   z.object({
+    type: z.literal("auth.account"),
+    version: z.literal(PROTOCOL_VERSION).optional(),
+    mode: z.enum(["auto", "create", "signin"]).default("auto"),
+    username: z.string().min(2).max(24),
+    password: z.string().min(6).max(128),
+    age: z.number().int().min(0).max(120),
+    deviceId: z.string().max(96).optional(),
+    sessionToken: z.string().min(8).max(128).optional(),
+    turnstileToken: z.string().max(2048).optional(),
+  }),
+  z.object({
     type: z.literal("profile.claimUsername"),
     username: z.string().min(1).max(24),
     turnstileToken: z.string().max(2048).optional(),

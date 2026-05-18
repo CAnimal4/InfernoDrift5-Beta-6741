@@ -7,6 +7,11 @@ const messageTitle = document.getElementById("message-title");
 const messageBody = document.getElementById("message-body");
 const messageStats = document.getElementById("message-stats");
 const startBtn = document.getElementById("start-btn");
+const startAccountUsername = document.getElementById("start-account-username");
+const startAccountPassword = document.getElementById("start-account-password");
+const startAccountAge = document.getElementById("start-account-age");
+const startAccountSubmit = document.getElementById("start-account-submit");
+const startAccountStatus = document.getElementById("start-account-status");
 const overlaySubtitle = document.getElementById("overlay-subtitle");
 const tutorialBtn = document.getElementById("tutorial-btn");
 const tips = document.getElementById("tips");
@@ -161,6 +166,15 @@ const chatPopoutQuick = document.getElementById("chat-popout-quick");
 const chatPopoutLog = document.getElementById("chat-popout-log");
 const chatPopoutInput = document.getElementById("chat-popout-input");
 const chatPopoutSend = document.getElementById("chat-popout-send");
+const modeHelpCard = document.getElementById("mode-help-card");
+const modeHelpTitle = document.getElementById("mode-help-title");
+const modeHelpObjective = document.getElementById("mode-help-objective");
+const modeHelpControls = document.getElementById("mode-help-controls");
+const modeHelpScoring = document.getElementById("mode-help-scoring");
+const modeHelpWin = document.getElementById("mode-help-win");
+const modeHelpTip = document.getElementById("mode-help-tip");
+const modeHelpResume = document.getElementById("mode-help-resume");
+const modeHelpRestart = document.getElementById("mode-help-restart");
 const feedbackModal = document.getElementById("feedback-modal");
 const feedbackClose = document.getElementById("feedback-close");
 const feedbackCancel = document.getElementById("feedback-cancel");
@@ -482,6 +496,12 @@ const BATTLE_RULES = {
   respawnShieldSeconds: 5,
   targetScore: 3,
   arenaHalfSize: 224,
+  playerSpeedMult: 0.78,
+  playerAccelMult: 0.68,
+  playerTurnMult: 0.62,
+  playerSteerFilterMult: 0.72,
+  botSpeedMult: 0.82,
+  coverCollisionSkin: 1.25,
 };
 const HUNTER_BOT_COLOR = 0x39ff8a;
 const BOWLING_RULES = {
@@ -1899,6 +1919,11 @@ const onlineState = {
   sessionToken: "",
   username: "Guest Racer",
   age: null,
+  profileMode: "offline",
+  guestTemporary: false,
+  accountStatus: "Choose account or guest to start.",
+  pendingAuth: null,
+  pendingStartAfterAuth: false,
   authRequired: true,
   room: null,
   queue: null,
@@ -2160,6 +2185,7 @@ const state = {
   steppingExternally: false,
   awaitingRemapAction: "",
   modeHelpOpen: false,
+  modeHelpWasRunning: false,
   progressionV2: createProgressionV2(),
   modeRun: createModeRunState(),
   campaignRisk: {
@@ -2739,6 +2765,13 @@ function isActionCode(code, actionId) {
   return (controlBindings[actionId] ?? []).includes(code);
 }
 
+function isTextEditingTarget(target) {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
 function setPrimaryBinding(actionId, code) {
   if (!controlBindings[actionId]) return false;
   const duplicate = Object.entries(controlBindings).find(
@@ -2749,6 +2782,7 @@ function setPrimaryBinding(actionId, code) {
     setEffectToast(
       `${formatCodeLabel(code)} already maps to ${CONTROL_ACTION_LABELS[duplicate[0]]}`,
     );
+    renderControlsUi();
     return false;
   }
   const defaults = DEFAULT_CONTROL_BINDINGS[actionId] ?? [];
@@ -3131,7 +3165,10 @@ function savePersistentState() {
     },
   };
   try {
-    localStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(payload));
+    const targetStorage = onlineState.guestTemporary
+      ? sessionStorage
+      : localStorage;
+    targetStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(payload));
   } catch (error) {
     debugLog("menu", "save_failed", error?.message || error);
   }
@@ -3140,6 +3177,7 @@ function savePersistentState() {
 function loadPersistentState() {
   try {
     const raw =
+      sessionStorage.getItem(SAVE_STORAGE_KEY) ??
       localStorage.getItem(SAVE_STORAGE_KEY) ??
       LEGACY_SAVE_STORAGE_KEYS.map((key) => localStorage.getItem(key)).find(
         Boolean,
@@ -3359,6 +3397,8 @@ function loadOnlineConfig() {
     onlinePrefs.username || onlineState.username,
   );
   onlineState.sessionToken = String(onlinePrefs.sessionToken || "");
+  onlineState.profileMode = onlinePrefs.profileMode || "offline";
+  onlineState.guestTemporary = false;
   onlineState.age = Number.isFinite(Number(onlinePrefs.age))
     ? THREE.MathUtils.clamp(Number(onlinePrefs.age), 0, 120)
     : null;
@@ -3370,12 +3410,16 @@ function loadOnlineConfig() {
 }
 
 function saveOnlineConfig() {
-  writeLocalJson(ONLINE_STORAGE_KEY, {
+  const payload = {
     backendUrl: onlineState.backendUrl,
-    username: onlineState.username,
     age: onlineState.age,
-    sessionToken: onlineState.sessionToken,
-  });
+    profileMode: onlineState.profileMode,
+  };
+  if (!onlineState.guestTemporary) {
+    payload.username = onlineState.username;
+    payload.sessionToken = onlineState.sessionToken;
+  }
+  writeLocalJson(ONLINE_STORAGE_KEY, payload);
   if (onlineState.feedbackUrl) {
     writeLocalJson(FEEDBACK_STORAGE_KEY, {
       feedbackUrl: onlineState.feedbackUrl,
@@ -3428,6 +3472,116 @@ function getOnlineRoomOptions() {
     teamSize: Math.max(1, Math.min(3, Number(onlineTeamSize?.value) || 2)),
     botFill: onlineBotFill?.checked !== false,
   };
+}
+
+function makeRandomGuestUsername() {
+  const suffix = Math.floor(1000 + Math.random() * 9000);
+  return `Guest ${suffix}`;
+}
+
+function setStartAccountStatus(text, tone = "info") {
+  onlineState.accountStatus = text;
+  if (startAccountStatus) {
+    startAccountStatus.textContent = text;
+    startAccountStatus.dataset.state = tone;
+  }
+}
+
+function syncStartAccountFields() {
+  if (
+    startAccountUsername &&
+    document.activeElement !== startAccountUsername &&
+    onlineState.profileMode !== "guest"
+  ) {
+    startAccountUsername.value = onlineState.username || "";
+  }
+  if (
+    startAccountAge &&
+    document.activeElement !== startAccountAge &&
+    onlineState.age !== null
+  ) {
+    startAccountAge.value = String(onlineState.age);
+  }
+  setStartAccountStatus(
+    onlineState.accountStatus || "Choose account or guest.",
+  );
+}
+
+function buildAccountAuthPayload(mode = "auto") {
+  const username = sanitizeRemoteUsername(startAccountUsername?.value || "");
+  const password = String(startAccountPassword?.value || "");
+  const ageValue = Number(startAccountAge?.value);
+  if (!username || username.length < 2) {
+    setStartAccountStatus(
+      "Enter a username with at least 2 characters.",
+      "error",
+    );
+    return null;
+  }
+  if (password.length < 6) {
+    setStartAccountStatus("Password must be at least 6 characters.", "error");
+    return null;
+  }
+  if (!Number.isFinite(ageValue) || ageValue < 0 || ageValue > 120) {
+    setStartAccountStatus(
+      "Enter an age from 0 to 120 for chat safety.",
+      "error",
+    );
+    return null;
+  }
+  onlineState.username = username;
+  onlineState.age = Math.round(ageValue);
+  onlineState.profileMode = "account";
+  onlineState.guestTemporary = false;
+  return {
+    type: "auth.account",
+    version: ONLINE_PROTOCOL_VERSION,
+    mode,
+    username,
+    password,
+    age: onlineState.age,
+    deviceId: navigator.userAgent.slice(0, 90),
+  };
+}
+
+function submitStartAccount() {
+  onlineState.backendUrl = normalizeOnlineBackendUrl(
+    onlineBackendUrlInput?.value || onlineState.backendUrl,
+  );
+  if (!onlineState.backendUrl) {
+    setStartAccountStatus(
+      "Account sign-in requires a configured backend URL. Guest play stays offline-safe.",
+      "error",
+    );
+    setActiveTab("online");
+    setMenuOpen(true, "online");
+    return false;
+  }
+  const payload = buildAccountAuthPayload("auto");
+  if (!payload) return false;
+  onlineState.pendingAuth = payload;
+  onlineState.pendingStartAfterAuth = true;
+  onlineState.sessionToken = "";
+  saveOnlineConfig();
+  setStartAccountStatus(`Connecting account for ${payload.username}...`);
+  connectOnline();
+  return true;
+}
+
+function startGuestProfile() {
+  onlineState.username = makeRandomGuestUsername();
+  onlineState.profileMode = "guest";
+  onlineState.guestTemporary = true;
+  onlineState.sessionToken = "";
+  onlineState.accountStatus = `${onlineState.username} is a temporary guest. Progress saves only for this browser tab.`;
+  if (onlineUsernameInput) onlineUsernameInput.value = onlineState.username;
+  syncStartAccountFields();
+  try {
+    sessionStorage.removeItem(SAVE_STORAGE_KEY);
+  } catch {
+    // Session storage may be unavailable in private modes.
+  }
+  startRun(true);
 }
 
 function claimOnlineGuest() {
@@ -3501,13 +3655,19 @@ function connectOnline({ reconnect = false } = {}) {
     onlineState.socket = socket;
     socket.addEventListener("open", () => {
       onlineState.reconnectAttempts = 0;
+      const pendingAuth = onlineState.pendingAuth;
       setOnlineStatus(
         "connected",
-        onlineState.sessionToken
-          ? "Connected; restoring guest session"
-          : "Connected; claiming guest",
+        pendingAuth
+          ? `Connected; signing in ${pendingAuth.username}`
+          : onlineState.sessionToken
+            ? "Connected; restoring guest session"
+            : "Connected; claiming guest",
       );
-      if (onlineState.sessionToken) {
+      if (pendingAuth) {
+        onlineState.pendingAuth = null;
+        sendOnlineMessage(pendingAuth, { queue: false });
+      } else if (onlineState.sessionToken) {
         sendOnlineMessage({
           type: "reconnect",
           sessionToken: onlineState.sessionToken,
@@ -3593,10 +3753,23 @@ function handleOnlineMessage(raw) {
       onlineState.username = onlineState.user.username;
     saveOnlineConfig();
     onlineState.authRequired = false;
+    onlineState.profileMode = message.user?.account
+      ? "account"
+      : onlineState.profileMode;
+    onlineState.guestTemporary = onlineState.profileMode === "guest";
+    onlineState.accountStatus =
+      onlineState.profileMode === "account"
+        ? `Signed in as ${onlineState.user?.username || onlineState.username}.`
+        : `${onlineState.user?.username || onlineState.username} is playing as guest.`;
+    syncStartAccountFields();
     setOnlineStatus(
       "authenticated",
       `Online as ${onlineState.user?.username || onlineState.username}`,
     );
+    if (onlineState.pendingStartAfterAuth) {
+      onlineState.pendingStartAfterAuth = false;
+      if (overlay.classList.contains("show")) startRun(true);
+    }
   } else if (message.type === "profile.usernameClaimed") {
     onlineState.user = message.user || onlineState.user;
     onlineState.username = message.username || onlineState.username;
@@ -3648,6 +3821,10 @@ function handleOnlineMessage(raw) {
     updateRemoteSnapshotsFromMatch();
   } else if (message.type === "error") {
     const error = message.error || "online_error";
+    if (onlineState.pendingStartAfterAuth) {
+      onlineState.pendingStartAfterAuth = false;
+      setStartAccountStatus(`Account error: ${error}`, "error");
+    }
     setOnlineStatus("error", "Online backend rejected request", error);
     pushOnlineChatMessage({ from: "System", text: error, quick: true });
   }
@@ -3811,6 +3988,49 @@ function renderOnlineRows(target, rows, emptyText, formatter) {
   });
 }
 
+function getLeaderboardTier(row, index = 0) {
+  const rating = Number(row.rating ?? row.score ?? 0);
+  if (index === 0 || rating >= 1800) return "Inferno";
+  if (rating >= 1600) return "Diamond";
+  if (rating >= 1400) return "Gold";
+  if (rating >= 1200) return "Silver";
+  return "Bronze";
+}
+
+function renderLeaderboardRows(target, rows, emptyText) {
+  if (!target) return;
+  target.replaceChildren();
+  if (!rows.length) {
+    target.textContent = emptyText;
+    return;
+  }
+  rows.forEach((row, index) => {
+    const tier = getLeaderboardTier(row, index);
+    const item = document.createElement("div");
+    item.className = `leaderboard-row tier-${tier.toLowerCase()}`;
+    const rank = document.createElement("span");
+    rank.className = "rank-badge";
+    rank.textContent = `#${index + 1}`;
+    const middle = document.createElement("div");
+    middle.className = "leaderboard-racer";
+    const name = document.createElement("strong");
+    name.textContent = row.username || "Player";
+    const meta = document.createElement("span");
+    meta.textContent = `${row.playlist || "casual"} · ${row.source === "server" ? "server" : "local"}`;
+    middle.append(name, meta);
+    const score = document.createElement("div");
+    score.className = "leaderboard-score";
+    const tierBadge = document.createElement("span");
+    tierBadge.className = "tier-badge";
+    tierBadge.textContent = tier;
+    const value = document.createElement("strong");
+    value.textContent = String(row.rating ?? row.score ?? "—");
+    score.append(tierBadge, value);
+    item.append(rank, middle, score);
+    target.appendChild(item);
+  });
+}
+
 function updateOnlineUi() {
   const connected = isOnlineSocketOpen();
   if (
@@ -3850,14 +4070,11 @@ function updateOnlineUi() {
   }
   renderChatLog(onlineChatLog);
   renderChatLog(chatPopoutLog);
-  renderOnlineRows(
+  syncStartAccountFields();
+  renderLeaderboardRows(
     onlineLeaderboard,
     onlineState.leaderboard,
     connected ? "No leaderboard rows yet." : "Connect to load leaderboard.",
-    (row, index) => [
-      `${index + 1}. ${row.username || "Player"}`,
-      String(row.rating ?? row.score ?? "—"),
-    ],
   );
   renderOnlineRows(
     onlineFriends,
@@ -4278,7 +4495,6 @@ function renderModeBoard() {
 }
 
 function refreshGamesUi() {
-  const activeMeta = getActiveGameMeta();
   const maxProfile = getMaxDifficultyProfile();
   renderModeBoard();
   const activeMode = getModeDefinition();
@@ -4287,7 +4503,7 @@ function refreshGamesUi() {
     modeBrief.innerHTML = `<strong>${activeMode.label}</strong><span>${activeMode.objective}</span><em>${activeMode.reward}${best ? ` • Best ${best.score}` : ""}</em>`;
   }
   if (startBtn) {
-    startBtn.textContent = `Start ${activeMeta.title}`;
+    startBtn.textContent = "Play as Guest";
   }
   if (overlaySubtitle) {
     overlaySubtitle.textContent = isMaxMode()
@@ -4342,7 +4558,7 @@ function setActiveTab(tabName = "settings") {
   }
   if (tabName === "progress") renderProgressPanel();
   if (tabName === "controls") renderControlsUi();
-  if (tabName === "online") updateOnlineUi();
+  if (tabName === "online" || tabName === "leaderboard") updateOnlineUi();
 }
 
 function setActiveGameMode(mode, { save = true, reset = false } = {}) {
@@ -4468,9 +4684,32 @@ function getModeHelp(mode = getModeDefinition()) {
 }
 
 function openModeHelp() {
+  state.modeHelpWasRunning = state.running;
   state.modeHelpOpen = true;
-  setMenuOpen(true, "howto");
-  refreshModeCopy();
+  setMenuOpen(false);
+  renderModeHelpCard();
+  document.body.classList.add("mode-help-open");
+}
+
+function closeModeHelp({ resume = true } = {}) {
+  state.modeHelpOpen = false;
+  if (modeHelpCard) modeHelpCard.hidden = true;
+  document.body.classList.remove("mode-help-open");
+  if (resume && state.modeHelpWasRunning) state.running = true;
+  state.modeHelpWasRunning = false;
+  returnFocusToGame();
+}
+
+function renderModeHelpCard() {
+  if (!modeHelpCard) return;
+  const help = getModeHelp();
+  if (modeHelpTitle) modeHelpTitle.textContent = help.title;
+  if (modeHelpObjective) modeHelpObjective.textContent = help.objective;
+  if (modeHelpControls) modeHelpControls.textContent = help.controls;
+  if (modeHelpScoring) modeHelpScoring.textContent = help.scoring;
+  if (modeHelpWin) modeHelpWin.textContent = help.win;
+  if (modeHelpTip) modeHelpTip.textContent = help.tips;
+  modeHelpCard.hidden = false;
 }
 
 function refreshModeCopy() {
@@ -4515,6 +4754,7 @@ function refreshModeCopy() {
       <li><strong>Tip:</strong> ${help.tips}</li>
     `;
   }
+  if (state.modeHelpOpen) renderModeHelpCard();
   if (touchDrift) {
     touchDrift.textContent = "Drift";
   }
@@ -7528,7 +7768,7 @@ function isFeedbackOpen() {
 function getUiScreen() {
   if (overlay.classList.contains("show")) return "title";
   if (message.classList.contains("show")) return "results";
-  if (isMenuOpen() || isFeedbackOpen()) return "paused";
+  if (isMenuOpen() || isFeedbackOpen() || state.modeHelpOpen) return "paused";
   if (state.running) return "playing";
   return "idle";
 }
@@ -7548,9 +7788,10 @@ function refreshMenuShell() {
 }
 
 function setMenuOpen(open, tabName = null) {
+  if (open && state.modeHelpOpen) closeModeHelp({ resume: false });
   menu.classList.toggle("show", open);
   document.body.classList.toggle("menu-open", open);
-  if (!open) state.modeHelpOpen = false;
+  if (!open && modeHelpCard) modeHelpCard.hidden = true;
   if (open && tabName) setActiveTab(tabName);
   if (open && !tabName && !document.querySelector(".tab-btn.active")) {
     setActiveTab("games");
@@ -7840,6 +8081,8 @@ function resetLevel() {
   state.threatToastCooldown = 0;
   state.lastFailReason = "";
   state.modeHelpOpen = false;
+  if (modeHelpCard) modeHelpCard.hidden = true;
+  document.body.classList.remove("mode-help-open");
   const level = getLevel();
   state.timeLeft = level.time;
   state.overtime = false;
@@ -8076,9 +8319,9 @@ function spawnBattleBots() {
     bot.setPosition(spec.x, 0, spec.z);
     bot.heading = spec.heading;
     bot.moveHeading = spec.heading;
-    bot.maxSpeed = spec.speed;
-    bot.accel = 17.5;
-    bot.turnRate = 2.45;
+    bot.maxSpeed = spec.speed * BATTLE_RULES.botSpeedMult;
+    bot.accel = 13.5;
+    bot.turnRate = 1.92;
     bots.push(bot);
   });
 }
@@ -8893,13 +9136,14 @@ function updatePlayer(dt) {
       Math.min(1, dt * 60 * deviceAssist.touchResponse);
   }
   const maxProfile = isMaxMode() ? getMaxDifficultyProfile() : null;
+  const battleModeActive = isBattleMode();
   const inputSteer = getSteer() * (settings.invertSteer ? -1 : 1);
   const steerFilterBase = maxProfile
     ? maxProfile.player.steerFilter
     : DRIVING_TUNING.grounded.steerFilter;
-  const steerFilter = input.drift
-    ? DRIVING_TUNING.grounded.driftSteerFilter
-    : steerFilterBase;
+  const steerFilter =
+    (input.drift ? DRIVING_TUNING.grounded.driftSteerFilter : steerFilterBase) *
+    (battleModeActive ? BATTLE_RULES.playerSteerFilterMult : 1);
   state.steerSmoothed += (inputSteer - state.steerSmoothed) * dt * steerFilter;
   const steer = state.steerSmoothed;
   const airborne = isCarAirborne(player);
@@ -8959,10 +9203,14 @@ function updatePlayer(dt) {
   const maxModeActive = isMaxMode();
   const modeSpeedMult = maxModeActive
     ? DRIVING_TUNING.maxMode.speedMult * maxProfile.player.speedMult
-    : 1;
+    : battleModeActive
+      ? BATTLE_RULES.playerSpeedMult
+      : 1;
   const modeTurnMult = maxModeActive
     ? DRIVING_TUNING.maxMode.turnMult * maxProfile.player.turnMult
-    : 1;
+    : battleModeActive
+      ? BATTLE_RULES.playerTurnMult
+      : 1;
   const maxModeCap = maxModeActive ? DRIVING_TUNING.maxMode.capMult : 1;
   const throttleResponse = THREE.MathUtils.lerp(
     maxModeActive ? 1.12 : 1.18,
@@ -8973,7 +9221,11 @@ function updatePlayer(dt) {
   const accel =
     player.accel *
     modeSpeedMult *
-    (maxModeActive ? maxProfile.player.accelMult : 1) *
+    (maxModeActive
+      ? maxProfile.player.accelMult
+      : battleModeActive
+        ? BATTLE_RULES.playerAccelMult
+        : 1) *
     worldRule.boostMult *
     boostResponse *
     padMult;
@@ -9041,7 +9293,7 @@ function updatePlayer(dt) {
     player.speed = THREE.MathUtils.clamp(
       player.speed,
       -14,
-      player.maxSpeed * boostCap * padMult * maxModeCap,
+      player.maxSpeed * boostCap * padMult * maxModeCap * modeSpeedMult,
     );
   }
 
@@ -9057,7 +9309,7 @@ function updatePlayer(dt) {
     }
   }
 
-  const steerInputDamp = maxModeActive ? 0.66 : 1;
+  const steerInputDamp = maxModeActive ? 0.66 : battleModeActive ? 0.72 : 1;
   const maxSteer = steer * steerInputDamp;
   const turnAssist =
     (maxModeActive
@@ -10881,6 +11133,42 @@ function updateObstacles(entity) {
       return;
     }
     if (
+      isBattleMode() &&
+      obstacle.blocksLasers !== false &&
+      entity.prevPosition
+    ) {
+      const travelX = entity.position.x - entity.prevPosition.x;
+      const travelZ = entity.position.z - entity.prevPosition.z;
+      const travel = Math.hypot(travelX, travelZ);
+      if (travel > 0.001) {
+        const skin = BATTLE_RULES.coverCollisionSkin;
+        const along = rayAabbDistance2D(
+          entity.prevPosition,
+          { x: travelX / travel, z: travelZ / travel },
+          mesh.position,
+          size.x * 0.5 + radius + skin,
+          size.z * 0.5 + radius + skin,
+          travel,
+        );
+        if (Number.isFinite(along) && along <= travel) {
+          const safeAlong = Math.max(0, along - 0.1);
+          entity.position.x =
+            entity.prevPosition.x + (travelX / travel) * safeAlong;
+          entity.position.z =
+            entity.prevPosition.z + (travelZ / travel) * safeAlong;
+          const normal = new THREE.Vector3(
+            -travelX / travel,
+            0,
+            -travelZ / travel,
+          );
+          const normalSpeed = entity.velocity.dot(normal);
+          if (normalSpeed < 0)
+            entity.velocity.addScaledVector(normal, -normalSpeed);
+          entity.speed = Math.min(entity.speed * 0.34, 18);
+        }
+      }
+    }
+    if (
       Math.abs(entity.position.x - mesh.position.x) < size.x / 2 + radius &&
       Math.abs(entity.position.z - mesh.position.z) < size.z / 2 + radius
     ) {
@@ -10901,7 +11189,9 @@ function updateObstacles(entity) {
           ? new THREE.Vector3(0, 0, Math.sign(entity.velocity.z || 1))
           : new THREE.Vector3(Math.sign(entity.velocity.x || 1), 0, 0);
       const tangentSpeed = Math.abs(entity.velocity.dot(tangent));
-      entity.speed = Math.min(entity.speed * 0.72, tangentSpeed + 8);
+      entity.speed = isBattleMode()
+        ? Math.min(entity.speed * 0.42, tangentSpeed + 4)
+        : Math.min(entity.speed * 0.72, tangentSpeed + 8);
       entity.verticalVel = Math.min(entity.verticalVel ?? 0, 0);
       entity.prevPosition?.copy(entity.position);
       entity.group?.position.copy(entity.position);
@@ -12652,7 +12942,7 @@ function updateTransientEffects(dt) {
 
 function stepGame(dt) {
   updateGamepadInput();
-  const pausedByMenu = isMenuOpen() || isFeedbackOpen();
+  const pausedByMenu = isMenuOpen() || isFeedbackOpen() || state.modeHelpOpen;
   const targetMinimapHeading = MINIMAP_USE_MOVE_HEADING
     ? player.moveHeading
     : player.heading;
@@ -13854,6 +14144,25 @@ window.addEventListener(
   { capture: true },
 );
 
+window.addEventListener(
+  "focusin",
+  (event) => {
+    if (isTextEditingTarget(event.target)) {
+      Object.assign(input, {
+        left: false,
+        right: false,
+        throttle: false,
+        brake: false,
+        drift: false,
+        boost: false,
+        laser: false,
+        backflip: false,
+      });
+    }
+  },
+  { capture: true },
+);
+
 window.addEventListener("keydown", (event) => {
   updateAutoInputMode("desktop");
   if (state.awaitingRemapAction && !event.repeat) {
@@ -13861,8 +14170,10 @@ window.addEventListener("keydown", (event) => {
     const action = state.awaitingRemapAction;
     state.awaitingRemapAction = "";
     setPrimaryBinding(action, event.code);
+    renderControlsUi();
     return;
   }
+  if (isTextEditingTarget(event.target)) return;
   if (
     isActionCode(event.code, "drift") ||
     isActionCode(event.code, "targetLunge") ||
@@ -13883,7 +14194,10 @@ window.addEventListener("keydown", (event) => {
     input.laser = true;
     if (!event.repeat) fireBattleLaser(player);
   }
-  if (isActionCode(event.code, "help") && !event.repeat) openModeHelp();
+  if (isActionCode(event.code, "help") && !event.repeat) {
+    if (state.modeHelpOpen) closeModeHelp({ resume: true });
+    else openModeHelp();
+  }
   if (isActionCode(event.code, "targetLunge")) {
     if (isMaxMode() && !event.repeat)
       performMaxBallLunge() || performMaxBotLunge();
@@ -13912,12 +14226,17 @@ window.addEventListener("keydown", (event) => {
     }
   }
   if (isActionCode(event.code, "menu")) {
+    if (state.modeHelpOpen) {
+      closeModeHelp({ resume: true });
+      return;
+    }
     setMenuOpen(!isMenuOpen());
   }
   debugLog("input", "keydown", event.code);
 });
 
 window.addEventListener("keyup", (event) => {
+  if (isTextEditingTarget(event.target)) return;
   if (
     isActionCode(event.code, "drift") ||
     isActionCode(event.code, "targetLunge") ||
@@ -14144,7 +14463,8 @@ function initTouchControls() {
   }
 }
 
-bindPressAction(startBtn, () => startRun(true));
+bindPressAction(startBtn, () => startGuestProfile());
+bindPressAction(startAccountSubmit, () => submitStartAccount());
 bindPressAction(tutorialBtn, () => {
   tips.style.display = tips.style.display === "none" ? "grid" : "none";
 });
@@ -14160,6 +14480,11 @@ bindPressAction(retryBtn, () => {
   }
 });
 bindPressAction(helpBtn, () => openModeHelp());
+bindPressAction(modeHelpResume, () => closeModeHelp({ resume: true }));
+bindPressAction(modeHelpRestart, () => {
+  closeModeHelp({ resume: false });
+  dispatchGameAction("restart-level");
+});
 
 bindPressAction(menuBtn, () => {
   setMenuOpen(true, state.running ? "games" : null);
@@ -14751,14 +15076,15 @@ window.render_game_to_text = () => {
     ui: {
       screen: activeScreen,
       tab: activeTab,
-      paused: isMenuOpen(),
+      paused: isMenuOpen() || isFeedbackOpen() || state.modeHelpOpen,
       resultsVisible: message.classList.contains("show"),
       product: "InfernoDrift4",
     },
     modeHelp: {
-      visible: Boolean(state.modeHelpOpen && isMenuOpen()),
+      visible: Boolean(state.modeHelpOpen),
       title: getModeHelp(mode).title,
       objective: getModeHelp(mode).objective,
+      placement: "bottom-right",
     },
     player: {
       x: Number(player.position.x.toFixed(2)),
@@ -15018,6 +15344,9 @@ window.render_game_to_text = () => {
         lastError: onlineState.lastFeedbackError,
       },
       authenticated: Boolean(onlineState.user),
+      profileMode: onlineState.profileMode,
+      guestTemporary: Boolean(onlineState.guestTemporary),
+      accountStatus: onlineState.accountStatus,
       username: onlineState.user?.username || onlineState.username,
       ageGate: {
         age: onlineState.age,

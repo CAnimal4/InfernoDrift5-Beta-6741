@@ -112,9 +112,30 @@
             Free-roam survival racers. Drift through neon arenas, grab powerups, launch off ramps,
             and stay ahead of relentless hunter bots.
           </p>
-          <div class="cta-row">
-            <button class="primary" id="start-btn">Start InfernoDrift4 Run</button>
-            <button class="ghost" id="tutorial-btn">Quick Tips</button>
+          <div class="account-start-card" id="account-start-card">
+            <div class="custom-section-title">Start Profile</div>
+            <div class="account-start-grid">
+              <label class="field">
+                <span>Username</span>
+                <input id="start-account-username" type="text" maxlength="24" placeholder="Your racer name" autocomplete="username" />
+              </label>
+              <label class="field">
+                <span>Password</span>
+                <input id="start-account-password" type="password" minlength="6" maxlength="128" placeholder="6+ characters" autocomplete="current-password" />
+              </label>
+              <label class="field">
+                <span>Age</span>
+                <input id="start-account-age" type="number" min="0" max="120" inputmode="numeric" placeholder="13+" />
+              </label>
+            </div>
+            <div class="cta-row">
+              <button class="primary" id="start-account-submit" type="button">Create / Sign In</button>
+              <button class="ghost" id="start-btn" type="button">Play as Guest</button>
+              <button class="ghost" id="tutorial-btn" type="button">Quick Tips</button>
+            </div>
+            <p class="hint" id="start-account-status">
+              Guest names are random and temporary for online identity. Accounts require a configured InfernoDrift4 backend.
+            </p>
           </div>
           <div class="overlay-notes">
             <span>Sharper steering</span>
@@ -156,9 +177,9 @@
             <button class="tab-btn" data-tab="customize" type="button">Garage</button>
             <button class="tab-btn" data-tab="progress" type="button">Progress</button>
             <button class="tab-btn" data-tab="online" type="button">Online</button>
+            <button class="tab-btn" data-tab="leaderboard" type="button">Leaderboard</button>
             <button class="tab-btn" data-tab="settings" type="button">Settings</button>
             <button class="tab-btn" data-tab="controls" type="button">Controls</button>
-            <button class="tab-btn" data-tab="howto" type="button">Help</button>
           </div>
           <div class="menu-content" id="menu-content">
             <section class="tab-panel active" id="tab-games">
@@ -243,6 +264,19 @@
               <div class="progress-grid" id="progress-panel"></div>
               <p class="hint">Progress stays local unless an InfernoDrift4 backend URL is configured and connected.</p>
             </section>
+            <section class="tab-panel" id="tab-leaderboard">
+              <div class="leaderboard-shell">
+                <div class="leaderboard-hero">
+                  <div>
+                    <div class="custom-section-title">Inferno Board</div>
+                    <h3>Season Standings</h3>
+                    <p class="hint">Backend rows are server-owned. Local/offline scores never write ranked standings directly.</p>
+                  </div>
+                  <div class="leaderboard-crown" aria-hidden="true">#1</div>
+                </div>
+                <div class="online-list leaderboard-list" id="online-leaderboard">Connect to load leaderboard.</div>
+              </div>
+            </section>
             <section class="tab-panel" id="tab-online">
               <div class="online-layout">
                 <div class="online-panel">
@@ -316,8 +350,6 @@
                   </div>
                 </div>
                 <div class="online-panel">
-                  <div class="custom-section-title">Leaderboard</div>
-                  <div class="online-list" id="online-leaderboard">Connect to load leaderboard.</div>
                   <div class="custom-section-title">Friends</div>
                   <div class="join-code-row">
                     <input id="online-friend-name" type="text" maxlength="24" placeholder="Username" autocomplete="off" />
@@ -507,10 +539,23 @@
                 </div>
               </div>
             </section>
-            <section class="tab-panel" id="tab-howto">
-              <ol class="menu-list" id="howto-list"></ol>
-            </section>
           </div>
+        </div>
+      </div>
+
+      <div class="mode-help-card" id="mode-help-card" hidden>
+        <div class="mode-help-kicker">Paused Help</div>
+        <h3 id="mode-help-title">Mode Help</h3>
+        <p id="mode-help-objective"></p>
+        <div class="mode-help-lines">
+          <div><strong>Controls</strong><span id="mode-help-controls"></span></div>
+          <div><strong>Scoring</strong><span id="mode-help-scoring"></span></div>
+          <div><strong>Win</strong><span id="mode-help-win"></span></div>
+          <div><strong>Tip</strong><span id="mode-help-tip"></span></div>
+        </div>
+        <div class="cta-row compact-actions">
+          <button class="primary" id="mode-help-resume" type="button">Resume</button>
+          <button class="ghost" id="mode-help-restart" type="button">Restart</button>
         </div>
       </div>
 

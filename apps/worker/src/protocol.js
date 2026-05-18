@@ -61,6 +61,7 @@ const PII_PATTERNS = [
 const ALLOWED_TYPES = new Set([
   "ping",
   "auth.guest",
+  "auth.account",
   "profile.claimUsername",
   "room.create",
   "room.join",
@@ -409,6 +410,44 @@ export function validateClientMessage(raw) {
           data.sessionToken.length > 128))
     ) {
       error = "invalid_protocol";
+    }
+  }
+  if (data.type === "auth.account") {
+    const keys = new Set([
+      "type",
+      "version",
+      "mode",
+      "username",
+      "password",
+      "age",
+      "deviceId",
+      "sessionToken",
+      "turnstileToken",
+    ]);
+    const mode = data.mode ?? "auto";
+    if (
+      !onlyKeys(data, keys) ||
+      (data.version !== undefined && data.version !== PROTOCOL_VERSION) ||
+      !["auto", "create", "signin"].includes(mode) ||
+      typeof data.username !== "string" ||
+      data.username.trim().length < 2 ||
+      data.username.length > 24 ||
+      typeof data.password !== "string" ||
+      data.password.length < 6 ||
+      data.password.length > 128 ||
+      !isIntegerInRange(Number(data.age), 0, 120) ||
+      (hasOwn(data, "deviceId") &&
+        (typeof data.deviceId !== "string" || data.deviceId.length > 96)) ||
+      (hasOwn(data, "sessionToken") &&
+        (typeof data.sessionToken !== "string" ||
+          data.sessionToken.length > 128)) ||
+      (hasOwn(data, "turnstileToken") &&
+        (typeof data.turnstileToken !== "string" ||
+          data.turnstileToken.length > 2048))
+    ) {
+      error = "invalid_protocol";
+    } else {
+      data.mode = mode;
     }
   }
   if (data.type === "profile.claimUsername") {

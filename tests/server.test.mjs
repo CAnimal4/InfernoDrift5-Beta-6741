@@ -43,6 +43,29 @@ test("protocol accepts known messages and rejects unknown messages", () => {
     true,
   );
   assert.equal(
+    validateClientMessage(
+      JSON.stringify({
+        type: "auth.account",
+        mode: "auto",
+        username: "Drifter",
+        password: "secret123",
+        age: 13,
+      }),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    validateClientMessage(
+      JSON.stringify({
+        type: "auth.account",
+        username: "Drifter",
+        password: "short",
+        age: 13,
+      }),
+    ).ok,
+    false,
+  );
+  assert.equal(
     validateClientMessage(JSON.stringify({ type: "admin.dev.win" })).ok,
     false,
   );
@@ -129,6 +152,91 @@ test("protocol accepts known messages and rejects unknown messages", () => {
       .error,
     "invalid_protocol",
   );
+});
+
+test("websocket backend supports password account create and sign in", async (t) => {
+  const app = createInfernoServer({
+    port: 0,
+    dataDir: path.join(os.tmpdir(), `id4-account-${Date.now()}`),
+    allowedOrigins: "http://127.0.0.1:5173",
+    clarkReservationToken: "founder-token",
+  });
+  const server = await app.listen();
+  t.after(async () => {
+    await app.close();
+  });
+  const port = server.address().port;
+  const a = await makeWsClient(port);
+
+  a.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "auto",
+      username: "AccountAce",
+      password: "secret123",
+      age: 13,
+    }),
+  );
+  const created = await waitForMessage(
+    a.messages,
+    (msg) => msg.type === "auth.ok",
+  );
+  assert.equal(created.user.username, "AccountAce");
+  assert.equal(created.user.account, true);
+  assert.equal(created.user.claimed, true);
+
+  const wrong = await makeWsClient(port);
+  wrong.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "signin",
+      username: "AccountAce",
+      password: "wrongpass",
+      age: 13,
+    }),
+  );
+  await waitForMessage(
+    wrong.messages,
+    (msg) => msg.type === "error" && msg.error === "invalid_credentials",
+  );
+
+  const signin = await makeWsClient(port);
+  signin.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "signin",
+      username: "AccountAce",
+      password: "secret123",
+      age: 14,
+    }),
+  );
+  const restored = await waitForMessage(
+    signin.messages,
+    (msg) => msg.type === "auth.ok",
+  );
+  assert.equal(restored.user.id, created.user.id);
+  assert.equal(restored.user.ageGate, 14);
+  assert.equal(Object.keys(app.db.data.usernameClaims).join(","), "accountace");
+
+  const clark = await makeWsClient(port);
+  clark.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "auto",
+      username: "Clark",
+      password: "secret123",
+      age: 13,
+    }),
+  );
+  await waitForMessage(
+    clark.messages,
+    (msg) => msg.type === "error" && msg.error === "username_reserved",
+  );
+
+  a.ws.terminate();
+  wrong.ws.terminate();
+  signin.ws.terminate();
+  clark.ws.terminate();
 });
 
 test("chat sanitizer strips markup and basic profanity", () => {

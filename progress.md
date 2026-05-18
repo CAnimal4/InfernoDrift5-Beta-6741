@@ -129,3 +129,17 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Laser visuals now use layered additive beams, side streaks, muzzle rings, and impact rings.
 - Added a Battle Cockpit Scope setting, scope overlay, cockpit camera telemetry, and test API hooks; cockpit mode hides the local car shell so the first-person scope view stays usable.
 - Validation after this follow-up: `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run format`, `npm run worker:check`, `npm run worker:types`, and the required `develop-web-game` Playwright client passed. Visual screenshot reviewed at `output/playwright/battle-cockpit-cover-live.png`.
+
+2026-05-18 Phase 4 account/control/Cloudflare continuation:
+
+- Added a title-screen account choice: create/sign in with username/password/age through a configured backend, or play as a temporary guest with a random username and session-only save.
+- Kept guest play honest: the guest button starts immediately, marks the profile temporary, and stores progress in `sessionStorage` rather than permanent local save.
+- Added local and Worker protocol support for `auth.account`, including age-gated chat state and PBKDF2-hashed password credentials in the local/Worker runtime.
+- Fixed text entry so gameplay hotkeys such as C, F, H, movement, and remap controls type normally inside inputs/textareas/selects instead of firing game actions.
+- Cleaned the controls remap flow so duplicate-key rejection returns the UI out of "Press key" state.
+- Moved H-key help out of the main menu into a bottom-right paused help card and removed the standalone Help menu tab.
+- Promoted Leaderboard to its own menu tab with badge-style rows, while keeping online/friends/recent players in Online.
+- Rechecked subagent work: Battle Arena cover blocks laser line-of-sight, block collisions are less glitchy, laser visuals are richer, and Battle Cockpit Scope setting/state are in place.
+- Created the Cloudflare D1 database `infernodrift4` in Safari/Computer Use and recorded database ID `830d1cce-a09c-4112-8a28-24b421c4acda` in `wrangler.jsonc`.
+- Attempted to inspect dashboard Console migration viability; the Console interpreted the pasted multi-statement migration awkwardly and produced syntax errors, so schema setup remains Wrangler/GitHub-migration gated rather than dashboard-applied.
+- Cloudflare deploy is still blocked by missing CLI/API credentials and production secrets: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `RESEND_API_KEY`, verified `FEEDBACK_FROM`, production `SESSION_SECRET`, and optional Turnstile secret.

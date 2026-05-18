@@ -19,6 +19,13 @@ Required GitHub secrets:
 
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_D1_DATABASE_ID`
+
+Cloudflare D1:
+
+- Database name: `infernodrift4`
+- Database ID: `830d1cce-a09c-4112-8a28-24b421c4acda`
+- Created from the Cloudflare dashboard on May 18, 2026.
 
 Dry checks:
 
@@ -30,8 +37,19 @@ npm run worker:types
 Manual deploy is allowed only when credentials are available and safe:
 
 ```bash
+npx wrangler d1 migrations apply infernodrift4 --remote
 CLOUDFLARE_ACCOUNT_ID=... CLOUDFLARE_API_TOKEN=... npm run deploy:worker
 ```
+
+Do not use the dashboard Console as the primary migration runner for the multi-statement migration files. Use Wrangler or the GitHub Action path so Cloudflare records the migration state consistently.
+
+Feedback email delivery also requires Worker secrets/config:
+
+```bash
+printf '%s' "$RESEND_API_KEY" | npx wrangler secret put RESEND_API_KEY
+```
+
+`FEEDBACK_FROM` must be a verified sender in Resend before the UI can truthfully say email delivery is configured.
 
 Do not mark hosted online as live until a concrete `wss://.../ws` endpoint passes:
 

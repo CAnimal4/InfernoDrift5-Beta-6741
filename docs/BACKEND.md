@@ -19,7 +19,8 @@ Use `ws://127.0.0.1:8787/ws` in the client Online tab.
 
 Local features:
 
-- Passwordless guest sessions with reconnectable `sessionToken` values
+- Temporary guest sessions with reconnectable `sessionToken` values
+- Password account create/sign-in in local development with PBKDF2-hashed credentials
 - Guest/device usernames plus unique `profile.claimUsername` claims
 - Reserved `Clark` claim support through `CLARK_RESERVATION_TOKEN`
 - Private room codes
@@ -39,33 +40,35 @@ The local backend accepts WebSocket connections on the HTTP server. The document
 
 The Worker routes `GET /health` and WebSocket upgrades at `GET /ws`. Room state is coordinated by one Durable Object per room code, matching the Cloudflare room-style WebSocket guidance.
 
-The Worker mirrors the local protocol handlers for passwordless guest sessions, username claims, saves, friends, reports, feedback, authoritative leaderboard snapshots, room snapshots, reconnect, and fake result rejection. Durable Object storage is the default persistence surface. The optional `INFERNO_DB` D1 binding can use `migrations/0001_phase4_backend.sql` for production-shaped feedback and account tables, and optional Resend delivery uses the same `RESEND_API_KEY` / `FEEDBACK_FROM` / `FEEDBACK_TO` config as local.
+The Worker mirrors the local protocol handlers for temporary guest sessions, password account create/sign-in, username claims, saves, friends, reports, feedback, authoritative leaderboard snapshots, room snapshots, reconnect, and fake result rejection. Durable Object storage is the default live-room surface. The `INFERNO_DB` D1 binding points at the Cloudflare `infernodrift4` database created on May 18, 2026 (`830d1cce-a09c-4112-8a28-24b421c4acda`) and can use `migrations/0001_phase4_backend.sql` plus `migrations/0002_account_credentials.sql` for production-shaped feedback and account tables. Optional Resend delivery uses the same `RESEND_API_KEY` / `FEEDBACK_FROM` / `FEEDBACK_TO` config as local.
 
 ```bash
 npm run worker:check
 npm run worker:types
 ```
 
-Deploy manually when Cloudflare credentials are available:
+The D1 database already exists in the Cloudflare dashboard. Apply migrations and deploy manually when Cloudflare CLI credentials/secrets are available:
 
 ```bash
-wrangler d1 create infernodrift4
-# Put the returned D1 database id in wrangler.jsonc, or use the GitHub secret path below.
 npx wrangler d1 migrations apply infernodrift4 --remote
 CLOUDFLARE_ACCOUNT_ID=... CLOUDFLARE_API_TOKEN=... npm run deploy:worker
 printf '%s' "$RESEND_API_KEY" | npx wrangler secret put RESEND_API_KEY
 ```
+
+Use Wrangler migrations for schema setup. The dashboard SQL console is fine for small inspection queries, but it is not the migration source of truth for these multi-statement files.
 
 GitHub Actions deployment uses `.github/workflows/deploy-worker.yml` and requires repository secrets:
 
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_D1_DATABASE_ID`
+- `SESSION_SECRET` or equivalent Worker session signing secret
 - `RESEND_API_KEY` configured as a Cloudflare Worker secret before feedback email delivery is claimed live
+- optional Turnstile secret if account/chat/report abuse gates are enabled
 
 Worker vars already include `FEEDBACK_TO=clarkbythebay@gmail.com,clark.alden@lbusd.org`. `FEEDBACK_FROM` must be a verified Resend sender before email delivery will work in production.
 
-The workflow explicitly skips deploy when those secrets are absent. During this docs-only inspection there was no verified Worker URL recorded in the docs, so hosted Cloudflare online must remain blocked.
+The workflow explicitly skips deploy when those secrets are absent. Safari dashboard inspection confirmed the `infernodrift4` D1 database exists, but there is still no verified Worker URL recorded in the docs, so hosted Cloudflare online must remain blocked until secrets are configured, migrations are applied, and `/health` plus WebSocket smoke pass.
 
 ## Frontend Configuration
 

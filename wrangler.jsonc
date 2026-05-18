@@ -14,7 +14,7 @@
     {
       "binding": "INFERNO_DB",
       "database_name": "infernodrift4",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "830d1cce-a09c-4112-8a28-24b421c4acda",
       "migrations_dir": "migrations",
     },
   ],
