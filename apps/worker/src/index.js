@@ -69,22 +69,28 @@ const DEFAULT_LEADERBOARD = [
   {
     id: "seed-ranked-ghost",
     username: "Ghost Apex",
-    rating: 1480,
-    playlist: "ranked",
+    xp: 4200,
+    rating: 4200,
+    score: 4200,
+    playlist: "all modes",
     source: "server",
   },
   {
     id: "seed-casual-cinder",
     username: "Cinderline",
-    rating: 1320,
-    playlist: "casual",
+    xp: 2600,
+    rating: 2600,
+    score: 2600,
+    playlist: "all modes",
     source: "server",
   },
   {
     id: "seed-casual-neon",
     username: "Neon Rookie",
-    rating: 1000,
-    playlist: "casual",
+    xp: 950,
+    rating: 950,
+    score: 950,
+    playlist: "all modes",
     source: "server",
   },
 ];
@@ -169,12 +175,41 @@ function claimKey(username) {
   return normalizeUsername(username, "").trim().toLowerCase();
 }
 
+function getLeaderboardXp(row) {
+  return Math.max(
+    0,
+    Math.floor(
+      Number(row?.xp ?? row?.totalXp ?? row?.score ?? row?.rating) || 0,
+    ),
+  );
+}
+
+function compareLeaderboard(a, b) {
+  return getLeaderboardXp(b) - getLeaderboardXp(a);
+}
+
+function extractSaveXp(payload = {}) {
+  const progress =
+    payload.progressionV2 && typeof payload.progressionV2 === "object"
+      ? payload.progressionV2
+      : {};
+  return Math.max(
+    0,
+    Math.floor(
+      Number(
+        progress.totalXp ?? progress.xp ?? payload.totalXp ?? payload.xp,
+      ) || 0,
+    ),
+  );
+}
+
 function publicUser(user) {
   if (!user) return null;
   return {
     id: user.id,
     username: user.username,
     rating: Number.isFinite(user.rating) ? user.rating : 1000,
+    xp: Math.max(0, Number(user.xp) || 0),
     online: Boolean(user.online),
     claimed: Boolean(user.claimedUsername),
     account: user.authProvider === "password",
@@ -448,6 +483,7 @@ export class InfernoRoom {
       age: msg.age === undefined ? existing.age : Number(msg.age),
       deviceId: msg.deviceId ?? existing.deviceId,
       rating: Number.isFinite(existing.rating) ? existing.rating : 1000,
+      xp: Math.max(0, Number(existing.xp) || 0),
       online: true,
       claimedUsername: existing.claimedUsername ?? null,
       createdAt: existing.createdAt ?? nowIso(),
@@ -516,6 +552,7 @@ export class InfernoRoom {
         age: Number(msg.age),
         deviceId: msg.deviceId ?? "",
         rating: 1000,
+        xp: 0,
         online: true,
         claimedUsername: username,
         authProvider: "password",
@@ -756,6 +793,31 @@ export class InfernoRoom {
   async handleSaveSync(session, msg) {
     if (!this.checkRate(session, "save", 12, 60_000))
       return send(session.ws, { type: "error", error: "rate_limited" });
+    const saveXp = extractSaveXp(msg.payload);
+    const totalXp = Math.max(saveXp, Number(session.user.xp) || 0);
+    session.user.xp = totalXp;
+    session.user.rating = totalXp;
+    session.user.updatedAt = nowIso();
+    this.data.users[session.user.id] = session.user;
+    this.data.leaderboard = [
+      {
+        id: `xp-${session.user.id}`,
+        userId: session.user.id,
+        username: session.user.username,
+        xp: totalXp,
+        totalXp,
+        score: totalXp,
+        rating: totalXp,
+        playlist: "all modes",
+        scope: "Total XP",
+        source: "server",
+        updatedAt: nowIso(),
+      },
+      ...this.data.leaderboard.filter(
+        (row) =>
+          row.id !== `xp-${session.user.id}` && row.userId !== session.user.id,
+      ),
+    ].sort(compareLeaderboard);
     const row = {
       userId: session.user.id,
       schemaVersion: Number(msg.schemaVersion),
@@ -942,19 +1004,20 @@ export class InfernoRoom {
     const rows = Array.isArray(this.data.leaderboard)
       ? this.data.leaderboard
       : DEFAULT_LEADERBOARD;
-    const filtered =
-      playlist && playlist !== "casual"
-        ? rows.filter((row) => !row.playlist || row.playlist === playlist)
-        : rows;
-    return (filtered.length ? filtered : rows)
+    return (rows.length ? rows : DEFAULT_LEADERBOARD)
       .map((row) => ({
         id: row.id ?? `server-${claimKey(row.username) || crypto.randomUUID()}`,
         username: normalizeUsername(row.username, "Driver"),
-        rating: Number.isFinite(Number(row.rating)) ? Number(row.rating) : 1000,
-        playlist: row.playlist ?? "casual",
+        xp: getLeaderboardXp(row),
+        totalXp: getLeaderboardXp(row),
+        rating: getLeaderboardXp(row),
+        score: getLeaderboardXp(row),
+        playlist: "all modes",
+        requestedPlaylist: playlist || "all",
+        scope: "Total XP",
         source: "server",
       }))
-      .sort((a, b) => b.rating - a.rating)
+      .sort(compareLeaderboard)
       .slice(0, 10);
   }
 

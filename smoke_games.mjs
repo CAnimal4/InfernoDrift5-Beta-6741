@@ -45,9 +45,9 @@ await page.evaluate(() => {
       id: "friend-1",
       username: "Clark",
       team: "blue",
-      x: state.player.x,
+      x: state.player.x + 2,
       y: 0,
-      z: state.player.z + 30,
+      z: state.player.z + 14,
       heading: 0,
       speed: 24,
     },
@@ -536,6 +536,32 @@ const phase3Progress = await page.evaluate(() =>
   window.__infernodriftTestApi.getProgressionSnapshot(),
 );
 assert.ok(phase3Progress.xp > 0);
+assert.equal(phase3Progress.totalXp, phase3Progress.xp);
+const sharedXpProgress = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetLocalProgressionForTest();
+  window.__infernodriftTestApi.startMode("campaign-survival");
+  window.advanceTime(120);
+  const campaignResult = window.__infernodriftTestApi.completeModeObjective();
+  const afterCampaign = campaignResult.progression.xp;
+  window.__infernodriftTestApi.startMode("boost-bowling");
+  window.advanceTime(120);
+  const bowlingResult = window.__infernodriftTestApi.completeModeObjective();
+  const final = window.__infernodriftTestApi.getProgressionSnapshot();
+  window.__infernodriftTestApi.openMenuTab("leaderboard");
+  const leaderboard = JSON.parse(window.render_game_to_text()).online
+    .leaderboard;
+  return {
+    afterCampaign,
+    afterBowling: final.xp,
+    bowlingGain: bowlingResult.progression.xp - afterCampaign,
+    totalXp: final.totalXp,
+    leaderboard,
+  };
+});
+assert.ok(sharedXpProgress.afterCampaign > 0);
+assert.ok(sharedXpProgress.bowlingGain > 0);
+assert.equal(sharedXpProgress.afterBowling, sharedXpProgress.totalXp);
+assert.equal(sharedXpProgress.leaderboard[0].xp, sharedXpProgress.afterBowling);
 
 const garageUnlockState = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();

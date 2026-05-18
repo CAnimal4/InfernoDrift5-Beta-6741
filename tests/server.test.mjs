@@ -599,6 +599,16 @@ test("websocket backend persists sessions, claims, saves, friends, reports, feed
     (msg) => msg.type === "leaderboard.snapshot",
   );
   assert.ok(leaderboard.leaderboard.every((row) => row.source === "server"));
+  assert.ok(
+    leaderboard.leaderboard.some(
+      (row) =>
+        row.username === "RacerOne" &&
+        row.xp === 450 &&
+        row.score === 450 &&
+        row.scope === "Total XP",
+    ),
+    "synced account save should enter the global XP leaderboard",
+  );
   assert.equal(
     leaderboard.leaderboard.some((row) => row.rating === 9000),
     false,

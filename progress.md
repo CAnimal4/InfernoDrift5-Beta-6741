@@ -143,3 +143,12 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Created the Cloudflare D1 database `infernodrift4` in Safari/Computer Use and recorded database ID `830d1cce-a09c-4112-8a28-24b421c4acda` in `wrangler.jsonc`.
 - Attempted to inspect dashboard Console migration viability; the Console interpreted the pasted multi-statement migration awkwardly and produced syntax errors, so schema setup remains Wrangler/GitHub-migration gated rather than dashboard-applied.
 - Cloudflare deploy is still blocked by missing CLI/API credentials and production secrets: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `RESEND_API_KEY`, verified `FEEDBACK_FROM`, production `SESSION_SECRET`, and optional Turnstile secret.
+
+2026-05-18 Shared XP leaderboard follow-up:
+
+- Made Phase 3/4 progression explicitly global: every completed or failed mode/minigame run adds into one `progressionV2.xp` / `progressionV2.totalXp` pool, with level derived from total XP.
+- Results and Progress now show total XP across every game and minigame, and the offline Leaderboard tab falls back to the local/guest total-XP row instead of looking empty when no backend is connected.
+- Backend/local server and Worker leaderboard snapshots now rank by total XP, and `save.sync` updates the account's XP leaderboard row from `payload.progressionV2`.
+- Added `migrations/0003_global_xp_leaderboard.sql` for production D1 leaderboard XP indexing.
+- Smoke coverage now completes Campaign Survival and Boost Bowling back-to-back, verifies the XP adds into one total, and verifies the local leaderboard top row reflects that total XP.
+- Validation after this follow-up: `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run format`, `npm run worker:check`, `npm run worker:types`, and the shared `develop-web-game` Playwright client passed. Screenshot reviewed at `output/web-game/shot-1.png`. Headless WebGL emitted expected SwiftShader `ReadPixels` warnings only.

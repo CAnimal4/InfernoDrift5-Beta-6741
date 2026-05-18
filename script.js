@@ -1966,6 +1966,7 @@ function createProgressionV2() {
   return {
     schemaVersion: 2,
     xp: 0,
+    totalXp: 0,
     level: 1,
     medals: {},
     personalBests: {},
@@ -1994,6 +1995,7 @@ function createProgressionV2() {
 function normalizeProgressionV2(value = {}) {
   const base = createProgressionV2();
   const source = value && typeof value === "object" ? value : {};
+  const totalXp = Math.max(0, Number(source.totalXp ?? source.xp) || 0);
   const daily =
     source.daily && typeof source.daily === "object" ? source.daily : {};
   const weekly =
@@ -2002,8 +2004,9 @@ function normalizeProgressionV2(value = {}) {
     ...base,
     ...source,
     schemaVersion: 2,
-    xp: Math.max(0, Number(source.xp) || 0),
-    level: Math.max(1, Number(source.level) || 1),
+    xp: totalXp,
+    totalXp,
+    level: 1 + Math.floor(totalXp / 500),
     medals:
       source.medals && typeof source.medals === "object"
         ? { ...base.medals, ...source.medals }
@@ -2046,6 +2049,7 @@ function createModeRunState() {
     comboTimer: 0,
     tagState: "evader",
     tagCooldown: 0,
+    xpTotalAfter: 0,
     taggedBotIndex: 0,
     bossPhase: 1,
     bossWeakTimer: 0,
@@ -3106,6 +3110,17 @@ function getCarLabel(car) {
   return "Bot";
 }
 
+function getProgressionTotalXp(progress = state.progressionV2) {
+  return Math.max(
+    0,
+    Math.floor(Number(progress?.totalXp ?? progress?.xp) || 0),
+  );
+}
+
+function getProgressionLevel(progress = state.progressionV2) {
+  return 1 + Math.floor(getProgressionTotalXp(progress) / 500);
+}
+
 function addMatchEvent(type, payload = {}) {
   if (!maxMode.stats) maxMode.stats = createEmptyMatchStats();
   maxMode.stats.events.unshift({
@@ -3117,7 +3132,22 @@ function addMatchEvent(type, payload = {}) {
 }
 
 function savePersistentState() {
-  const payload = {
+  const payload = buildPersistentSavePayload();
+  try {
+    const targetStorage = onlineState.guestTemporary
+      ? sessionStorage
+      : localStorage;
+    targetStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(payload));
+  } catch (error) {
+    debugLog("menu", "save_failed", error?.message || error);
+  }
+}
+
+function buildPersistentSavePayload() {
+  state.progressionV2.xp = getProgressionTotalXp();
+  state.progressionV2.totalXp = state.progressionV2.xp;
+  state.progressionV2.level = getProgressionLevel();
+  return {
     worldIndex: state.worldIndex,
     levelIndex: state.levelIndex,
     settings: {
@@ -3164,14 +3194,23 @@ function savePersistentState() {
       red: { ...maxTeamCustomization.red },
     },
   };
-  try {
-    const targetStorage = onlineState.guestTemporary
-      ? sessionStorage
-      : localStorage;
-    targetStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(payload));
-  } catch (error) {
-    debugLog("menu", "save_failed", error?.message || error);
+}
+
+function syncProgressionToBackend() {
+  if (
+    !isOnlineSocketOpen() ||
+    onlineState.profileMode !== "account" ||
+    onlineState.guestTemporary
+  ) {
+    return;
   }
+  sendOnlineMessage({
+    type: "save.sync",
+    schemaVersion: 2,
+    payload: {
+      progressionV2: structuredClone(state.progressionV2),
+    },
+  });
 }
 
 function loadPersistentState() {
@@ -3988,13 +4027,36 @@ function renderOnlineRows(target, rows, emptyText, formatter) {
   });
 }
 
+function getLeaderboardXp(row) {
+  return Math.max(
+    0,
+    Math.floor(
+      Number(row?.totalXp ?? row?.xp ?? row?.score ?? row?.rating) || 0,
+    ),
+  );
+}
+
 function getLeaderboardTier(row, index = 0) {
-  const rating = Number(row.rating ?? row.score ?? 0);
-  if (index === 0 || rating >= 1800) return "Inferno";
-  if (rating >= 1600) return "Diamond";
-  if (rating >= 1400) return "Gold";
-  if (rating >= 1200) return "Silver";
+  const xp = getLeaderboardXp(row);
+  if ((index === 0 && xp > 0) || xp >= 5000) return "Inferno";
+  if (xp >= 3000) return "Diamond";
+  if (xp >= 1500) return "Gold";
+  if (xp >= 500) return "Silver";
   return "Bronze";
+}
+
+function getLocalXpLeaderboardRows() {
+  return [
+    {
+      id: "local-player-xp",
+      username: onlineState.username || "Guest Racer",
+      xp: getProgressionTotalXp(),
+      totalXp: getProgressionTotalXp(),
+      playlist: "all modes",
+      source: onlineState.guestTemporary ? "guest" : "local",
+      scope: "Total XP",
+    },
+  ];
 }
 
 function renderLeaderboardRows(target, rows, emptyText) {
@@ -4016,7 +4078,7 @@ function renderLeaderboardRows(target, rows, emptyText) {
     const name = document.createElement("strong");
     name.textContent = row.username || "Player";
     const meta = document.createElement("span");
-    meta.textContent = `${row.playlist || "casual"} · ${row.source === "server" ? "server" : "local"}`;
+    meta.textContent = `${row.scope || "Total XP"} · ${row.source === "server" ? "server" : row.source === "guest" ? "guest session" : "local"}`;
     middle.append(name, meta);
     const score = document.createElement("div");
     score.className = "leaderboard-score";
@@ -4024,7 +4086,7 @@ function renderLeaderboardRows(target, rows, emptyText) {
     tierBadge.className = "tier-badge";
     tierBadge.textContent = tier;
     const value = document.createElement("strong");
-    value.textContent = String(row.rating ?? row.score ?? "—");
+    value.textContent = `${getLeaderboardXp(row).toLocaleString()} XP`;
     score.append(tierBadge, value);
     item.append(rank, middle, score);
     target.appendChild(item);
@@ -4071,10 +4133,14 @@ function updateOnlineUi() {
   renderChatLog(onlineChatLog);
   renderChatLog(chatPopoutLog);
   syncStartAccountFields();
+  const leaderboardRows =
+    connected && onlineState.leaderboard.length
+      ? onlineState.leaderboard
+      : getLocalXpLeaderboardRows();
   renderLeaderboardRows(
     onlineLeaderboard,
-    onlineState.leaderboard,
-    connected ? "No leaderboard rows yet." : "Connect to load leaderboard.",
+    leaderboardRows,
+    "Finish any run to enter the XP leaderboard.",
   );
   renderOnlineRows(
     onlineFriends,
@@ -4793,11 +4859,12 @@ function renderProgressPanel() {
   const nextGarageUnlock = getNextGarageUnlock();
   const dailyMode = getModeDefinition(progression.daily.modeId);
   const weeklyMode = getModeDefinition(progression.weekly.modeId);
-  const xpIntoLevel = progression.xp % 500;
+  const totalXp = getProgressionTotalXp(progression);
+  const xpIntoLevel = totalXp % 500;
   const nextRecommended =
     bests.length === 0 ? "Campaign Survival" : MODE_BY_ID[GAME_MODE_RACE].label;
   progressPanel.innerHTML = `
-    <div class="progress-card progress-card-wide"><span>Run Level</span><strong>Level ${progression.level}</strong><span>${xpIntoLevel}/500 XP to next level • ${progression.xp} total XP</span></div>
+    <div class="progress-card progress-card-wide"><span>Total XP</span><strong>Level ${getProgressionLevel(progression)}</strong><span>${xpIntoLevel}/500 XP to next level • ${totalXp} XP across every game and minigame</span></div>
     <div class="progress-card"><span>Current Zone</span><strong>${world.name}</strong><span>${level.name}</span></div>
     <div class="progress-card"><span>Campaign Map</span><strong>${percent}%</strong><span>${clearedWorlds + 1} zones reached, ${clearedLevels + 1} current heat</span></div>
     <div class="progress-card"><span>Medals</span><strong>${medals.length}</strong><span>${medals.slice(-4).join(" / ") || "Earn your first medal."}</span></div>
@@ -5734,12 +5801,16 @@ function updateRemoteNameTags() {
       tag.hidden = true;
       continue;
     }
-    const left = (remoteNameProjector.x * 0.5 + 0.5) * window.innerWidth;
-    const top = (-remoteNameProjector.y * 0.5 + 0.5) * window.innerHeight;
-    if (top < 96) {
-      tag.hidden = true;
-      continue;
-    }
+    const left = THREE.MathUtils.clamp(
+      (remoteNameProjector.x * 0.5 + 0.5) * window.innerWidth,
+      48,
+      window.innerWidth - 48,
+    );
+    const top = THREE.MathUtils.clamp(
+      (-remoteNameProjector.y * 0.5 + 0.5) * window.innerHeight,
+      104,
+      window.innerHeight - 28,
+    );
     const distance = remote.car.position.distanceTo(player.position);
     const opacity = THREE.MathUtils.clamp(
       1 - (distance - 90) / 160,
@@ -11298,8 +11369,9 @@ function awardModeProgression({ won = true, reason = "" } = {}) {
     ? 120 + Math.round(score / 18) + Math.round(modeProgressPercent() * 80)
     : 30 + Math.round(modeProgressPercent() * 40);
   const progression = state.progressionV2;
-  progression.xp += xpGained;
-  progression.level = 1 + Math.floor(progression.xp / 500);
+  progression.xp = getProgressionTotalXp(progression) + xpGained;
+  progression.totalXp = progression.xp;
+  progression.level = getProgressionLevel(progression);
   progression.medals[key] = medal;
   const previousBest = progression.personalBests[mode.id]?.score ?? 0;
   if (score >= previousBest) {
@@ -11334,10 +11406,12 @@ function awardModeProgression({ won = true, reason = "" } = {}) {
   ].slice(0, 8);
   state.modeRun.medalEarned = medal;
   state.modeRun.xpGained = xpGained;
+  state.modeRun.xpTotalAfter = progression.xp;
   state.modeRun.resultSummary = won
     ? `${medal} medal, +${xpGained} XP, ${mode.reward}`
     : `${reason || "Objective failed"}, +${xpGained} XP`;
   savePersistentState();
+  syncProgressionToBackend();
   return { medal, xpGained };
 }
 
@@ -11353,6 +11427,7 @@ function getModeResultRows(won = true) {
       ],
       ["Ammo", `${Math.round(player.battleAmmo ?? 0)}/${BATTLE_RULES.maxAmmo}`],
       ["XP", `+${state.modeRun.xpGained || 0}`],
+      ["Total XP", `${state.modeRun.xpTotalAfter || getProgressionTotalXp()}`],
       ["Reward", won ? mode.reward : "Practice cover and reload timing"],
     ];
   }
@@ -11363,6 +11438,7 @@ function getModeResultRows(won = true) {
       ["Bowling Score", `${state.modeRun.bowling.totalScore}`],
       ["Last Roll", `${state.modeRun.bowling.lastRollPins} pins`],
       ["XP", `+${state.modeRun.xpGained || 0}`],
+      ["Total XP", `${state.modeRun.xpTotalAfter || getProgressionTotalXp()}`],
       ["Reward", won ? mode.reward : "Line up the launch earlier"],
     ];
   }
@@ -11370,6 +11446,7 @@ function getModeResultRows(won = true) {
     ["Mode", mode.label],
     ["Medal", state.modeRun.medalEarned || (won ? "Clear" : "Attempt")],
     ["XP", `+${state.modeRun.xpGained || 0}`],
+    ["Total XP", `${state.modeRun.xpTotalAfter || getProgressionTotalXp()}`],
     [
       "Objective",
       `${Math.floor(state.modeRun.progress)}/${Math.floor(state.modeRun.target || 1)}`,
@@ -15324,6 +15401,7 @@ window.render_game_to_text = () => {
       level: getLevel().name,
       levelNumber: state.progressionV2.level,
       xp: state.progressionV2.xp,
+      totalXp: getProgressionTotalXp(),
       medals: state.progressionV2.medals,
       personalBests: state.progressionV2.personalBests,
       daily: state.progressionV2.daily,
@@ -15377,7 +15455,10 @@ window.render_game_to_text = () => {
             bots: onlineState.room.bots ?? 0,
           }
         : null,
-      leaderboard: onlineState.leaderboard.slice(0, 5),
+      leaderboard: (onlineState.leaderboard.length
+        ? onlineState.leaderboard
+        : getLocalXpLeaderboardRows()
+      ).slice(0, 5),
       friends: onlineState.friends,
       recentPlayers: onlineState.recentPlayers.slice(0, 8),
       reconnect: {

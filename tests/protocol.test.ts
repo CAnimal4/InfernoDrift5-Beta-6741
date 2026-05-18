@@ -82,7 +82,13 @@ test("shared protocol covers phase 4 backend messages and rejects fake results",
     parseClientMessage({
       type: "save.sync",
       schemaVersion: 1,
-      payload: { xp: 25, garage: { paint: "#ff4a1f" } },
+      payload: {
+        progressionV2: {
+          xp: 75,
+          totalXp: 75,
+          medals: { "campaign-survival": "Bronze", "boost-bowling": "Clear" },
+        },
+      },
     }).ok,
     true,
   );

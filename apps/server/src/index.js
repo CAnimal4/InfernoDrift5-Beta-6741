@@ -19,22 +19,28 @@ const DEFAULT_LEADERBOARD = [
   {
     id: "seed-ranked-ghost",
     username: "Ghost Apex",
-    rating: 1480,
-    playlist: "ranked",
+    xp: 4200,
+    rating: 4200,
+    score: 4200,
+    playlist: "all modes",
     source: "server",
   },
   {
     id: "seed-casual-cinder",
     username: "Cinderline",
-    rating: 1320,
-    playlist: "casual",
+    xp: 2600,
+    rating: 2600,
+    score: 2600,
+    playlist: "all modes",
     source: "server",
   },
   {
     id: "seed-casual-neon",
     username: "Neon Rookie",
-    rating: 1000,
-    playlist: "casual",
+    xp: 950,
+    rating: 950,
+    score: 950,
+    playlist: "all modes",
     source: "server",
   },
 ];
@@ -194,6 +200,7 @@ function publicUser(user) {
     id: user.id,
     username: user.username,
     rating: Number.isFinite(user.rating) ? user.rating : 1000,
+    xp: Math.max(0, Number(user.xp) || 0),
     online: Boolean(user.online),
     claimed: Boolean(user.claimedUsername),
     account: user.authProvider === "password",
@@ -206,7 +213,31 @@ function makeCode() {
 }
 
 function compareLeaderboard(a, b) {
-  return (Number(b.rating) || 0) - (Number(a.rating) || 0);
+  return getLeaderboardXp(b) - getLeaderboardXp(a);
+}
+
+function getLeaderboardXp(row) {
+  return Math.max(
+    0,
+    Math.floor(
+      Number(row?.xp ?? row?.totalXp ?? row?.score ?? row?.rating) || 0,
+    ),
+  );
+}
+
+function extractSaveXp(payload = {}) {
+  const progress =
+    payload.progressionV2 && typeof payload.progressionV2 === "object"
+      ? payload.progressionV2
+      : {};
+  return Math.max(
+    0,
+    Math.floor(
+      Number(
+        progress.totalXp ?? progress.xp ?? payload.totalXp ?? payload.xp,
+      ) || 0,
+    ),
+  );
 }
 
 async function deliverFeedback(row, options) {
@@ -471,20 +502,22 @@ export function createInfernoServer(options = {}) {
     const rows = Array.isArray(db.data.leaderboard)
       ? db.data.leaderboard
       : DEFAULT_LEADERBOARD;
-    const filtered =
-      playlist && playlist !== "casual"
-        ? rows.filter((row) => !row.playlist || row.playlist === playlist)
-        : rows;
-    return (filtered.length ? filtered : rows)
+    const rankedRows = (rows.length ? rows : DEFAULT_LEADERBOARD)
       .map((row) => ({
         id: row.id ?? `server-${claimKey(row.username) || randomUUID()}`,
         username: normalizeUsername(row.username, "Driver"),
-        rating: Number.isFinite(Number(row.rating)) ? Number(row.rating) : 1000,
-        playlist: row.playlist ?? "casual",
+        xp: getLeaderboardXp(row),
+        totalXp: getLeaderboardXp(row),
+        rating: getLeaderboardXp(row),
+        score: getLeaderboardXp(row),
+        playlist: "all modes",
+        requestedPlaylist: playlist || "all",
+        scope: "Total XP",
         source: "server",
       }))
       .sort(compareLeaderboard)
       .slice(0, 10);
+    return rankedRows;
   }
 
   function buildBotPlayers(room) {
@@ -652,6 +685,7 @@ export function createInfernoServer(options = {}) {
       age: msg.age === undefined ? existing.age : Number(msg.age),
       deviceId: msg.deviceId ?? existing.deviceId,
       rating: Number.isFinite(existing.rating) ? existing.rating : 1000,
+      xp: Math.max(0, Number(existing.xp) || 0),
       online: true,
       claimedUsername: existing.claimedUsername ?? null,
       createdAt: existing.createdAt ?? nowIso(),
@@ -718,6 +752,7 @@ export function createInfernoServer(options = {}) {
         age: Number(msg.age),
         deviceId: msg.deviceId ?? "",
         rating: 1000,
+        xp: 0,
         online: true,
         claimedUsername: username,
         authProvider: "password",
@@ -888,6 +923,31 @@ export function createInfernoServer(options = {}) {
   function handleSaveSync(client, msg) {
     if (!checkRate(client, "save", 12, 60_000))
       return send(client.ws, { type: "error", error: "rate_limited" });
+    const saveXp = extractSaveXp(msg.payload);
+    const totalXp = Math.max(saveXp, Number(client.user.xp) || 0);
+    client.user.xp = totalXp;
+    client.user.rating = totalXp;
+    client.user.updatedAt = nowIso();
+    db.data.users[client.user.id] = client.user;
+    db.data.leaderboard = [
+      {
+        id: `xp-${client.user.id}`,
+        userId: client.user.id,
+        username: client.user.username,
+        xp: totalXp,
+        totalXp,
+        score: totalXp,
+        rating: totalXp,
+        playlist: "all modes",
+        scope: "Total XP",
+        source: "server",
+        updatedAt: nowIso(),
+      },
+      ...db.data.leaderboard.filter(
+        (row) =>
+          row.id !== `xp-${client.user.id}` && row.userId !== client.user.id,
+      ),
+    ].sort(compareLeaderboard);
     const row = {
       userId: client.user.id,
       schemaVersion: Number(msg.schemaVersion),
