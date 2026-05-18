@@ -50,7 +50,7 @@ const minimapCanvas = document.getElementById("minimap");
 const minimapCtx = minimapCanvas ? minimapCanvas.getContext("2d") : null;
 const menu = document.getElementById("menu");
 const menuBtn = document.getElementById("menu-btn");
-const menuClose = document.getElementById("menu-close");
+const menuFeedback = document.getElementById("menu-feedback");
 const menuStateLabel = document.getElementById("menu-state-label");
 const menuResume = document.getElementById("menu-resume");
 const menuRestart = document.getElementById("menu-restart");
@@ -127,6 +127,49 @@ const touchScaleSelect = document.getElementById("touch-scale-select");
 const touchControlsRoot = document.getElementById("touch-controls");
 const touchSteerPad = document.getElementById("touch-steer-pad");
 const touchSteerKnob = document.getElementById("touch-steer-knob");
+const onlineBackendUrlInput = document.getElementById("online-backend-url");
+const onlineStatus = document.getElementById("online-status");
+const onlineConnect = document.getElementById("online-connect");
+const onlineDisconnect = document.getElementById("online-disconnect");
+const onlineUsernameInput = document.getElementById("online-username");
+const onlineAgeInput = document.getElementById("online-age");
+const onlineClaim = document.getElementById("online-claim");
+const onlineAgeNote = document.getElementById("online-age-note");
+const onlinePlaylist = document.getElementById("online-playlist");
+const onlineTeamSize = document.getElementById("online-team-size");
+const onlineBotFill = document.getElementById("online-bot-fill");
+const onlineCreateRoom = document.getElementById("online-create-room");
+const onlineQueue = document.getElementById("online-queue");
+const onlineCancelQueue = document.getElementById("online-cancel-queue");
+const onlineRoomCode = document.getElementById("online-room-code");
+const onlineJoinRoom = document.getElementById("online-join-room");
+const onlineRoomState = document.getElementById("online-room-state");
+const onlinePopoutChat = document.getElementById("online-popout-chat");
+const onlineQuickChat = document.getElementById("online-quick-chat");
+const onlineChatLog = document.getElementById("online-chat-log");
+const onlineChatInput = document.getElementById("online-chat-input");
+const onlineChatSend = document.getElementById("online-chat-send");
+const onlineLeaderboard = document.getElementById("online-leaderboard");
+const onlineFriendName = document.getElementById("online-friend-name");
+const onlineAddFriend = document.getElementById("online-add-friend");
+const onlineFriends = document.getElementById("online-friends");
+const onlineRecent = document.getElementById("online-recent");
+const chatPopout = document.getElementById("chat-popout");
+const chatPopoutClose = document.getElementById("chat-popout-close");
+const chatPopoutQuick = document.getElementById("chat-popout-quick");
+const chatPopoutLog = document.getElementById("chat-popout-log");
+const chatPopoutInput = document.getElementById("chat-popout-input");
+const chatPopoutSend = document.getElementById("chat-popout-send");
+const feedbackModal = document.getElementById("feedback-modal");
+const feedbackClose = document.getElementById("feedback-close");
+const feedbackCancel = document.getElementById("feedback-cancel");
+const feedbackSubmit = document.getElementById("feedback-submit");
+const feedbackType = document.getElementById("feedback-type");
+const feedbackMessage = document.getElementById("feedback-message");
+const feedbackDiagnostics = document.getElementById("feedback-diagnostics");
+const feedbackAge13 = document.getElementById("feedback-age-13");
+const feedbackEmail = document.getElementById("feedback-email");
+const feedbackStatus = document.getElementById("feedback-status");
 const gameWrap = document.getElementById("game-wrap");
 const remoteNameLayer = document.createElement("div");
 remoteNameLayer.className = "remote-name-layer";
@@ -215,6 +258,17 @@ const BACKFLIP_DURATION = 0.78;
 const BACKFLIP_RECOVERY_DURATION = 0.3;
 const SAVE_STORAGE_KEY = "infernoDrift4.save.v1";
 const LEGACY_SAVE_STORAGE_KEYS = ["infernoDrift3.save.v1"];
+const ONLINE_STORAGE_KEY = "infernoDrift4.online.v1";
+const FEEDBACK_STORAGE_KEY = "infernoDrift4.feedback.v1";
+const ONLINE_PROTOCOL_VERSION = 1;
+const QUICK_CHAT_MESSAGES = [
+  "Nice drift!",
+  "Defending",
+  "Need boost",
+  "Passing left",
+  "One more run",
+  "Good save",
+];
 const GAME_MODE_ID33 = "infernodrift33";
 const GAME_MODE_MAX1 = "infernodriftmax1";
 const GAME_MODE_RISK = "tryatyourownrisk";
@@ -1829,6 +1883,37 @@ const gamepadState = {
   previousButtons: {},
 };
 
+const onlineState = {
+  backendUrl: "",
+  feedbackUrl: "",
+  status: "offline",
+  statusText: "Offline: no backend configured",
+  socket: null,
+  reconnectTimer: 0,
+  reconnectAttempts: 0,
+  lastError: "",
+  lastMessageType: "",
+  user: null,
+  sessionToken: "",
+  username: "Guest Racer",
+  age: null,
+  authRequired: true,
+  room: null,
+  queue: null,
+  chatOpen: false,
+  feedbackReturnToMenu: false,
+  chatMessages: [],
+  leaderboard: [],
+  friends: [],
+  recentPlayers: [],
+  remoteSnapshots: [],
+  pending: [],
+  inputSeq: 0,
+  lastSnapshotAt: 0,
+  lastFeedbackStatus: "not_configured",
+  lastFeedbackError: "",
+};
+
 const maxTeamCustomization = {
   blue: { ...DEFAULT_MAX_TEAM_CUSTOMIZATION.blue },
   red: { ...DEFAULT_MAX_TEAM_CUSTOMIZATION.red },
@@ -2421,13 +2506,39 @@ function applyTouchLayout() {
   if (touchScaleSelect) touchScaleSelect.value = String(settings.touchScale);
 }
 
+function getGarageUnlockLevel(unlock) {
+  if (!unlock) return 1;
+  if (Number.isFinite(unlock.level))
+    return Math.max(1, Math.floor(unlock.level));
+  const worldIndex = Math.max(0, Number(unlock.worldIndex) || 0);
+  const levelIndex = Math.max(0, Number(unlock.levelIndex) || 0);
+  return 1 + worldIndex * 2 + Math.ceil(levelIndex / 2);
+}
+
+function getGarageProgressLevel(progress = getProgressSnapshot()) {
+  return Math.max(
+    1,
+    Number(progress?.progressionV2?.level ?? state.progressionV2?.level) || 1,
+  );
+}
+
 function isProgressAtLeast(progress, unlock) {
   if (!unlock) return true;
-  const worldIndex = progress?.worldIndex ?? 0;
-  const levelIndex = progress?.levelIndex ?? 0;
-  if (worldIndex > unlock.worldIndex) return true;
-  if (worldIndex < unlock.worldIndex) return false;
-  return levelIndex >= (unlock.levelIndex ?? 0);
+  return getGarageProgressLevel(progress) >= getGarageUnlockLevel(unlock);
+}
+
+function getNextGarageUnlock(progress = getProgressSnapshot()) {
+  const currentLevel = getGarageProgressLevel(progress);
+  return getGarageOptionGroups()
+    .flat()
+    .map((option) => ({
+      option,
+      level: getGarageUnlockLevel(option.unlock),
+    }))
+    .filter(({ level }) => level > currentLevel)
+    .sort(
+      (a, b) => a.level - b.level || a.option.name.localeCompare(b.option.name),
+    )[0];
 }
 
 function getProgressSnapshot() {
@@ -2438,12 +2549,32 @@ function getProgressSnapshot() {
   };
 }
 
+function getGarageOptionGroups() {
+  return [
+    BODY_OPTIONS,
+    WHEEL_OPTIONS,
+    STYLE_OPTIONS,
+    POWER_OPTIONS,
+    PAINT_OPTIONS,
+    ACCENT_OPTIONS,
+    TINT_OPTIONS,
+    SPOILER_OPTIONS,
+    GLOW_OPTIONS,
+  ];
+}
+
 function isOptionUnlocked(option, progress = getProgressSnapshot()) {
   return isProgressAtLeast(progress, option.unlock);
 }
 
 function getUnlockedOptions(group, progress = getProgressSnapshot()) {
   return group.filter((option) => isOptionUnlocked(option, progress));
+}
+
+function getLockedGarageOptionCount(progress = getProgressSnapshot()) {
+  return getGarageOptionGroups()
+    .flat()
+    .filter((option) => !isOptionUnlocked(option, progress)).length;
 }
 
 function getOptionById(group, id, fallbackId) {
@@ -2648,11 +2779,7 @@ function serializeControlBindings() {
 
 function getUnlockLabel(option) {
   if (!option.unlock) return "Unlocked";
-  const worldLabel = `World ${option.unlock.worldIndex + 1}`;
-  const levelLabel = `Level ${option.unlock.levelIndex + 1}`;
-  return option.unlock.levelIndex > 0
-    ? `Unlocks at ${worldLabel}, ${levelLabel}`
-    : `Unlocks at ${worldLabel}`;
+  return `Unlocks at XP Level ${getGarageUnlockLevel(option.unlock)}`;
 }
 
 function clampCustomizationToUnlocks(progress = getProgressSnapshot()) {
@@ -3153,6 +3280,702 @@ function loadPersistentState() {
   }
 }
 
+function readLocalJson(key, fallback = {}) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLocalJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    debugLog("menu", "online_save_failed", error?.message || error);
+  }
+}
+
+function getRuntimeParam(...keys) {
+  const params = new URLSearchParams(window.location.search);
+  for (const key of keys) {
+    const value = params.get(key);
+    if (value) return value.trim();
+  }
+  return "";
+}
+
+function normalizeOnlineBackendUrl(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  if (/^wss?:\/\//i.test(raw)) return raw;
+  if (/^https?:\/\//i.test(raw)) {
+    const url = new URL(raw);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    if (!url.pathname || url.pathname === "/") url.pathname = "/ws";
+    return url.toString();
+  }
+  return raw;
+}
+
+function deriveFeedbackUrl(backendUrl) {
+  try {
+    if (!backendUrl) return "";
+    const url = new URL(backendUrl);
+    url.protocol = url.protocol === "wss:" ? "https:" : "http:";
+    url.pathname = "/api/feedback";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function loadOnlineConfig() {
+  const onlinePrefs = readLocalJson(ONLINE_STORAGE_KEY, {});
+  const feedbackPrefs = readLocalJson(FEEDBACK_STORAGE_KEY, {});
+  const configuredBackend =
+    getRuntimeParam("online", "onlineUrl", "ws") ||
+    window.INFERNO_ONLINE_URL ||
+    onlinePrefs.backendUrl ||
+    "";
+  onlineState.backendUrl = normalizeOnlineBackendUrl(configuredBackend);
+  onlineState.feedbackUrl =
+    getRuntimeParam("feedback", "feedbackUrl") ||
+    window.INFERNO_FEEDBACK_URL ||
+    feedbackPrefs.feedbackUrl ||
+    "";
+  onlineState.username = sanitizeRemoteUsername(
+    onlinePrefs.username || onlineState.username,
+  );
+  onlineState.sessionToken = String(onlinePrefs.sessionToken || "");
+  onlineState.age = Number.isFinite(Number(onlinePrefs.age))
+    ? THREE.MathUtils.clamp(Number(onlinePrefs.age), 0, 120)
+    : null;
+  if (onlineBackendUrlInput)
+    onlineBackendUrlInput.value = onlineState.backendUrl;
+  if (onlineUsernameInput) onlineUsernameInput.value = onlineState.username;
+  if (onlineAgeInput && onlineState.age !== null)
+    onlineAgeInput.value = String(onlineState.age);
+}
+
+function saveOnlineConfig() {
+  writeLocalJson(ONLINE_STORAGE_KEY, {
+    backendUrl: onlineState.backendUrl,
+    username: onlineState.username,
+    age: onlineState.age,
+    sessionToken: onlineState.sessionToken,
+  });
+  if (onlineState.feedbackUrl) {
+    writeLocalJson(FEEDBACK_STORAGE_KEY, {
+      feedbackUrl: onlineState.feedbackUrl,
+    });
+  }
+}
+
+function canUseOnlineFreeChat() {
+  return Number.isFinite(onlineState.age) && onlineState.age >= 13;
+}
+
+function setOnlineStatus(status, text, detail = "") {
+  onlineState.status = status;
+  onlineState.statusText = text;
+  onlineState.lastError = detail || "";
+  if (onlineStatus) {
+    onlineStatus.dataset.state =
+      status === "connected" || status === "authenticated"
+        ? "connected"
+        : status === "error" || status === "not_configured"
+          ? "error"
+          : "offline";
+    onlineStatus.textContent = detail ? `${text}: ${detail}` : text;
+  }
+}
+
+function isOnlineSocketOpen() {
+  return onlineState.socket?.readyState === WebSocket.OPEN;
+}
+
+function sendOnlineMessage(payload, { queue = true } = {}) {
+  if (isOnlineSocketOpen()) {
+    onlineState.socket.send(JSON.stringify(payload));
+    return true;
+  }
+  if (queue) onlineState.pending.push(payload);
+  updateOnlineUi();
+  return false;
+}
+
+function flushOnlinePending() {
+  while (onlineState.pending.length && isOnlineSocketOpen()) {
+    onlineState.socket.send(JSON.stringify(onlineState.pending.shift()));
+  }
+}
+
+function getOnlineRoomOptions() {
+  return {
+    playlist: onlinePlaylist?.value || "casual",
+    teamSize: Math.max(1, Math.min(3, Number(onlineTeamSize?.value) || 2)),
+    botFill: onlineBotFill?.checked !== false,
+  };
+}
+
+function claimOnlineGuest() {
+  onlineState.username = sanitizeRemoteUsername(
+    onlineUsernameInput?.value || onlineState.username,
+  );
+  onlineState.age = Number.isFinite(Number(onlineAgeInput?.value))
+    ? THREE.MathUtils.clamp(Number(onlineAgeInput.value), 0, 120)
+    : null;
+  saveOnlineConfig();
+  const payload = {
+    type: "auth.guest",
+    version: ONLINE_PROTOCOL_VERSION,
+    username: onlineState.username,
+    deviceId: navigator.userAgent.slice(0, 90),
+  };
+  if (onlineState.age !== null) payload.age = onlineState.age;
+  if (onlineState.sessionToken) payload.sessionToken = onlineState.sessionToken;
+  sendOnlineMessage(payload);
+  onlineState.authRequired = true;
+  setOnlineStatus(
+    isOnlineSocketOpen() ? "connected" : "offline",
+    isOnlineSocketOpen()
+      ? `Claiming ${onlineState.username}`
+      : "Saved guest profile; connect to claim",
+  );
+  updateOnlineUi();
+}
+
+function claimOnlineUsername() {
+  onlineState.username = sanitizeRemoteUsername(
+    onlineUsernameInput?.value || onlineState.username,
+  );
+  onlineState.age = Number.isFinite(Number(onlineAgeInput?.value))
+    ? THREE.MathUtils.clamp(Number(onlineAgeInput.value), 0, 120)
+    : onlineState.age;
+  saveOnlineConfig();
+  if (!isOnlineSocketOpen()) {
+    claimOnlineGuest();
+    return;
+  }
+  if (!onlineState.user) {
+    claimOnlineGuest();
+    return;
+  }
+  sendOnlineMessage({
+    type: "profile.claimUsername",
+    username: onlineState.username,
+  });
+  setOnlineStatus("connected", `Claiming username ${onlineState.username}`);
+}
+
+function connectOnline({ reconnect = false } = {}) {
+  onlineState.backendUrl = normalizeOnlineBackendUrl(
+    onlineBackendUrlInput?.value || onlineState.backendUrl,
+  );
+  saveOnlineConfig();
+  if (!onlineState.backendUrl) {
+    setOnlineStatus("not_configured", "Offline: no backend configured");
+    updateOnlineUi();
+    return false;
+  }
+  if (isOnlineSocketOpen()) return true;
+  try {
+    if (onlineState.socket) onlineState.socket.close();
+    setOnlineStatus(
+      "connecting",
+      reconnect ? "Reconnecting to backend" : "Connecting to backend",
+    );
+    const socket = new WebSocket(onlineState.backendUrl);
+    onlineState.socket = socket;
+    socket.addEventListener("open", () => {
+      onlineState.reconnectAttempts = 0;
+      setOnlineStatus(
+        "connected",
+        onlineState.sessionToken
+          ? "Connected; restoring guest session"
+          : "Connected; claiming guest",
+      );
+      if (onlineState.sessionToken) {
+        sendOnlineMessage({
+          type: "reconnect",
+          sessionToken: onlineState.sessionToken,
+          ...(onlineState.room?.code
+            ? { roomCode: onlineState.room.code }
+            : {}),
+        });
+      } else {
+        claimOnlineGuest();
+      }
+      flushOnlinePending();
+      sendOnlineMessage({ type: "leaderboard.get", playlist: "casual" });
+      updateOnlineUi();
+    });
+    socket.addEventListener("message", (event) => {
+      handleOnlineMessage(event.data);
+    });
+    socket.addEventListener("close", () => {
+      if (onlineState.socket !== socket) return;
+      onlineState.socket = null;
+      onlineState.user = null;
+      onlineState.room = null;
+      onlineState.remoteSnapshots = [];
+      setRemoteHumanPlayers([]);
+      setOnlineStatus("offline", "Offline: backend disconnected");
+      scheduleOnlineReconnect();
+      updateOnlineUi();
+    });
+    socket.addEventListener("error", () => {
+      setOnlineStatus("error", "Online backend error");
+      updateOnlineUi();
+    });
+  } catch (error) {
+    setOnlineStatus("error", "Online connection failed", error?.message || "");
+    updateOnlineUi();
+    return false;
+  }
+  return true;
+}
+
+function disconnectOnline({ manual = true } = {}) {
+  if (onlineState.reconnectTimer) clearTimeout(onlineState.reconnectTimer);
+  onlineState.reconnectTimer = 0;
+  onlineState.pending = [];
+  if (onlineState.socket) {
+    const socket = onlineState.socket;
+    onlineState.socket = null;
+    socket.close();
+  }
+  onlineState.user = null;
+  onlineState.room = null;
+  onlineState.queue = null;
+  onlineState.remoteSnapshots = [];
+  setRemoteHumanPlayers([]);
+  setOnlineStatus("offline", manual ? "Offline: disconnected" : "Offline");
+  updateOnlineUi();
+}
+
+function scheduleOnlineReconnect() {
+  if (!onlineState.backendUrl || onlineState.reconnectTimer) return;
+  onlineState.reconnectAttempts += 1;
+  const delay = Math.min(12000, 1800 * onlineState.reconnectAttempts);
+  onlineState.reconnectTimer = window.setTimeout(() => {
+    onlineState.reconnectTimer = 0;
+    connectOnline({ reconnect: true });
+  }, delay);
+}
+
+function handleOnlineMessage(raw) {
+  let message;
+  try {
+    message = JSON.parse(String(raw));
+  } catch {
+    return;
+  }
+  onlineState.lastMessageType = message.type || "";
+  if (message.type === "hello") {
+    onlineState.serverId = message.id || "";
+  } else if (message.type === "auth.ok" || message.type === "reconnect.ok") {
+    onlineState.user = message.user || null;
+    onlineState.sessionToken = message.sessionToken || onlineState.sessionToken;
+    if (onlineState.user?.username)
+      onlineState.username = onlineState.user.username;
+    saveOnlineConfig();
+    onlineState.authRequired = false;
+    setOnlineStatus(
+      "authenticated",
+      `Online as ${onlineState.user?.username || onlineState.username}`,
+    );
+  } else if (message.type === "profile.usernameClaimed") {
+    onlineState.user = message.user || onlineState.user;
+    onlineState.username = message.username || onlineState.username;
+    saveOnlineConfig();
+    setOnlineStatus(
+      "authenticated",
+      `Username claimed: ${onlineState.username}`,
+    );
+  } else if (message.type === "room.snapshot") {
+    onlineState.room = message.room || null;
+    onlineState.queue = null;
+    onlineState.leaderboard = Array.isArray(message.room?.leaderboard)
+      ? message.room.leaderboard
+      : onlineState.leaderboard;
+    updateRemoteSnapshotsFromRoom(message.room);
+  } else if (message.type === "queue.joined") {
+    onlineState.queue = message;
+  } else if (message.type === "room.left") {
+    onlineState.room = null;
+    onlineState.queue = null;
+    onlineState.remoteSnapshots = [];
+    setRemoteHumanPlayers([]);
+  } else if (message.type === "chat.message") {
+    pushOnlineChatMessage({
+      from: message.from || "Server",
+      text: message.text || "",
+      quick: Boolean(message.quick),
+    });
+  } else if (message.type === "leaderboard.snapshot") {
+    onlineState.leaderboard = Array.isArray(message.leaderboard)
+      ? message.leaderboard
+      : [];
+  } else if (message.type === "friends.snapshot") {
+    onlineState.friends = Array.isArray(message.friends) ? message.friends : [];
+    onlineState.recentPlayers = Array.isArray(message.recentPlayers)
+      ? message.recentPlayers
+      : [];
+  } else if (message.type === "friend.requested") {
+    pushOnlineChatMessage({
+      from: "Friends",
+      text: `Request to ${message.username || "player"}: ${message.status || "sent"}`,
+      quick: true,
+    });
+  } else if (message.type === "match.snapshot") {
+    onlineState.lastSnapshotAt = performance.now();
+    onlineState.remoteSnapshots = Array.isArray(message.players)
+      ? message.players
+      : [];
+    updateRemoteSnapshotsFromMatch();
+  } else if (message.type === "error") {
+    const error = message.error || "online_error";
+    setOnlineStatus("error", "Online backend rejected request", error);
+    pushOnlineChatMessage({ from: "System", text: error, quick: true });
+  }
+  updateOnlineUi();
+}
+
+function updateRemoteSnapshotsFromRoom(room) {
+  const players = Array.isArray(room?.players) ? room.players : [];
+  const currentId = onlineState.user?.id;
+  setRemoteHumanPlayers(
+    players
+      .filter((remote) => remote?.id && remote.id !== currentId)
+      .map((remote, index) => ({
+        id: remote.id,
+        username: remote.username,
+        team: index % 2 === 0 ? "blue" : "red",
+        x: player.position.x + 7 + index * 5,
+        y: 0,
+        z: player.position.z + 10 + index * 5,
+        heading: 0,
+        speed: 0,
+      })),
+  );
+}
+
+function updateRemoteSnapshotsFromMatch() {
+  const currentId = onlineState.user?.id;
+  setRemoteHumanPlayers(
+    onlineState.remoteSnapshots
+      .filter((remote) => remote?.id && remote.id !== currentId)
+      .map((remote, index) => ({
+        id: remote.id,
+        username: remote.username,
+        team: index % 2 === 0 ? "blue" : "red",
+        x: Number(remote.input?.x ?? player.position.x + 8 + index * 4),
+        y: 0,
+        z: Number(remote.input?.z ?? player.position.z + 8 + index * 4),
+        heading: 0,
+        speed: Number(remote.input?.speed ?? 0),
+      })),
+  );
+}
+
+function sendOnlineInputFrame(dt = 1 / 60) {
+  if (!isOnlineSocketOpen() || !onlineState.room || !state.running) return;
+  onlineState.inputSeq += 1;
+  if (onlineState.inputSeq % 12 !== 0) return;
+  sendOnlineMessage(
+    {
+      type: "input.frame",
+      seq: onlineState.inputSeq,
+      dt: Number(Math.min(0.12, Math.max(0, dt)).toFixed(3)),
+      throttle: input.throttle ? 1 : input.brake ? -1 : 0,
+      steer: Number(getSteer().toFixed(3)),
+      drift: Boolean(input.drift),
+      boost: Boolean(input.boost),
+      jump: Boolean(input.backflip),
+      client: {
+        x: Number(player.position.x.toFixed(2)),
+        z: Number(player.position.z.toFixed(2)),
+        speed: Math.round(Math.abs(player.speed) * SPEED_TO_MPH_MULT),
+      },
+    },
+    { queue: false },
+  );
+}
+
+function pushOnlineChatMessage(message) {
+  const clean = {
+    from: sanitizeRemoteUsername(message.from || "System"),
+    text: String(message.text || "")
+      .replace(/[<>]/g, "")
+      .slice(0, 180),
+    quick: Boolean(message.quick),
+    at: Date.now(),
+  };
+  onlineState.chatMessages.push(clean);
+  onlineState.chatMessages = onlineState.chatMessages.slice(-24);
+}
+
+function sendQuickChat(text) {
+  sendOnlineMessage({ type: "quick.send", text });
+}
+
+function sendFreeChat(text) {
+  const clean = String(text || "").trim();
+  if (!clean) return;
+  if (!canUseOnlineFreeChat()) {
+    pushOnlineChatMessage({
+      from: "System",
+      text: "Free chat is 13+; quick chat is available.",
+      quick: true,
+    });
+    updateOnlineUi();
+    return;
+  }
+  sendOnlineMessage({
+    type: "chat.send",
+    text: clean,
+    age: onlineState.age,
+    channel: "lobby",
+  });
+  if (onlineChatInput) onlineChatInput.value = "";
+  if (chatPopoutInput) chatPopoutInput.value = "";
+}
+
+function renderChatLog(target) {
+  if (!target) return;
+  target.replaceChildren();
+  const messages = onlineState.chatMessages.slice(-12);
+  if (!messages.length) {
+    const empty = document.createElement("div");
+    empty.className = "hint";
+    empty.textContent = "No chat messages yet.";
+    target.appendChild(empty);
+    return;
+  }
+  messages.forEach((message) => {
+    const row = document.createElement("div");
+    row.className = "chat-message";
+    const from = document.createElement("strong");
+    from.textContent = message.quick ? `${message.from} · Quick` : message.from;
+    const text = document.createElement("span");
+    text.textContent = message.text;
+    row.append(from, text);
+    target.appendChild(row);
+  });
+  target.scrollTop = target.scrollHeight;
+}
+
+function renderQuickChat(target) {
+  if (!target) return;
+  target.replaceChildren();
+  QUICK_CHAT_MESSAGES.forEach((text) => {
+    const button = document.createElement("button");
+    button.className = "ghost";
+    button.type = "button";
+    button.textContent = text;
+    bindPressAction(button, () => sendQuickChat(text));
+    target.appendChild(button);
+  });
+}
+
+function renderOnlineRows(target, rows, emptyText, formatter) {
+  if (!target) return;
+  target.replaceChildren();
+  if (!rows.length) {
+    target.textContent = emptyText;
+    return;
+  }
+  rows.forEach((row, index) => {
+    const item = document.createElement("div");
+    item.className = "online-row";
+    const [left, right] = formatter(row, index);
+    const leftNode = document.createElement("span");
+    leftNode.textContent = left;
+    const rightNode = document.createElement("strong");
+    rightNode.textContent = right;
+    item.append(leftNode, rightNode);
+    target.appendChild(item);
+  });
+}
+
+function updateOnlineUi() {
+  const connected = isOnlineSocketOpen();
+  if (
+    onlineBackendUrlInput &&
+    document.activeElement !== onlineBackendUrlInput
+  ) {
+    onlineBackendUrlInput.value = onlineState.backendUrl;
+  }
+  if (onlineUsernameInput && document.activeElement !== onlineUsernameInput) {
+    onlineUsernameInput.value = onlineState.username;
+  }
+  if (onlineAgeInput && document.activeElement !== onlineAgeInput) {
+    onlineAgeInput.value =
+      onlineState.age === null ? "" : String(onlineState.age);
+  }
+  const chatAllowed = canUseOnlineFreeChat();
+  if (onlineAgeNote) {
+    onlineAgeNote.textContent = chatAllowed
+      ? "13+ free chat is enabled. Quick chat stays available for everyone."
+      : "Under-13 or unset age: quick chat only.";
+  }
+  [onlineChatInput, chatPopoutInput, onlineChatSend, chatPopoutSend].forEach(
+    (node) => {
+      if (node) node.disabled = !chatAllowed;
+    },
+  );
+  if (onlineConnect) onlineConnect.disabled = connected;
+  if (onlineDisconnect) onlineDisconnect.disabled = !onlineState.socket;
+  if (onlineClaim) onlineClaim.disabled = false;
+  if (onlineRoomState) {
+    const room = onlineState.room;
+    onlineRoomState.textContent = room
+      ? `Room ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${room.bots || 0} bots, ${room.playlist || "casual"}`
+      : onlineState.queue
+        ? `Queued for ${onlineState.queue.playlist || "casual"} ${onlineState.queue.teamSize || 2}v${onlineState.queue.teamSize || 2}`
+        : "No room joined.";
+  }
+  renderChatLog(onlineChatLog);
+  renderChatLog(chatPopoutLog);
+  renderOnlineRows(
+    onlineLeaderboard,
+    onlineState.leaderboard,
+    connected ? "No leaderboard rows yet." : "Connect to load leaderboard.",
+    (row, index) => [
+      `${index + 1}. ${row.username || "Player"}`,
+      String(row.rating ?? row.score ?? "—"),
+    ],
+  );
+  renderOnlineRows(
+    onlineFriends,
+    onlineState.friends,
+    "No friends from backend yet.",
+    (row) => [row.username || row.name || "Friend", row.online ? "Online" : ""],
+  );
+  renderOnlineRows(
+    onlineRecent,
+    onlineState.recentPlayers,
+    "No recent players yet.",
+    (row) => [
+      row.username || row.name || "Player",
+      row.online === false ? "Offline" : "Recent",
+    ],
+  );
+  if (chatPopout) chatPopout.hidden = !onlineState.chatOpen;
+}
+
+function setChatPopoutOpen(open) {
+  onlineState.chatOpen = open;
+  if (!open) returnFocusToGame();
+  updateOnlineUi();
+}
+
+function openFeedbackModal() {
+  onlineState.feedbackReturnToMenu = isMenuOpen();
+  onlineState.chatOpen = false;
+  if (onlineState.feedbackReturnToMenu) setMenuOpen(false);
+  if (feedbackModal) {
+    feedbackModal.classList.add("show");
+    feedbackModal.style.transition = "none";
+    feedbackModal.style.opacity = "1";
+    feedbackModal.style.pointerEvents = "auto";
+  }
+  if (feedbackStatus) {
+    feedbackStatus.dataset.state = onlineState.lastFeedbackStatus;
+    feedbackStatus.textContent =
+      onlineState.lastFeedbackStatus === "saved"
+        ? "Last feedback was saved by the configured backend."
+        : onlineState.lastFeedbackError ||
+          "Feedback saves only when a backend endpoint is configured.";
+  }
+}
+
+function closeFeedbackModal() {
+  if (feedbackModal) {
+    feedbackModal.classList.remove("show");
+    feedbackModal.style.transition = "";
+    feedbackModal.style.opacity = "";
+    feedbackModal.style.pointerEvents = "";
+  }
+  if (onlineState.feedbackReturnToMenu) {
+    onlineState.feedbackReturnToMenu = false;
+    setMenuOpen(true);
+  } else {
+    returnFocusToGame();
+  }
+}
+
+async function submitFeedback() {
+  const configuredUrl =
+    onlineState.feedbackUrl || deriveFeedbackUrl(onlineState.backendUrl);
+  const message = String(feedbackMessage?.value || "").trim();
+  if (!message) {
+    onlineState.lastFeedbackStatus = "error";
+    onlineState.lastFeedbackError = "Please add a feedback message.";
+    updateFeedbackStatus();
+    return;
+  }
+  if (!configuredUrl) {
+    onlineState.lastFeedbackStatus = "not_configured";
+    onlineState.lastFeedbackError =
+      "Feedback is not configured. Set window.INFERNO_FEEDBACK_URL, ?feedback=, or local feedback config.";
+    updateFeedbackStatus();
+    return;
+  }
+  const age13 = Boolean(feedbackAge13?.checked);
+  const payload = {
+    feedbackType: feedbackType?.value || "other",
+    message,
+    diagnostics: feedbackDiagnostics?.checked
+      ? JSON.parse(window.render_game_to_text())
+      : null,
+    replyEmail: age13 ? String(feedbackEmail?.value || "").trim() : "",
+    age13OrOlder: age13,
+    client: "InfernoDrift4 static client",
+    at: new Date().toISOString(),
+  };
+  try {
+    updateFeedbackStatus("Saving feedback...");
+    const response = await fetch(configuredUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error(`backend returned ${response.status}`);
+    }
+    const result = await response.json().catch(() => ({}));
+    onlineState.feedbackUrl = configuredUrl;
+    onlineState.lastFeedbackStatus = "saved";
+    onlineState.lastFeedbackError = "";
+    saveOnlineConfig();
+    if (feedbackMessage) feedbackMessage.value = "";
+    updateFeedbackStatus(
+      result.delivery === "delivered"
+        ? "Feedback saved and email notification sent."
+        : "Feedback saved by the backend. Email delivery is not configured yet.",
+    );
+  } catch (error) {
+    onlineState.lastFeedbackStatus = "error";
+    onlineState.lastFeedbackError = `Feedback was not saved: ${error?.message || "request failed"}`;
+    updateFeedbackStatus();
+  }
+}
+
+function updateFeedbackStatus(text = "") {
+  if (!feedbackStatus) return;
+  feedbackStatus.dataset.state = onlineState.lastFeedbackStatus;
+  feedbackStatus.textContent =
+    text ||
+    onlineState.lastFeedbackError ||
+    "Feedback saves only when a backend endpoint is configured.";
+}
+
 function refreshDevModeUi() {
   const maxModeActive = isMaxMode();
   if (campaignAiSelect) {
@@ -3511,6 +4334,7 @@ function setActiveTab(tabName = "settings") {
   }
   if (tabName === "progress") renderProgressPanel();
   if (tabName === "controls") renderControlsUi();
+  if (tabName === "online") updateOnlineUi();
 }
 
 function setActiveGameMode(mode, { save = true, reset = false } = {}) {
@@ -3710,19 +4534,7 @@ function renderProgressPanel() {
   const percent = Math.round(
     (clearedTotal / Math.max(1, totalLevels - 1)) * 100,
   );
-  const lockedParts = [
-    BODY_OPTIONS,
-    WHEEL_OPTIONS,
-    STYLE_OPTIONS,
-    POWER_OPTIONS,
-    PAINT_OPTIONS,
-    ACCENT_OPTIONS,
-    TINT_OPTIONS,
-    SPOILER_OPTIONS,
-    GLOW_OPTIONS,
-  ]
-    .flat()
-    .filter((option) => !isOptionUnlocked(option)).length;
+  const lockedParts = getLockedGarageOptionCount();
   const medals = Object.values(progression.medals);
   const bests = Object.entries(progression.personalBests)
     .sort(([, a], [, b]) => (b.score ?? 0) - (a.score ?? 0))
@@ -3730,6 +4542,7 @@ function renderProgressPanel() {
   const recentReward =
     progression.rewardLog[0]?.reward ??
     "Finish a run to preview the next reward.";
+  const nextGarageUnlock = getNextGarageUnlock();
   const dailyMode = getModeDefinition(progression.daily.modeId);
   const weeklyMode = getModeDefinition(progression.weekly.modeId);
   const xpIntoLevel = progression.xp % 500;
@@ -3743,7 +4556,7 @@ function renderProgressPanel() {
     <div class="progress-card"><span>Daily</span><strong>${dailyMode.label}</strong><span>${Math.floor(progression.daily.progress)}/${progression.daily.target} • ${progression.daily.complete ? "Complete" : "Open"}</span></div>
     <div class="progress-card"><span>Weekly</span><strong>${weeklyMode.label}</strong><span>${Math.floor(progression.weekly.progress)}/${progression.weekly.target} • ${progression.weekly.complete ? "Complete" : "Open"}</span></div>
     <div class="progress-card"><span>Best Runs</span><strong>${bests[0] ? `${getModeDefinition(bests[0][0]).label}` : "No best yet"}</strong><span>${bests.map(([modeId, best]) => `${getModeDefinition(modeId).label}: ${best.score}`).join(" • ") || "Start any mode to set a best."}</span></div>
-    <div class="progress-card"><span>Garage Unlocks</span><strong>${lockedParts} locked</strong><span>${recentReward}</span></div>
+    <div class="progress-card"><span>Garage Unlocks</span><strong>${lockedParts} locked</strong><span>${nextGarageUnlock ? `${nextGarageUnlock.option.name} at XP Level ${nextGarageUnlock.level}` : recentReward}</span></div>
     <div class="progress-card progress-card-wide"><span>Next Run</span><strong>${nextRecommended}</strong><span>Short runs, fast restarts, and visible reward previews keep progress moving.</span></div>
   `;
 }
@@ -6699,10 +7512,14 @@ function isMenuOpen() {
   return menu.classList.contains("show");
 }
 
+function isFeedbackOpen() {
+  return feedbackModal?.classList.contains("show") ?? false;
+}
+
 function getUiScreen() {
   if (overlay.classList.contains("show")) return "title";
   if (message.classList.contains("show")) return "results";
-  if (isMenuOpen()) return "paused";
+  if (isMenuOpen() || isFeedbackOpen()) return "paused";
   if (state.running) return "playing";
   return "idle";
 }
@@ -6729,6 +7546,7 @@ function setMenuOpen(open, tabName = null) {
   if (open && !tabName && !document.querySelector(".tab-btn.active")) {
     setActiveTab("games");
   }
+  if (!open) returnFocusToGame();
   refreshCustomizationMenu();
   refreshDevModeUi();
   refreshMenuShell();
@@ -7772,29 +8590,11 @@ function refreshCustomizationMenu() {
     </div>
   `;
   if (customHint) {
-    const lockedCounts = [
-      BODY_OPTIONS.filter((option) => !isOptionUnlocked(option, progress))
-        .length,
-      WHEEL_OPTIONS.filter((option) => !isOptionUnlocked(option, progress))
-        .length,
-      STYLE_OPTIONS.filter((option) => !isOptionUnlocked(option, progress))
-        .length,
-      POWER_OPTIONS.filter((option) => !isOptionUnlocked(option, progress))
-        .length,
-      PAINT_OPTIONS.filter((option) => !isOptionUnlocked(option, progress))
-        .length,
-      ACCENT_OPTIONS.filter((option) => !isOptionUnlocked(option, progress))
-        .length,
-      TINT_OPTIONS.filter((option) => !isOptionUnlocked(option, progress))
-        .length,
-      SPOILER_OPTIONS.filter((option) => !isOptionUnlocked(option, progress))
-        .length,
-      GLOW_OPTIONS.filter((option) => !isOptionUnlocked(option, progress))
-        .length,
-    ].reduce((sum, count) => sum + count, 0);
+    const lockedCounts = getLockedGarageOptionCount(progress);
+    const nextUnlock = getNextGarageUnlock(progress);
     customHint.textContent =
       lockedCounts > 0
-        ? `${lockedCounts} loadout upgrades are still locked. Clear more worlds to unlock them.`
+        ? `${lockedCounts} loadout upgrades are still locked. Earn XP in any mode to reach ${nextUnlock ? `Level ${nextUnlock.level} for ${nextUnlock.option.name}` : "the next Garage level"}.`
         : "All loadout parts unlocked. Mix bodies, wheels, handling, and powers freely.";
   }
   renderGarageLoadouts();
@@ -11640,7 +12440,7 @@ function updateTransientEffects(dt) {
 
 function stepGame(dt) {
   updateGamepadInput();
-  const pausedByMenu = isMenuOpen();
+  const pausedByMenu = isMenuOpen() || isFeedbackOpen();
   const targetMinimapHeading = MINIMAP_USE_MOVE_HEADING
     ? player.moveHeading
     : player.heading;
@@ -11756,6 +12556,7 @@ function stepGame(dt) {
   }
 
   updatePlayfieldReadability(dt);
+  sendOnlineInputFrame(dt);
   updateRemoteHumanPlayers(dt);
   updateCamera(dt);
   updateHud();
@@ -12882,8 +13683,10 @@ window.addEventListener("keydown", (event) => {
     if (isCarAirborne(player) || player.backflipActive) input.backflip = true;
     if (!event.repeat) performJumpOrBackflip();
   }
-  if (isActionCode(event.code, "chat") && !event.repeat)
-    setEffectToast("Online chat needs backend");
+  if (isActionCode(event.code, "chat") && !event.repeat) {
+    setChatPopoutOpen(!onlineState.chatOpen);
+    setEffectToast(onlineState.chatOpen ? "Online Chat" : "Chat Closed");
+  }
   if (isActionCode(event.code, "ballCam") && isMaxMode() && !event.repeat) {
     state.ballCam = !state.ballCam;
     setEffectToast(state.ballCam ? "Ball Cam On" : "Ball Cam Off");
@@ -13054,6 +13857,13 @@ function bindPressAction(element, handler) {
   });
 }
 
+function returnFocusToGame() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+  window.focus();
+}
+
 function initTouchControls() {
   if (!touchSteerPad) return;
   touchSteerPad.style.touchAction = "none";
@@ -13142,8 +13952,8 @@ bindPressAction(helpBtn, () => openModeHelp());
 bindPressAction(menuBtn, () => {
   setMenuOpen(true, state.running ? "games" : null);
 });
-bindPressAction(menuClose, () => {
-  setMenuOpen(false);
+bindPressAction(menuFeedback, () => {
+  openFeedbackModal();
 });
 bindPressAction(menuResume, () => {
   setMenuOpen(false);
@@ -13158,6 +13968,71 @@ tabButtons.forEach((button) => {
     if (button.hidden) return;
     setActiveTab(button.dataset.tab);
   });
+});
+
+renderQuickChat(onlineQuickChat);
+renderQuickChat(chatPopoutQuick);
+
+bindPressAction(onlineConnect, () => connectOnline());
+bindPressAction(onlineDisconnect, () => disconnectOnline());
+bindPressAction(onlineClaim, () => claimOnlineUsername());
+bindPressAction(onlineCreateRoom, () => {
+  const options = getOnlineRoomOptions();
+  sendOnlineMessage({
+    type: "room.create",
+    ...options,
+    private: true,
+  });
+});
+bindPressAction(onlineQueue, () => {
+  sendOnlineMessage({
+    type: "queue.join",
+    ...getOnlineRoomOptions(),
+  });
+});
+bindPressAction(onlineCancelQueue, () => {
+  sendOnlineMessage({ type: "queue.cancel" });
+});
+bindPressAction(onlineJoinRoom, () => {
+  const code = String(onlineRoomCode?.value || "")
+    .trim()
+    .toUpperCase();
+  if (!code) return;
+  sendOnlineMessage({ type: "room.join", code });
+});
+bindPressAction(onlinePopoutChat, () => setChatPopoutOpen(true));
+bindPressAction(chatPopoutClose, () => setChatPopoutOpen(false));
+bindPressAction(onlineChatSend, () => sendFreeChat(onlineChatInput?.value));
+bindPressAction(chatPopoutSend, () => sendFreeChat(chatPopoutInput?.value));
+bindPressAction(onlineAddFriend, () => {
+  const username = sanitizeRemoteUsername(onlineFriendName?.value || "");
+  if (!username) return;
+  sendOnlineMessage({ type: "friend.request", username });
+  if (onlineFriendName) onlineFriendName.value = "";
+});
+bindPressAction(feedbackClose, () => closeFeedbackModal());
+bindPressAction(feedbackCancel, () => closeFeedbackModal());
+bindPressAction(feedbackSubmit, () => submitFeedback());
+
+[onlineChatInput, chatPopoutInput].forEach((inputNode) => {
+  inputNode?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") sendFreeChat(inputNode.value);
+  });
+});
+
+feedbackAge13?.addEventListener("change", () => {
+  if (feedbackEmail) {
+    feedbackEmail.disabled = !feedbackAge13.checked;
+    if (!feedbackAge13.checked) feedbackEmail.value = "";
+  }
+});
+
+onlineBackendUrlInput?.addEventListener("change", () => {
+  onlineState.backendUrl = normalizeOnlineBackendUrl(
+    onlineBackendUrlInput.value,
+  );
+  saveOnlineConfig();
+  updateOnlineUi();
 });
 
 bindPressAction(garageZoomIn, () => {
@@ -13727,6 +14602,13 @@ window.render_game_to_text = () => {
       activeLoadoutId: garageState.activeLoadoutId,
       activeLoadoutIndex: getActiveLoadoutIndex(),
       activeClass: getClassSummary().id,
+      unlockRule: "xp-level",
+      xpLevel: getGarageProgressLevel(),
+      lockedCount: getLockedGarageOptionCount(),
+      nextUnlock: (() => {
+        const next = getNextGarageUnlock();
+        return next ? { name: next.option.name, level: next.level } : null;
+      })(),
       preview: {
         ready: garageState.preview.ready,
         yaw: Number(garageState.preview.yaw.toFixed(3)),
@@ -13897,8 +14779,60 @@ window.render_game_to_text = () => {
       rewardLog: state.progressionV2.rewardLog.slice(-6),
     },
     online: {
-      status: "offline-static",
-      note: "Static client is playable offline; live rooms require the backend/Cloudflare phase.",
+      status: onlineState.status,
+      configured: Boolean(onlineState.backendUrl),
+      backendUrl: onlineState.backendUrl,
+      feedbackConfigured: Boolean(
+        onlineState.feedbackUrl || deriveFeedbackUrl(onlineState.backendUrl),
+      ),
+      feedbackStatus: onlineState.lastFeedbackStatus,
+      feedback: {
+        popupVisible: Boolean(feedbackModal?.classList.contains("show")),
+        submitStatus: onlineState.lastFeedbackStatus,
+        lastError: onlineState.lastFeedbackError,
+      },
+      authenticated: Boolean(onlineState.user),
+      username: onlineState.user?.username || onlineState.username,
+      ageGate: {
+        age: onlineState.age,
+        freeChat13Plus: canUseOnlineFreeChat(),
+        under13QuickChatOnly: !canUseOnlineFreeChat(),
+      },
+      chat: {
+        popoutOpen: onlineState.chatOpen,
+        quickChatAvailable: true,
+        freeChatAvailable: canUseOnlineFreeChat(),
+        messageCount: onlineState.chatMessages.length,
+        lastMessage: onlineState.chatMessages.at(-1) ?? null,
+      },
+      queue: onlineState.queue
+        ? {
+            playlist: onlineState.queue.playlist,
+            teamSize: onlineState.queue.teamSize,
+            botFill: onlineState.queue.botFill,
+          }
+        : null,
+      room: onlineState.room
+        ? {
+            id: onlineState.room.id,
+            code: onlineState.room.code,
+            playlist: onlineState.room.playlist,
+            size: onlineState.room.size,
+            players: onlineState.room.players?.length ?? 0,
+            bots: onlineState.room.bots ?? 0,
+          }
+        : null,
+      leaderboard: onlineState.leaderboard.slice(0, 5),
+      friends: onlineState.friends,
+      recentPlayers: onlineState.recentPlayers.slice(0, 8),
+      reconnect: {
+        attempts: onlineState.reconnectAttempts,
+        pendingMessages: onlineState.pending.length,
+      },
+      lastError: onlineState.lastError,
+      note: onlineState.backendUrl
+        ? "Static client keeps offline play stable and uses configured backend for online rooms."
+        : "Static client is playable offline; live rooms require a configured backend URL.",
     },
   };
   return JSON.stringify(payload);
@@ -14068,8 +15002,48 @@ window.__infernodriftTestApi = {
     refreshGamesUi();
     return structuredClone(state.progressionV2);
   },
+  configureOnlineForTest: ({
+    backendUrl = "",
+    username = "SmokeHost",
+    age = 13,
+  } = {}) => {
+    onlineState.backendUrl = normalizeOnlineBackendUrl(backendUrl);
+    onlineState.username = sanitizeRemoteUsername(username);
+    onlineState.age = Number.isFinite(Number(age)) ? Number(age) : null;
+    if (onlineBackendUrlInput)
+      onlineBackendUrlInput.value = onlineState.backendUrl;
+    if (onlineUsernameInput) onlineUsernameInput.value = onlineState.username;
+    if (onlineAgeInput)
+      onlineAgeInput.value =
+        onlineState.age === null ? "" : String(onlineState.age);
+    saveOnlineConfig();
+    updateOnlineUi();
+    return {
+      backendUrl: onlineState.backendUrl,
+      username: onlineState.username,
+      age: onlineState.age,
+    };
+  },
+  getOnlineState: () => ({
+    status: onlineState.status,
+    configured: Boolean(onlineState.backendUrl),
+    authenticated: Boolean(onlineState.user),
+    username: onlineState.user?.username || onlineState.username,
+    age: onlineState.age,
+    freeChat13Plus: canUseOnlineFreeChat(),
+    room: onlineState.room,
+    queue: onlineState.queue,
+    chatMessages: onlineState.chatMessages,
+    leaderboard: onlineState.leaderboard,
+    friends: onlineState.friends,
+    recentPlayers: onlineState.recentPlayers,
+    chatOpen: onlineState.chatOpen,
+    feedbackStatus: onlineState.lastFeedbackStatus,
+    lastError: onlineState.lastError,
+  }),
 };
 
+loadOnlineConfig();
 loadPersistentState();
 if (!MAX_DIFFICULTY_PROFILES[settings.maxDifficulty])
   settings.maxDifficulty = MAX_DIFFICULTY_CLASSIC;
@@ -14089,6 +15063,7 @@ refreshDevModeUi();
 refreshGamesUi();
 renderControlsUi();
 renderProgressPanel();
+updateOnlineUi();
 applyPlayerCustomization({ progress: getProgressSnapshot() });
 resetLevel();
 updateHud();

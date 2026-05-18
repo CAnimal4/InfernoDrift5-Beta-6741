@@ -112,6 +112,78 @@ assert.ok(leftProbe.right < 0);
 assert.ok(leftProbe.screenX < 0.5);
 
 await openMenu(page);
+await page.locator('[data-tab="online"]').click({ force: true });
+await page.waitForTimeout(150);
+assert.match(
+  (await page.locator("#online-status").textContent()) ?? "",
+  /offline|backend/i,
+);
+await page.locator("#online-username").fill("SmokeRacer");
+await page.locator("#online-age").fill("12");
+await page.locator("#online-claim").click({ force: true });
+await page.waitForTimeout(120);
+let onlineUiState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
+assert.equal(onlineUiState.ui.tab, "online");
+assert.equal(onlineUiState.online.username, "SmokeRacer");
+assert.equal(onlineUiState.online.ageGate.under13QuickChatOnly, true);
+assert.equal(await page.locator("#online-chat-input").isDisabled(), true);
+await page.keyboard.press("c");
+await page.waitForTimeout(180);
+onlineUiState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
+assert.equal(onlineUiState.online.chat.popoutOpen, true);
+assert.equal(await page.locator("#chat-popout").isVisible(), true);
+await page.locator("#menu-feedback").click({ force: true });
+await page.waitForTimeout(150);
+assert.equal(
+  await page
+    .locator("#feedback-modal")
+    .evaluate((el) => el.classList.contains("show")),
+  true,
+);
+await page.locator("#feedback-message").fill("Smoke feedback message");
+await page.locator("#feedback-submit").click({ force: true });
+await page.waitForTimeout(180);
+assert.equal(
+  await page.locator("#menu").evaluate((el) => el.classList.contains("show")),
+  false,
+);
+assert.match(
+  (await page.locator("#feedback-status").textContent()) ?? "",
+  /not configured|not saved|feedback/i,
+);
+await page.screenshot({
+  path: "output/playwright/phase4-online-feedback.png",
+  fullPage: false,
+  timeout: 30000,
+});
+await page.locator("#feedback-close").click({ force: true });
+await page.waitForTimeout(120);
+assert.equal(
+  await page.locator("#menu").evaluate((el) => el.classList.contains("show")),
+  true,
+);
+assert.equal(
+  await page
+    .locator("#feedback-modal")
+    .evaluate((el) => el.classList.contains("show")),
+  false,
+);
+await page.locator("#menu-resume").click({ force: true });
+await page.waitForTimeout(120);
+await page.keyboard.press("c");
+await page.waitForTimeout(180);
+assert.equal(await page.locator("#chat-popout").isVisible(), true);
+assert.equal(
+  await page.locator("#menu").evaluate((el) => el.classList.contains("show")),
+  false,
+);
+await page.locator("#chat-popout-close").click({ force: true });
+
+await openMenu(page);
 await page.locator('[data-tab="settings"]').click({ force: true });
 await page.locator("#dev-mode-toggle").click({ force: true });
 await page.waitForTimeout(300);
@@ -250,7 +322,8 @@ for (const modeId of requiredModes) {
     await page.screenshot({
       path: `output/playwright/phase3-${modeId}.png`,
       fullPage: false,
-      timeout: 30000,
+      animations: "disabled",
+      timeout: 8000,
     });
   }
   const helpState = await page.evaluate(() =>
@@ -360,6 +433,16 @@ const phase3Progress = await page.evaluate(() =>
   window.__infernodriftTestApi.getProgressionSnapshot(),
 );
 assert.ok(phase3Progress.xp > 0);
+
+const garageUnlockState = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetLocalProgressionForTest();
+  window.__infernodriftTestApi.openMenuTab("customize");
+  return JSON.parse(window.render_game_to_text()).garage;
+});
+assert.equal(garageUnlockState.unlockRule, "xp-level");
+assert.equal(garageUnlockState.xpLevel, 1);
+assert.ok(garageUnlockState.lockedCount > 0);
+assert.ok(garageUnlockState.nextUnlock.level >= 2);
 assert.ok(phase3Progress.personalBests.race);
 await page.waitForTimeout(1500);
 await page.screenshot({

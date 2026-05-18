@@ -45,6 +45,10 @@ test("shared protocol gates free chat at 13 plus and keeps quick chat available"
     parseClientMessage({ type: "quick.send", text: "Nice drift!" }).ok,
     true,
   );
+  assert.equal(
+    parseClientMessage({ type: "quick.send", text: "Again?" }).ok,
+    true,
+  );
 });
 
 test("username normalization blocks unsafe names without granting Clark admin semantics", () => {
@@ -52,4 +56,42 @@ test("username normalization blocks unsafe names without granting Clark admin se
   assert.equal(isClarkFounder("Clark"), true);
   assert.equal(isClarkFounder("clark"), false);
   assert.equal(normalizeUsername("h3il hitler"), "");
+});
+
+test("shared protocol covers phase 4 backend messages and rejects fake results", () => {
+  assert.equal(
+    parseClientMessage({
+      type: "save.sync",
+      schemaVersion: 1,
+      payload: { xp: 25, garage: { paint: "#ff4a1f" } },
+    }).ok,
+    true,
+  );
+  assert.equal(
+    parseClientMessage({
+      type: "feedback.submit",
+      feedbackType: "bug",
+      message: "The arena replay camera clipped through a wall.",
+      replyEmail: "",
+      diagnostics: { mode: "max-arena" },
+    }).ok,
+    true,
+  );
+  assert.equal(
+    parseClientMessage({
+      type: "reconnect",
+      sessionToken: "12345678",
+    }).ok,
+    true,
+  );
+  const fakeResult = parseClientMessage({
+    type: "results.commit",
+    mode: "campaign-survival",
+    runId: "local",
+    stats: { score: 999999, win: true },
+  });
+  assert.equal(fakeResult.ok, false);
+  if (!fakeResult.ok) {
+    assert.equal(fakeResult.error, "authoritative_rejected");
+  }
 });

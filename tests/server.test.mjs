@@ -9,6 +9,32 @@ import {
   validateClientMessage,
 } from "../apps/server/src/index.js";
 
+function waitForMessage(messages, predicate, timeoutMs = 800) {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const found = messages.find(predicate);
+      if (found) {
+        clearInterval(timer);
+        resolve(found);
+      } else if (Date.now() - started > timeoutMs) {
+        clearInterval(timer);
+        reject(new Error("timed out waiting for websocket message"));
+      }
+    }, 10);
+  });
+}
+
+async function makeWsClient(port) {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}`, {
+    origin: "http://127.0.0.1:5173",
+  });
+  const messages = [];
+  ws.on("message", (data) => messages.push(JSON.parse(data)));
+  await new Promise((resolve) => ws.once("open", resolve));
+  return { ws, messages };
+}
+
 test("protocol accepts known messages and rejects unknown messages", () => {
   assert.equal(
     validateClientMessage(
@@ -65,6 +91,38 @@ test("protocol accepts known messages and rejects unknown messages", () => {
       JSON.stringify({ type: "input.frame", speed: 100, score: 100000 }),
     ).error,
     "authoritative_rejected",
+  );
+  assert.equal(
+    validateClientMessage(
+      JSON.stringify({
+        type: "results.commit",
+        mode: "campaign-survival",
+        runId: "local-run",
+        stats: { score: 999999, win: true },
+      }),
+    ).error,
+    "authoritative_rejected",
+  );
+  assert.equal(
+    validateClientMessage(
+      JSON.stringify({
+        type: "save.sync",
+        schemaVersion: 1,
+        payload: { xp: 120, medals: { casual: "bronze" } },
+      }),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    validateClientMessage(
+      JSON.stringify({
+        type: "feedback.submit",
+        feedbackType: "bug",
+        message: "The jump replay clipped through the arena wall.",
+        replyEmail: "driver@example.com",
+      }),
+    ).ok,
+    true,
   );
   assert.equal(
     validateClientMessage(JSON.stringify({ type: "room.create", size: 5 }))
@@ -283,4 +341,222 @@ test("websocket backend supports queue, age gate, quick chat, leaderboard, and s
   );
   ws.terminate();
   await app.close();
+});
+
+test("websocket backend persists sessions, claims, saves, friends, reports, feedback, and authoritative leaderboards", async (t) => {
+  const dataDir = path.join(os.tmpdir(), `id4-phase4-${Date.now()}`);
+  const app = createInfernoServer({
+    port: 0,
+    dataDir,
+    allowedOrigins: "http://127.0.0.1:5173",
+    clarkReservationToken: "founder-token",
+  });
+  const server = await app.listen();
+  t.after(async () => {
+    await app.close();
+  });
+  const port = server.address().port;
+  const a = await makeWsClient(port);
+  const b = await makeWsClient(port);
+
+  a.ws.send(JSON.stringify({ type: "auth.guest", username: "Alpha", age: 13 }));
+  b.ws.send(JSON.stringify({ type: "auth.guest", username: "Bravo", age: 13 }));
+  const authA = await waitForMessage(
+    a.messages,
+    (msg) => msg.type === "auth.ok",
+  );
+  await waitForMessage(b.messages, (msg) => msg.type === "auth.ok");
+
+  a.ws.send(
+    JSON.stringify({ type: "profile.claimUsername", username: "RacerOne" }),
+  );
+  await waitForMessage(
+    a.messages,
+    (msg) =>
+      msg.type === "profile.usernameClaimed" && msg.username === "RacerOne",
+  );
+  b.ws.send(
+    JSON.stringify({ type: "profile.claimUsername", username: "RacerOne" }),
+  );
+  await waitForMessage(
+    b.messages,
+    (msg) => msg.type === "error" && msg.error === "username_taken",
+  );
+  b.ws.send(
+    JSON.stringify({ type: "profile.claimUsername", username: "Clark" }),
+  );
+  await waitForMessage(
+    b.messages,
+    (msg) => msg.type === "error" && msg.error === "username_reserved",
+  );
+  b.ws.send(
+    JSON.stringify({
+      type: "profile.claimUsername",
+      username: "Clark",
+      turnstileToken: "founder-token",
+    }),
+  );
+  await waitForMessage(
+    b.messages,
+    (msg) => msg.type === "profile.usernameClaimed" && msg.username === "Clark",
+  );
+
+  a.ws.send(
+    JSON.stringify({
+      type: "save.sync",
+      schemaVersion: 1,
+      payload: { xp: 450, medals: { "campaign-survival": "gold" } },
+    }),
+  );
+  const saved = await waitForMessage(
+    a.messages,
+    (msg) => msg.type === "save.synced",
+  );
+  assert.equal(saved.payload.xp, 450);
+
+  b.ws.send(JSON.stringify({ type: "friend.request", username: "RacerOne" }));
+  const request = await waitForMessage(
+    b.messages,
+    (msg) => msg.type === "friend.requested" && msg.username === "RacerOne",
+  );
+  await waitForMessage(
+    a.messages,
+    (msg) =>
+      msg.type === "friends.snapshot" &&
+      msg.incomingRequests?.some(
+        (incoming) => incoming.id === request.requestId,
+      ),
+  );
+  a.ws.send(
+    JSON.stringify({ type: "friend.accept", requestId: request.requestId }),
+  );
+  await waitForMessage(
+    a.messages,
+    (msg) => msg.type === "friend.accepted" && msg.username === "Clark",
+  );
+  await waitForMessage(
+    b.messages,
+    (msg) =>
+      msg.type === "friends.snapshot" &&
+      msg.friends?.some((friend) => friend.username === "RacerOne"),
+  );
+
+  a.ws.send(
+    JSON.stringify({
+      type: "friend.report",
+      username: "Clark",
+      reason: "Repeated bumping after the race ended",
+    }),
+  );
+  const report = await waitForMessage(
+    a.messages,
+    (msg) => msg.type === "friend.reported",
+  );
+  assert.equal(report.username, "Clark");
+  b.ws.send(JSON.stringify({ type: "friend.block", username: "RacerOne" }));
+  await waitForMessage(
+    b.messages,
+    (msg) => msg.type === "friend.blocked" && msg.username === "RacerOne",
+  );
+
+  a.ws.send(
+    JSON.stringify({
+      type: "feedback.submit",
+      feedbackType: "bug",
+      message: "Please store this backend feedback locally for review.",
+      replyEmail: "",
+      diagnostics: { mode: "max-arena" },
+    }),
+  );
+  await waitForMessage(
+    a.messages,
+    (msg) => msg.type === "feedback.received" && msg.delivery === "stored",
+  );
+
+  a.ws.send(
+    JSON.stringify({
+      type: "results.commit",
+      mode: "campaign-survival",
+      runId: "fake-win",
+      stats: { score: 999999, win: true, rating: 9000 },
+    }),
+  );
+  await waitForMessage(
+    a.messages,
+    (msg) => msg.type === "error" && msg.error === "authoritative_rejected",
+  );
+  a.ws.send(JSON.stringify({ type: "leaderboard.get", playlist: "ranked" }));
+  const leaderboard = await waitForMessage(
+    a.messages,
+    (msg) => msg.type === "leaderboard.snapshot",
+  );
+  assert.ok(leaderboard.leaderboard.every((row) => row.source === "server"));
+  assert.equal(
+    leaderboard.leaderboard.some((row) => row.rating === 9000),
+    false,
+  );
+
+  const reconnect = await makeWsClient(port);
+  reconnect.ws.send(
+    JSON.stringify({
+      type: "reconnect",
+      sessionToken: authA.sessionToken,
+    }),
+  );
+  const restored = await waitForMessage(
+    reconnect.messages,
+    (msg) => msg.type === "reconnect.ok",
+  );
+  assert.equal(restored.user.username, "RacerOne");
+  assert.equal(restored.save.payload.xp, 450);
+
+  assert.equal(app.db.data.feedback.length, 1);
+  assert.equal(app.db.data.reports.length, 1);
+  assert.equal(
+    Object.keys(app.db.data.usernameClaims).sort().join(","),
+    "clark,racerone",
+  );
+
+  a.ws.terminate();
+  b.ws.terminate();
+  reconnect.ws.terminate();
+});
+
+test("http feedback endpoint stores sanitized submissions and keeps reply email 13 plus only", async (t) => {
+  const app = createInfernoServer({
+    port: 0,
+    dataDir: path.join(os.tmpdir(), `id4-feedback-${Date.now()}`),
+    allowedOrigins: "http://127.0.0.1:5173",
+  });
+  const server = await app.listen();
+  t.after(async () => {
+    await app.close();
+  });
+  const port = server.address().port;
+
+  const response = await fetch(`http://127.0.0.1:${port}/api/feedback`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "http://127.0.0.1:5173",
+    },
+    body: JSON.stringify({
+      feedbackType: "fix",
+      message: "<b>The bowling reset is shit after a spare.</b>",
+      age13OrOlder: false,
+      replyEmail: "driver@example.com",
+      diagnostics: { mode: "boost-bowling" },
+    }),
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.delivery, "stored");
+  assert.equal(app.db.data.feedback.length, 1);
+  assert.equal(app.db.data.feedback[0].feedbackType, "fix");
+  assert.equal(
+    app.db.data.feedback[0].message,
+    "The bowling reset is boost after a spare.",
+  );
+  assert.equal(app.db.data.feedback[0].replyEmail, "");
 });

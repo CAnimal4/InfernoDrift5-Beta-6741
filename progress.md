@@ -112,3 +112,11 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Made Hunter Tag easier by reducing bot stickiness, adding longer tag-back cooldown, and exposing clearer `YOU'RE IT` / `EVADING` HUD state.
 - Rebuilt Race/Time Trial starts around a cleaner winding bounded track, removed hunter roles from those modes, kept Race rivals as bumping racers only, and kept Time Trial solo with ghost samples.
 - Extended Max Arena replay timing/goal explosion visibility and removed the Boost Bowling pin veil/ring marker while preserving pin animation.
+
+2026-05-17 Phase 4 client online/feedback UI pass:
+
+- Added a first-class Online tab to the root static InfernoDrift4 menu and replaced the menu header Close button with a Feedback button.
+- Added client-side backend URL config, guest username/age claim, private room create/join, queue controls, quick chat, 13+ free-chat gating, C-key chat popout, leaderboard/friends/recent rendering, remote nametag snapshots from room/match snapshots, reconnect/offline state, and richer `render_game_to_text().online` fields.
+- Added a Feedback popup that collects type, message, optional diagnostics, and optional 13+ reply email, then submits to the configured `/api/feedback` endpoint or reports not-configured / not-saved errors truthfully.
+- Added matching local and Cloudflare Worker backend support for feedback storage; email delivery remains Resend-secret gated.
+- Changed Garage unlocks to use XP level progression from any mode instead of campaign world completion, with Progress/Garage copy and smoke state exposing the XP-level unlock rule.

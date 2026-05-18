@@ -61,6 +61,7 @@ const PII_PATTERNS = [
 const ALLOWED_TYPES = new Set([
   "ping",
   "auth.guest",
+  "profile.claimUsername",
   "room.create",
   "room.join",
   "room.leave",
@@ -69,15 +70,24 @@ const ALLOWED_TYPES = new Set([
   "chat.send",
   "quick.send",
   "input.frame",
+  "results.commit",
   "leaderboard.get",
   "friend.request",
+  "friend.accept",
+  "friend.block",
+  "friend.report",
   "friend.list",
+  "save.sync",
+  "feedback.submit",
+  "reconnect",
 ]);
 
 const ALLOWED_PLAYLISTS = new Set(["casual", "ranked", "private", "bot"]);
 const ALLOWED_CHAT_CHANNELS = new Set(["lobby", "friend"]);
+const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const PRIVATE_CODE_PATTERN = /^[A-Z0-9]{4,10}$/i;
 const SAFE_ID_PATTERN = /^[a-z0-9_-]{1,32}$/i;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
 function hasOwn(object, key) {
   return Object.prototype.hasOwnProperty.call(object, key);
@@ -293,6 +303,17 @@ function validateInputFrame(data) {
   return "";
 }
 
+function validateSafePayload(data, maxKeys = 80) {
+  if (!isPlainObject(data)) return false;
+  const keys = Object.keys(data);
+  if (keys.length > maxKeys) return false;
+  try {
+    return encodedByteLength(JSON.stringify(data)) <= 20000;
+  } catch {
+    return false;
+  }
+}
+
 export function sanitizeChat(input) {
   const raw = String(input ?? "")
     .replace(/<[^>]*>/g, "")
@@ -366,7 +387,14 @@ export function validateClientMessage(raw) {
     }
   }
   if (data.type === "auth.guest") {
-    const keys = new Set(["type", "version", "username", "age", "deviceId"]);
+    const keys = new Set([
+      "type",
+      "version",
+      "username",
+      "age",
+      "deviceId",
+      "sessionToken",
+    ]);
     if (
       !onlyKeys(data, keys) ||
       (data.version !== undefined && data.version !== PROTOCOL_VERSION) ||
@@ -375,7 +403,24 @@ export function validateClientMessage(raw) {
       data.username.length > 24 ||
       (hasOwn(data, "age") && !isIntegerInRange(Number(data.age), 0, 120)) ||
       (hasOwn(data, "deviceId") &&
-        (typeof data.deviceId !== "string" || data.deviceId.length > 96))
+        (typeof data.deviceId !== "string" || data.deviceId.length > 96)) ||
+      (hasOwn(data, "sessionToken") &&
+        (typeof data.sessionToken !== "string" ||
+          data.sessionToken.length > 128))
+    ) {
+      error = "invalid_protocol";
+    }
+  }
+  if (data.type === "profile.claimUsername") {
+    const keys = new Set(["type", "username", "turnstileToken"]);
+    if (
+      !onlyKeys(data, keys) ||
+      typeof data.username !== "string" ||
+      data.username.trim().length < 1 ||
+      data.username.length > 24 ||
+      (hasOwn(data, "turnstileToken") &&
+        (typeof data.turnstileToken !== "string" ||
+          data.turnstileToken.length > 2048))
     ) {
       error = "invalid_protocol";
     }
@@ -421,6 +466,9 @@ export function validateClientMessage(raw) {
   if (data.type === "input.frame") {
     error = validateInputFrame(data);
   }
+  if (data.type === "results.commit") {
+    error = "authoritative_rejected";
+  }
   if (data.type === "leaderboard.get") {
     const keys = new Set(["type", "playlist"]);
     if (
@@ -441,8 +489,98 @@ export function validateClientMessage(raw) {
       error = "invalid_protocol";
     }
   }
+  if (data.type === "friend.accept") {
+    const keys = new Set(["type", "requestId"]);
+    if (
+      !onlyKeys(data, keys) ||
+      typeof data.requestId !== "string" ||
+      data.requestId.length < 1 ||
+      data.requestId.length > 80
+    ) {
+      error = "invalid_protocol";
+    }
+  }
+  if (data.type === "friend.block") {
+    const keys = new Set(["type", "username"]);
+    if (
+      !onlyKeys(data, keys) ||
+      typeof data.username !== "string" ||
+      data.username.trim().length < 1 ||
+      data.username.length > 24
+    ) {
+      error = "invalid_protocol";
+    }
+  }
+  if (data.type === "friend.report") {
+    const keys = new Set(["type", "username", "reason"]);
+    if (
+      !onlyKeys(data, keys) ||
+      typeof data.username !== "string" ||
+      data.username.trim().length < 1 ||
+      data.username.length > 24 ||
+      typeof data.reason !== "string" ||
+      data.reason.trim().length < 3 ||
+      data.reason.length > 180
+    ) {
+      error = "invalid_protocol";
+    }
+  }
   if (data.type === "friend.list") {
     if (!onlyKeys(data, new Set(["type"]))) error = "invalid_protocol";
+  }
+  if (data.type === "save.sync") {
+    const keys = new Set(["type", "schemaVersion", "payload"]);
+    if (
+      !onlyKeys(data, keys) ||
+      !isIntegerInRange(Number(data.schemaVersion), 1, 20) ||
+      !validateSafePayload(data.payload, 80)
+    ) {
+      error = "invalid_protocol";
+    }
+  }
+  if (data.type === "feedback.submit") {
+    const keys = new Set([
+      "type",
+      "feedbackType",
+      "message",
+      "replyEmail",
+      "diagnostics",
+      "turnstileToken",
+    ]);
+    if (
+      !onlyKeys(data, keys) ||
+      typeof data.feedbackType !== "string" ||
+      !ALLOWED_FEEDBACK_TYPES.has(data.feedbackType) ||
+      typeof data.message !== "string" ||
+      data.message.trim().length < 8 ||
+      data.message.length > 2000 ||
+      (hasOwn(data, "replyEmail") &&
+        data.replyEmail !== "" &&
+        (typeof data.replyEmail !== "string" ||
+          data.replyEmail.length > 120 ||
+          !EMAIL_PATTERN.test(data.replyEmail))) ||
+      (hasOwn(data, "diagnostics") &&
+        !validateSafePayload(data.diagnostics, 50)) ||
+      (hasOwn(data, "turnstileToken") &&
+        (typeof data.turnstileToken !== "string" ||
+          data.turnstileToken.length > 2048))
+    ) {
+      error = "invalid_protocol";
+    }
+  }
+  if (data.type === "reconnect") {
+    const keys = new Set(["type", "sessionToken", "roomCode"]);
+    if (
+      !onlyKeys(data, keys) ||
+      typeof data.sessionToken !== "string" ||
+      data.sessionToken.length < 8 ||
+      data.sessionToken.length > 128 ||
+      (hasOwn(data, "roomCode") &&
+        (typeof data.roomCode !== "string" ||
+          !PRIVATE_CODE_PATTERN.test(data.roomCode)))
+    ) {
+      error = "invalid_protocol";
+    }
   }
   if (error) return { ok: false, error };
   return { ok: true, data };

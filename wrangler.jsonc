@@ -6,6 +6,18 @@
   "observability": {
     "enabled": true,
   },
+  "vars": {
+    "FEEDBACK_FROM": "InfernoDrift4 <feedback@infernodrift.local>",
+    "FEEDBACK_TO": "clarkbythebay@gmail.com,clark.alden@lbusd.org",
+  },
+  "d1_databases": [
+    {
+      "binding": "INFERNO_DB",
+      "database_name": "infernodrift4",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
   "durable_objects": {
     "bindings": [
       {

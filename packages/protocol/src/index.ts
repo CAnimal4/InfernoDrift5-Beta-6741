@@ -1,12 +1,15 @@
 import { z } from "zod";
 
 export const PROTOCOL_VERSION = 1;
+export const MESSAGE_LIMIT_BYTES = 2048;
 
 export const QUICK_CHAT = [
   "Nice drift!",
   "Defending",
   "Need boost",
   "Passing left",
+  "Good run!",
+  "Again?",
   "One more run",
   "Good save",
 ] as const;
@@ -152,6 +155,17 @@ export const teamSizeSchema = z.union([
   z.literal(2),
   z.literal(3),
 ]);
+export const feedbackTypeSchema = z.enum(["bug", "feature", "fix", "other"]);
+export const safePayloadSchema = z.record(z.string(), z.unknown()).refine(
+  (payload) => {
+    try {
+      return JSON.stringify(payload).length <= 20000;
+    } catch {
+      return false;
+    }
+  },
+  { message: "payload_too_large" },
+);
 
 export const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({
@@ -160,10 +174,12 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
     username: z.string().min(1).max(24),
     age: z.number().int().min(0).max(120).optional(),
     deviceId: z.string().max(96).optional(),
+    sessionToken: z.string().min(8).max(128).optional(),
   }),
   z.object({
     type: z.literal("profile.claimUsername"),
     username: z.string().min(1).max(24),
+    turnstileToken: z.string().max(2048).optional(),
   }),
   z.object({
     type: z.literal("room.create"),
@@ -207,6 +223,7 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
     username: z.string().min(1).max(24),
     reason: z.string().min(3).max(180),
   }),
+  z.object({ type: z.literal("friend.list") }),
   z.object({
     type: z.literal("input.frame"),
     seq: z.number().int().nonnegative(),
@@ -220,9 +237,15 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
       .object({
         x: z.number().min(-1000).max(1000),
         z: z.number().min(-1000).max(1000),
-        speed: z.number().min(-260).max(320),
+        speed: z.number().min(-420).max(420),
       })
       .optional(),
+  }),
+  z.object({
+    type: z.literal("results.commit"),
+    mode: z.string().min(1).max(32).optional(),
+    runId: z.string().min(1).max(80).optional(),
+    stats: safePayloadSchema.optional(),
   }),
   z.object({
     type: z.literal("leaderboard.get"),
@@ -231,7 +254,20 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("save.sync"),
     schemaVersion: z.number().int().min(1).max(20),
-    payload: z.record(z.string(), z.unknown()),
+    payload: safePayloadSchema,
+  }),
+  z.object({
+    type: z.literal("feedback.submit"),
+    feedbackType: feedbackTypeSchema,
+    message: z.string().min(8).max(2000),
+    replyEmail: z.string().max(120).email().or(z.literal("")).optional(),
+    diagnostics: safePayloadSchema.optional(),
+    turnstileToken: z.string().max(2048).optional(),
+  }),
+  z.object({
+    type: z.literal("reconnect"),
+    sessionToken: z.string().min(8).max(128),
+    roomCode: z.string().min(4).max(10).optional(),
   }),
   z.object({ type: z.literal("ping"), t: z.number() }),
 ]);
@@ -249,6 +285,9 @@ export function parseClientMessage(
     const age = source.age === undefined ? undefined : Number(source.age);
     if (!canUseFreeChat(age))
       return { ok: false, error: "chat_requires_13_plus" };
+  }
+  if (result.data.type === "results.commit") {
+    return { ok: false, error: "authoritative_rejected" };
   }
   return { ok: true, message: result.data };
 }

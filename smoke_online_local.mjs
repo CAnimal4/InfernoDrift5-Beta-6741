@@ -99,6 +99,21 @@ try {
   const leaderboard = await host.waitFor("leaderboard.snapshot");
   assert.ok(leaderboard.leaderboard.length >= 1);
 
+  const feedbackResponse = await fetch(deriveFeedbackUrl(serverUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      feedbackType: "bug",
+      message: "Online smoke feedback storage check.",
+      age13OrOlder: false,
+      diagnostics: { smoke: "online-local" },
+    }),
+  });
+  const feedback = await feedbackResponse.json();
+  assert.equal(feedbackResponse.status, 200);
+  assert.equal(feedback.ok, true);
+  assert.match(feedback.feedbackId, /.+/);
+
   host.close();
   guest.close();
   child.close();
@@ -113,6 +128,7 @@ try {
         sanitizedChat: chat.text,
         childChatGate: gated.error,
         leaderboardRows: leaderboard.leaderboard.length,
+        feedbackDelivery: feedback.delivery,
       },
       null,
       2,
@@ -120,6 +136,15 @@ try {
   );
 } finally {
   await app?.close();
+}
+
+function deriveFeedbackUrl(wsUrl) {
+  const url = new URL(wsUrl);
+  url.protocol = url.protocol === "wss:" ? "https:" : "http:";
+  url.pathname = "/api/feedback";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
 }
 
 function connectClient(url) {
