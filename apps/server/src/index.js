@@ -113,6 +113,16 @@ const BOT_NAMES = [
 const BAN_DURATION_MS = 24 * 60 * 60 * 1000;
 const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const PLACEHOLDER_SECRET_VALUES = new Set([
+  "",
+  "not-configured",
+  "not_configured",
+  "not configured",
+  "disabled",
+  "replace-me",
+  "replace_me",
+  "placeholder",
+]);
 
 function nowIso() {
   return new Date().toISOString();
@@ -359,19 +369,44 @@ function extractSaveXp(payload = {}) {
   );
 }
 
+function usableSecret(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "";
+  return PLACEHOLDER_SECRET_VALUES.has(normalized.toLowerCase())
+    ? ""
+    : normalized;
+}
+
+function hasResendConfig(options = {}) {
+  return Boolean(
+    usableSecret(options.resendApiKey ?? process.env.RESEND_API_KEY) &&
+      usableSecret(
+        options.feedbackTo ??
+          options.feedbackEmailTo ??
+          process.env.FEEDBACK_TO ??
+          process.env.FEEDBACK_EMAIL_TO,
+      ),
+  );
+}
+
 async function deliverFeedback(row, options) {
-  const apiKey = options.resendApiKey ?? process.env.RESEND_API_KEY;
-  const to =
+  const apiKey = usableSecret(
+    options.resendApiKey ?? process.env.RESEND_API_KEY,
+  );
+  const to = usableSecret(
     options.feedbackTo ??
-    options.feedbackEmailTo ??
-    process.env.FEEDBACK_TO ??
-    process.env.FEEDBACK_EMAIL_TO;
+      options.feedbackEmailTo ??
+      process.env.FEEDBACK_TO ??
+      process.env.FEEDBACK_EMAIL_TO,
+  );
   if (!apiKey || !to || typeof fetch !== "function") return "stored";
   const from =
-    options.feedbackFrom ??
-    options.feedbackEmailFrom ??
-    process.env.FEEDBACK_FROM ??
-    process.env.FEEDBACK_EMAIL_FROM ??
+    usableSecret(
+      options.feedbackFrom ??
+        options.feedbackEmailFrom ??
+        process.env.FEEDBACK_FROM ??
+        process.env.FEEDBACK_EMAIL_FROM,
+    ) ||
     "InfernoDrift4 <feedback@infernodrift.local>";
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -464,7 +499,9 @@ export function createInfernoServer(options = {}) {
     .map((origin) => origin.trim())
     .filter(Boolean);
   const clarkReservationToken =
-    options.clarkReservationToken ?? process.env.CLARK_RESERVATION_TOKEN ?? "";
+    usableSecret(
+      options.clarkReservationToken ?? process.env.CLARK_RESERVATION_TOKEN,
+    );
   const db = loadDb(dataDir);
   const rooms = new Map();
   const clients = new Map();
@@ -530,10 +567,7 @@ export function createInfernoServer(options = {}) {
         clients: clients.size,
         persistence: "local-json",
         optionalBindings: {
-          resend: Boolean(
-            process.env.RESEND_API_KEY &&
-            (process.env.FEEDBACK_TO || process.env.FEEDBACK_EMAIL_TO),
-          ),
+          resend: hasResendConfig(options),
         },
       });
       return;

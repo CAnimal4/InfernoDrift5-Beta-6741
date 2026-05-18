@@ -163,6 +163,16 @@ const BOT_NAMES = [
 const BAN_DURATION_MS = 24 * 60 * 60 * 1000;
 const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const PLACEHOLDER_SECRET_VALUES = new Set([
+  "",
+  "not-configured",
+  "not_configured",
+  "not configured",
+  "disabled",
+  "replace-me",
+  "replace_me",
+  "placeholder",
+]);
 
 function emptyData() {
   return {
@@ -338,13 +348,27 @@ function publicUser(user) {
   };
 }
 
+function usableSecret(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "";
+  return PLACEHOLDER_SECRET_VALUES.has(normalized.toLowerCase())
+    ? ""
+    : normalized;
+}
+
+function hasResendConfig(env) {
+  return Boolean(
+    usableSecret(env.RESEND_API_KEY) &&
+      usableSecret(env.FEEDBACK_TO ?? env.FEEDBACK_EMAIL_TO),
+  );
+}
+
 async function deliverFeedback(row, env) {
-  const apiKey = env.RESEND_API_KEY;
-  const to = env.FEEDBACK_TO ?? env.FEEDBACK_EMAIL_TO;
+  const apiKey = usableSecret(env.RESEND_API_KEY);
+  const to = usableSecret(env.FEEDBACK_TO ?? env.FEEDBACK_EMAIL_TO);
   if (!apiKey || !to) return "stored";
   const from =
-    env.FEEDBACK_FROM ??
-    env.FEEDBACK_EMAIL_FROM ??
+    usableSecret(env.FEEDBACK_FROM ?? env.FEEDBACK_EMAIL_FROM) ||
     "InfernoDrift4 <feedback@infernodrift.local>";
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -662,8 +686,8 @@ export class InfernoRoom {
     if (
       key === "clark" &&
       (!existing || existing.id !== "seed-clark") &&
-      (!this.env.CLARK_RESERVATION_TOKEN ||
-        msg.turnstileToken !== this.env.CLARK_RESERVATION_TOKEN)
+      (!usableSecret(this.env.CLARK_RESERVATION_TOKEN) ||
+        msg.turnstileToken !== usableSecret(this.env.CLARK_RESERVATION_TOKEN))
     ) {
       return { ok: false, error: "username_reserved" };
     }
@@ -736,8 +760,8 @@ export class InfernoRoom {
     if (!key) return { ok: false, error: "invalid_username" };
     if (
       key === "clark" &&
-      (!this.env.CLARK_RESERVATION_TOKEN ||
-        msg.turnstileToken !== this.env.CLARK_RESERVATION_TOKEN)
+      (!usableSecret(this.env.CLARK_RESERVATION_TOKEN) ||
+        msg.turnstileToken !== usableSecret(this.env.CLARK_RESERVATION_TOKEN))
     ) {
       return { ok: false, error: "username_reserved" };
     }
@@ -1365,9 +1389,7 @@ export default {
         durableObjects: true,
         optionalBindings: {
           d1: Boolean(env.INFERNO_DB),
-          resend: Boolean(
-            env.RESEND_API_KEY && (env.FEEDBACK_TO || env.FEEDBACK_EMAIL_TO),
-          ),
+          resend: hasResendConfig(env),
         },
       });
     }
