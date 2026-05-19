@@ -21,6 +21,7 @@ page.on("dialog", async (dialog) => {
 });
 
 const smokeUrl = process.env.SMOKE_URL || "http://127.0.0.1:4173/index.html";
+const smokeUsername = `SmokeRacer${Date.now().toString().slice(-6)}`;
 await page.goto(smokeUrl, { waitUntil: "commit", timeout: 45000 });
 await waitForGameHook(page);
 await page.waitForTimeout(1200);
@@ -116,17 +117,21 @@ await page.locator('[data-tab="online"]').click({ force: true });
 await page.waitForTimeout(150);
 assert.match(
   (await page.locator("#online-status").textContent()) ?? "",
-  /offline|backend/i,
+  /online|connected|backend/i,
 );
-await page.locator("#online-username").fill("SmokeRacer");
+await page.locator("#online-username").fill(smokeUsername);
 await page.locator("#online-age").fill("12");
 await page.locator("#online-claim").click({ force: true });
-await page.waitForTimeout(120);
+await page.waitForFunction(
+  (username) =>
+    JSON.parse(window.render_game_to_text()).online.username === username,
+  smokeUsername,
+);
 let onlineUiState = JSON.parse(
   await page.evaluate(() => window.render_game_to_text()),
 );
 assert.equal(onlineUiState.ui.tab, "online");
-assert.equal(onlineUiState.online.username, "SmokeRacer");
+assert.equal(onlineUiState.online.username, smokeUsername);
 assert.equal(onlineUiState.online.ageGate.under13QuickChatOnly, true);
 assert.equal(await page.locator("#online-chat-input").isDisabled(), true);
 await page.locator("#online-friend-name").fill("");

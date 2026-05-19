@@ -24,7 +24,7 @@ const SEEDED_ACCOUNTS = [
     xp: 5700,
     passwordSalt: "seed-joshua-v1",
     passwordHash:
-      "3b6809b32be81d84a5238f9b083cc0f98de50fdc96479833efdfc2977df062ea",
+      "cc5bb9482d5d701976e3c3b8a97aa38a05a785d0f53e889bd3e5f87085b0f8c7",
   },
   {
     id: "seed-tosh",
@@ -34,7 +34,7 @@ const SEEDED_ACCOUNTS = [
     xp: 4300,
     passwordSalt: "seed-tosh-v1",
     passwordHash:
-      "daa6abe0208e5355caa1dd90c895b36725bd94b31e1196bef6687d62d03e2fc1",
+      "4608dbb0977c18f33a22907cb8bcb4d09639aaf16b3debd9d777563539b1c490",
   },
   {
     id: "seed-clark",
@@ -44,7 +44,7 @@ const SEEDED_ACCOUNTS = [
     xp: 8200,
     passwordSalt: "seed-clark-v1",
     passwordHash:
-      "fe8e5287d1ff13adeaa3b041a35781493f43f567d9a531a4a775911c022dc570",
+      "1f0e592ec2d82bf6ee3a993e3b648074784a88edbeac932b207d9586524ccb43",
   },
   {
     id: "seed-moderator",
@@ -54,7 +54,7 @@ const SEEDED_ACCOUNTS = [
     xp: 7600,
     passwordSalt: "seed-moderator-v1",
     passwordHash:
-      "73292f1ee357f1ee6c3c951a806f0c1bf469fa2ceebb30fcf9b29135110d3b23",
+      "b94ceaed791c740d20f74f2578603868fcf6280afc9fbb636603a607dc92b7a6",
   },
 ];
 
@@ -130,6 +130,7 @@ function nowIso() {
 
 const cryptoRuntime = globalThis.crypto ?? webcrypto;
 const textEncoder = new TextEncoder();
+const PASSWORD_HASH_ITERATIONS = 100000;
 
 function bytesToHex(bytes) {
   return [...new Uint8Array(bytes)]
@@ -155,7 +156,7 @@ async function hashPassword(password, salt) {
     {
       name: "PBKDF2",
       salt: textEncoder.encode(String(salt)),
-      iterations: 120000,
+      iterations: PASSWORD_HASH_ITERATIONS,
       hash: "SHA-256",
     },
     key,

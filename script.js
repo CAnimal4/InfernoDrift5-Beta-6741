@@ -4179,10 +4179,17 @@ function getLeaderboardTier(row, index = 0) {
 }
 
 function getLocalXpLeaderboardRows() {
+  return [...SEEDED_LEADERBOARD_ROWS, getCurrentPlayerXpLeaderboardRow()].sort(
+    compareLeaderboard,
+  );
+}
+
+function getCurrentPlayerXpLeaderboardRow() {
   const playerXp = getProgressionTotalXp();
-  const playerRow = {
-    id: "local-player-xp",
-    userId: onlineState.user?.id || "",
+  const userId = onlineState.user?.id || "";
+  return {
+    id: userId ? `local-${userId}` : "local-player-xp",
+    userId,
     username: onlineState.username || "Guest Racer",
     badge: onlineState.user?.badge || "",
     moderator: isCurrentOnlineModerator(),
@@ -4192,13 +4199,27 @@ function getLocalXpLeaderboardRows() {
     source: onlineState.guestTemporary ? "guest" : "local",
     scope: "Total XP",
   };
-  return [
-    ...SEEDED_LEADERBOARD_ROWS,
-    {
-      ...playerRow,
-      id: playerRow.userId ? `local-${playerRow.userId}` : playerRow.id,
-    },
-  ].sort(compareLeaderboard);
+}
+
+function getDisplayLeaderboardRows() {
+  const rows = onlineState.leaderboard.length
+    ? [...onlineState.leaderboard]
+    : getLocalXpLeaderboardRows();
+  const playerRow = getCurrentPlayerXpLeaderboardRow();
+  const existingIndex = rows.findIndex(
+    (row) => playerRow.userId && row.userId === playerRow.userId,
+  );
+  if (existingIndex >= 0) {
+    const xp = Math.max(getLeaderboardXp(rows[existingIndex]), playerRow.xp);
+    rows[existingIndex] = {
+      ...rows[existingIndex],
+      xp,
+      totalXp: xp,
+    };
+  } else if (playerRow.xp > 0 || onlineState.guestTemporary) {
+    rows.push(playerRow);
+  }
+  return rows.sort(compareLeaderboard);
 }
 
 function renderLeaderboardRows(target, rows, emptyText) {
@@ -4281,10 +4302,7 @@ function updateOnlineUi() {
   renderChatLog(onlineChatLog);
   renderChatLog(chatPopoutLog);
   syncStartAccountFields();
-  const leaderboardRows =
-    connected && onlineState.leaderboard.length
-      ? onlineState.leaderboard
-      : getLocalXpLeaderboardRows();
+  const leaderboardRows = getDisplayLeaderboardRows();
   renderLeaderboardRows(
     onlineLeaderboard,
     leaderboardRows,
@@ -15705,10 +15723,7 @@ window.render_game_to_text = () => {
             bots: onlineState.room.bots ?? 0,
           }
         : null,
-      leaderboard: (onlineState.leaderboard.length
-        ? onlineState.leaderboard
-        : getLocalXpLeaderboardRows()
-      ).slice(0, 5),
+      leaderboard: getDisplayLeaderboardRows().slice(0, 10),
       friends: onlineState.friends,
       recentPlayers: onlineState.recentPlayers.slice(0, 8),
       reconnect: {

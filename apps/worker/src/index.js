@@ -31,6 +31,7 @@ function nowIso() {
 }
 
 const textEncoder = new TextEncoder();
+const PASSWORD_HASH_ITERATIONS = 100000;
 
 function bytesToHex(bytes) {
   return [...new Uint8Array(bytes)]
@@ -56,7 +57,7 @@ async function hashPassword(password, salt) {
     {
       name: "PBKDF2",
       salt: textEncoder.encode(String(salt)),
-      iterations: 120000,
+      iterations: PASSWORD_HASH_ITERATIONS,
       hash: "SHA-256",
     },
     key,
@@ -74,7 +75,7 @@ const SEEDED_ACCOUNTS = [
     xp: 5700,
     passwordSalt: "seed-joshua-v1",
     passwordHash:
-      "3b6809b32be81d84a5238f9b083cc0f98de50fdc96479833efdfc2977df062ea",
+      "cc5bb9482d5d701976e3c3b8a97aa38a05a785d0f53e889bd3e5f87085b0f8c7",
   },
   {
     id: "seed-tosh",
@@ -84,7 +85,7 @@ const SEEDED_ACCOUNTS = [
     xp: 4300,
     passwordSalt: "seed-tosh-v1",
     passwordHash:
-      "daa6abe0208e5355caa1dd90c895b36725bd94b31e1196bef6687d62d03e2fc1",
+      "4608dbb0977c18f33a22907cb8bcb4d09639aaf16b3debd9d777563539b1c490",
   },
   {
     id: "seed-clark",
@@ -94,7 +95,7 @@ const SEEDED_ACCOUNTS = [
     xp: 8200,
     passwordSalt: "seed-clark-v1",
     passwordHash:
-      "fe8e5287d1ff13adeaa3b041a35781493f43f567d9a531a4a775911c022dc570",
+      "1f0e592ec2d82bf6ee3a993e3b648074784a88edbeac932b207d9586524ccb43",
   },
   {
     id: "seed-moderator",
@@ -104,7 +105,7 @@ const SEEDED_ACCOUNTS = [
     xp: 7600,
     passwordSalt: "seed-moderator-v1",
     passwordHash:
-      "73292f1ee357f1ee6c3c951a806f0c1bf469fa2ceebb30fcf9b29135110d3b23",
+      "b94ceaed791c740d20f74f2578603868fcf6280afc9fbb636603a607dc92b7a6",
   },
 ];
 
@@ -538,14 +539,18 @@ export class InfernoRoom {
       sessionToken: "",
       rate: new Map(),
       latestInput: null,
+      inRoom: false,
     });
     ws.accept();
     send(ws, { type: "hello", id, server: "InfernoDrift4 Worker" });
-    send(ws, this.roomSnapshot());
     ws.addEventListener("message", (event) => {
-      this.onMessage(id, event.data).catch(() =>
-        send(ws, { type: "error", error: "server_error" }),
-      );
+      this.onMessage(id, event.data).catch((error) => {
+        console.error(
+          "infernodrift4_worker_message_error",
+          error?.message || "unknown",
+        );
+        send(ws, { type: "error", error: "server_error" });
+      });
     });
     ws.addEventListener("close", () => this.onClose(id));
     ws.addEventListener("error", () => this.onClose(id));
@@ -843,7 +848,7 @@ export class InfernoRoom {
         save: this.data.saves[auth.user.id] ?? null,
       });
       send(session.ws, this.friendsSnapshot(session));
-      this.broadcast(this.roomSnapshot());
+      if (session.inRoom) this.broadcast(this.roomSnapshot());
       return;
     }
     if (msg.type === "profile.claimUsername") {
@@ -856,11 +861,12 @@ export class InfernoRoom {
         username: result.username,
         user: publicUser(session.user),
       });
-      this.broadcast(this.roomSnapshot());
+      if (session.inRoom) this.broadcast(this.roomSnapshot());
       return;
     }
     if (msg.type === "room.create" || msg.type === "queue.join") {
       const roomOptions = normalizeRoomOptions(msg);
+      session.inRoom = true;
       this.room.code = (this.room.code || makePrivateCode()).toUpperCase();
       this.room.mode = roomOptions.mode;
       this.room.playlist = roomOptions.playlist;
@@ -882,13 +888,16 @@ export class InfernoRoom {
       return;
     }
     if (msg.type === "room.join") {
+      session.inRoom = true;
       this.room.code = String(msg.code || this.room.code).toUpperCase();
       await this.persist();
       this.broadcast(this.roomSnapshot());
       return;
     }
     if (msg.type === "room.leave" || msg.type === "queue.cancel") {
+      session.inRoom = false;
       send(session.ws, { type: "room.left" });
+      this.broadcast(this.roomSnapshot());
       return;
     }
     if (msg.type === "chat.send" || msg.type === "quick.send") {
@@ -1248,13 +1257,14 @@ export class InfernoRoom {
 
   onClose(id) {
     const session = this.sessions.get(id);
+    const wasInRoom = Boolean(session?.inRoom);
     if (session?.user?.id && this.data.users[session.user.id]) {
       this.data.users[session.user.id].online = false;
       this.data.users[session.user.id].updatedAt = nowIso();
       this.persist().catch(() => {});
     }
     this.sessions.delete(id);
-    this.broadcast(this.roomSnapshot());
+    if (wasInRoom) this.broadcast(this.roomSnapshot());
   }
 
   broadcast(payload, exceptId = "", fromUserId = "") {
@@ -1297,9 +1307,12 @@ export class InfernoRoom {
 
   botPlayers() {
     if (!this.room.botFill) return [];
+    const activePlayers = [...this.sessions.values()].filter(
+      (session) => session.inRoom,
+    ).length;
     return BOT_NAMES.slice(
       0,
-      Math.max(0, this.room.size - this.sessions.size),
+      Math.max(0, this.room.size - activePlayers),
     ).map((name, index) => ({
       id: `bot-${this.room.id}-${index + 1}`,
       username: name,
@@ -1310,9 +1323,9 @@ export class InfernoRoom {
   }
 
   roomSnapshot() {
-    const players = [...this.sessions.values()].map((session) =>
-      publicUser(session.user),
-    );
+    const players = [...this.sessions.values()]
+      .filter((session) => session.inRoom)
+      .map((session) => publicUser(session.user));
     const bots = this.botPlayers();
     return {
       type: "room.snapshot",
@@ -1329,13 +1342,15 @@ export class InfernoRoom {
   matchSnapshot() {
     return {
       type: "match.snapshot",
-      players: [...this.sessions.values()].map((session) => ({
-        id: session.user.id,
-        username: session.user.username,
-        badge: session.user.badge || "",
-        moderator: this.isModeratorUser(session.user),
-        input: session.latestInput,
-      })),
+      players: [...this.sessions.values()]
+        .filter((session) => session.inRoom)
+        .map((session) => ({
+          id: session.user.id,
+          username: session.user.username,
+          badge: session.user.badge || "",
+          moderator: this.isModeratorUser(session.user),
+          input: session.latestInput,
+        })),
     };
   }
 
