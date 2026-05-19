@@ -251,6 +251,41 @@ test("websocket backend supports password account create and sign in", async (t)
   assert.equal(restored.user.ageGate, 14);
   assert.ok(Object.keys(app.db.data.usernameClaims).includes("accountace"));
 
+  const guest = await makeWsClient(port);
+  guest.ws.send(
+    JSON.stringify({
+      type: "auth.guest",
+      username: "UpgradeAce",
+      age: 13,
+      deviceId: "upgrade-device",
+    }),
+  );
+  await waitForMessage(guest.messages, (msg) => msg.type === "auth.ok");
+  guest.ws.send(
+    JSON.stringify({ type: "profile.claimUsername", username: "UpgradeAce" }),
+  );
+  await waitForMessage(
+    guest.messages,
+    (msg) => msg.type === "profile.usernameClaimed",
+  );
+  const upgraded = await makeWsClient(port);
+  upgraded.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "auto",
+      username: "UpgradeAce",
+      password: "secret456",
+      age: 13,
+      deviceId: "upgrade-device",
+    }),
+  );
+  const upgradeAuth = await waitForMessage(
+    upgraded.messages,
+    (msg) => msg.type === "auth.ok",
+  );
+  assert.equal(upgradeAuth.user.username, "UpgradeAce");
+  assert.equal(upgradeAuth.user.account, true);
+
   const clark = await makeWsClient(port);
   clark.ws.send(
     JSON.stringify({
@@ -272,9 +307,11 @@ test("websocket backend supports password account create and sign in", async (t)
   wrong.ws.terminate();
   signin.ws.terminate();
   clark.ws.terminate();
+  guest.ws.terminate();
+  upgraded.ws.terminate();
 });
 
-test("profile logout/delete and 15 minute chat history are live", async (t) => {
+test("profile logout/delete and 30 minute chat history are live", async (t) => {
   const app = createInfernoServer({
     port: 0,
     dataDir: path.join(os.tmpdir(), `id4-profile-${Date.now()}`),
@@ -328,7 +365,7 @@ test("profile logout/delete and 15 minute chat history are live", async (t) => {
       msg.type === "chat.history" &&
       msg.messages.some((entry) => entry.text === "hi from lobby"),
   );
-  assert.equal(history.windowMs, 15 * 60 * 1000);
+  assert.equal(history.windowMs, 30 * 60 * 1000);
 
   alpha.ws.send(JSON.stringify({ type: "profile.logout" }));
   await waitForMessage(
@@ -485,6 +522,7 @@ test("websocket backend supports two clients, chat filtering, and private join",
   a.ws.send(JSON.stringify({ type: "room.create", mode: "casual", size: 2 }));
   await new Promise((resolve) => setTimeout(resolve, 120));
   const code = a.messages.find((msg) => msg.type === "room.snapshot").room.code;
+  a.ws.send(JSON.stringify({ type: "room.share" }));
   b.ws.send(JSON.stringify({ type: "room.join", code }));
   b.ws.send(
     JSON.stringify({
@@ -497,6 +535,11 @@ test("websocket backend supports two clients, chat filtering, and private join",
   assert.ok(
     a.messages.some(
       (msg) => msg.type === "chat.message" && msg.text === "nice boost drift",
+    ),
+  );
+  assert.ok(
+    b.messages.some(
+      (msg) => msg.type === "chat.message" && msg.text === `Room code ${code}`,
     ),
   );
   assert.ok(
@@ -662,6 +705,27 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
       (row) => row.username === "Joshua" && row.badge === "Advanced Player",
     ),
   );
+
+  joshua.ws.send(
+    JSON.stringify({
+      type: "save.sync",
+      schemaVersion: 4,
+      payload: { progressionV2: { xp: 9350, totalXp: 9350, level: 18 } },
+    }),
+  );
+  await waitForMessage(joshua.messages, (msg) => msg.type === "save.synced");
+  joshua.ws.send(
+    JSON.stringify({ type: "leaderboard.get", playlist: "casual" }),
+  );
+  const updatedLeaderboard = await waitForMessage(
+    joshua.messages,
+    (msg) => msg.type === "leaderboard.snapshot",
+  );
+  const updatedJoshua = updatedLeaderboard.leaderboard.find(
+    (row) => row.username === "Joshua",
+  );
+  assert.equal(updatedJoshua.xp, 9350);
+  assert.equal(updatedJoshua.badge, "Advanced Player");
 
   moderator.ws.send(
     JSON.stringify({

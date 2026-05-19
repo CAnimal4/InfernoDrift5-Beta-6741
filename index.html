@@ -371,6 +371,7 @@
                   <div class="join-code-row">
                     <input id="online-room-code" type="text" maxlength="10" placeholder="Room code" autocomplete="off" />
                     <button class="ghost" id="online-join-room" type="button">Join</button>
+                    <button class="ghost" id="online-share-room" type="button">Share Code</button>
                   </div>
                   <div class="online-room-card" id="online-room-state">No room joined.</div>
                 </div>
@@ -607,6 +608,13 @@
           <input id="chat-popout-input" type="text" maxlength="160" placeholder="13+ free chat" />
           <button class="primary" id="chat-popout-send" type="button">Send</button>
         </div>
+      </div>
+      <div class="chat-notice" id="chat-notice" hidden>
+        <div>
+          <strong id="chat-notice-from">Chat</strong>
+          <span id="chat-notice-text"></span>
+        </div>
+        <button class="ghost icon-btn" id="chat-notice-close" type="button" aria-label="Dismiss chat notice">×</button>
       </div>
 
       <div class="overlay" id="feedback-modal">

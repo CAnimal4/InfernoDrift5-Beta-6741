@@ -49,6 +49,7 @@ test("shared protocol gates free chat at 13 plus and keeps quick chat available"
     parseClientMessage({ type: "quick.send", text: "Again?" }).ok,
     true,
   );
+  assert.equal(parseClientMessage({ type: "room.share" }).ok, true);
   assert.equal(
     parseClientMessage({
       type: "auth.account",

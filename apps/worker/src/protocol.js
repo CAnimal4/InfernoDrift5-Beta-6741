@@ -69,6 +69,7 @@ const ALLOWED_TYPES = new Set([
   "room.create",
   "room.join",
   "room.leave",
+  "room.share",
   "queue.join",
   "queue.cancel",
   "chat.send",
@@ -494,6 +495,11 @@ export function validateClientMessage(raw) {
       !PRIVATE_CODE_PATTERN.test(data.code) ||
       !isOptionalBoolean(data, "botFill")
     ) {
+      error = "invalid_protocol";
+    }
+  }
+  if (data.type === "room.share") {
+    if (!onlyKeys(data, new Set(["type"]))) {
       error = "invalid_protocol";
     }
   }

@@ -152,3 +152,12 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Added `migrations/0003_global_xp_leaderboard.sql` for production D1 leaderboard XP indexing.
 - Smoke coverage now completes Campaign Survival and Boost Bowling back-to-back, verifies the XP adds into one total, and verifies the local leaderboard top row reflects that total XP.
 - Validation after this follow-up: `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run format`, `npm run worker:check`, `npm run worker:types`, and the shared `develop-web-game` Playwright client passed. Screenshot reviewed at `output/web-game/shot-1.png`. Headless WebGL emitted expected SwiftShader `ReadPixels` warnings only.
+
+2026-05-18 Online reliability follow-up:
+
+- Started a focused fix for live moderation removal, 30-minute chat history, room-code sharing, guest-profile account upgrade messaging, and minimal chat notifications when chat is closed.
+- Local backend tests now cover guest-to-account upgrade, 30-minute chat history, and `room.share` broadcasting the private room code to chat.
+- Client now force-pauses play and returns to Profile/account state on `moderation.kicked`, `moderation.banned`, or close codes `4002`/`4003`; chat notices auto-dismiss after five seconds and expose `noticeVisible` in `render_game_to_text()`.
+- Seeded badge accounts now have an explicit regression test proving normal save/XP sync updates the global XP leaderboard.
+- Production default backend now uses a fresh Worker room namespace while keeping generated room codes separate from the Durable Object namespace; old saved production URLs migrate to the new default.
+- Validation so far: `node --check script.js`, `npm run typecheck`, `npm test`, `npm run build`, `npm run format`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run worker:check`, `npm run worker:types`, `npm run lint`, and the shared `develop-web-game` Playwright client passed locally. Hosted Worker deploy `12bf39b4-228d-401c-a2ff-34a29e424e71` passed `/health`, hosted online smoke at `wss://infernodrift4-online.clarkbythebay.workers.dev/ws?room=global-v3`, D1 feedback storage, D1 leaderboard query, and a live moderator kick check that closed the target socket with code `4002`. Screenshot reviewed at `output/web-game/online-reliability/shot-2.png`.

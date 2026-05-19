@@ -1375,6 +1375,52 @@ body:has(#overlay.show) .remote-name-layer {
   display: none;
 }
 
+.chat-notice {
+  position: fixed;
+  right: clamp(14px, 2vw, 24px);
+  bottom: clamp(18px, 3vh, 34px);
+  z-index: 24;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  width: min(360px, calc(100vw - 28px));
+  padding: 10px 10px 10px 12px;
+  border: 1px solid rgba(122, 239, 255, 0.34);
+  border-radius: 8px;
+  background: rgba(7, 14, 22, 0.88);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32);
+  color: #f5fbff;
+  backdrop-filter: blur(16px);
+  pointer-events: auto;
+}
+
+.chat-notice[hidden] {
+  display: none;
+}
+
+.chat-notice strong,
+.chat-notice span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-notice strong {
+  color: #7aefff;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.chat-notice span {
+  margin-top: 2px;
+  color: rgba(245, 251, 255, 0.88);
+  font-size: 0.82rem;
+}
+
 .chat-popout-header {
   justify-content: space-between;
 }
@@ -2295,6 +2341,12 @@ body.device-phone .mode-card {
 body.device-phone .chat-popout {
   right: 14px;
   bottom: 14px;
+}
+
+body.device-phone .chat-notice {
+  right: 10px;
+  bottom: 10px;
+  width: min(310px, calc(100vw - 20px));
 }
 
 body.device-tablet .menu-panel {

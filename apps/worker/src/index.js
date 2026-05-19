@@ -162,7 +162,7 @@ const BOT_NAMES = [
 ];
 
 const BAN_DURATION_MS = 24 * 60 * 60 * 1000;
-const CHAT_HISTORY_WINDOW_MS = 15 * 60 * 1000;
+const CHAT_HISTORY_WINDOW_MS = 30 * 60 * 1000;
 const CHAT_HISTORY_LIMIT = 100;
 const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
@@ -1143,9 +1143,9 @@ export class InfernoRoom {
 
   accept(ws, url) {
     const id = crypto.randomUUID();
-    const roomFromUrl = url.searchParams.get("room");
+    const codeFromUrl = url.searchParams.get("code");
     this.room.code = (
-      roomFromUrl ||
+      codeFromUrl ||
       this.room.code ||
       makePrivateCode()
     ).toUpperCase();
@@ -1360,7 +1360,7 @@ export class InfernoRoom {
     const mode = msg.mode ?? "auto";
     if (!existing && mode === "signin")
       return { ok: false, error: "account_not_found" };
-    if (existing && !existing.passwordHash)
+    if (existing && !existing.passwordHash && mode === "signin")
       return { ok: false, error: "account_requires_upgrade" };
     const ban = existing
       ? this.activeBanForUser(existing.id, msg.deviceId ?? existing.deviceId)
@@ -1369,7 +1369,7 @@ export class InfernoRoom {
 
     let user = existing;
     let restored = false;
-    if (existing) {
+    if (existing?.passwordHash) {
       const passwordHash = await hashPassword(
         msg.password,
         existing.passwordSalt,
@@ -1384,6 +1384,21 @@ export class InfernoRoom {
         age: Number(msg.age),
         deviceId: msg.deviceId ?? existing.deviceId ?? "",
         online: true,
+        updatedAt: nowIso(),
+      };
+    } else if (existing) {
+      const salt = randomHex(16);
+      restored = true;
+      user = {
+        ...existing,
+        username: existing.username || username,
+        age: Number(msg.age),
+        deviceId: msg.deviceId ?? existing.deviceId ?? "",
+        online: true,
+        claimedUsername: username,
+        authProvider: "password",
+        passwordSalt: salt,
+        passwordHash: await hashPassword(msg.password, salt),
         updatedAt: nowIso(),
       };
     } else {
@@ -1598,8 +1613,11 @@ export class InfernoRoom {
       return;
     }
     if (msg.type === "room.join") {
+      const requestedCode = String(msg.code || "").toUpperCase();
+      if (!this.room.code || this.room.code !== requestedCode) {
+        return send(session.ws, { type: "error", error: "room_not_found" });
+      }
       session.inRoom = true;
-      this.room.code = String(msg.code || this.room.code).toUpperCase();
       await this.persist();
       await writeRoomMemberToD1(this.env, this.room, session.user).catch(
         () => false,
@@ -1615,6 +1633,10 @@ export class InfernoRoom {
       );
       send(session.ws, { type: "room.left" });
       this.broadcast(this.roomSnapshot());
+      return;
+    }
+    if (msg.type === "room.share") {
+      await this.handleRoomShare(session);
       return;
     }
     if (msg.type === "chat.send" || msg.type === "quick.send") {
@@ -1732,6 +1754,43 @@ export class InfernoRoom {
       roomOnly: session.inRoom,
       channel,
     });
+  }
+
+  async handleRoomShare(session) {
+    if (!this.checkRate(session, "room-share", 4, 60_000)) {
+      return send(session.ws, { type: "error", error: "rate_limited" });
+    }
+    if (!session.inRoom || !this.room.code) {
+      return send(session.ws, { type: "error", error: "no_room_code" });
+    }
+    const payload = {
+      type: "chat.message",
+      from: session.user.username,
+      userId: session.user.id,
+      badge: session.user.badge || "",
+      moderator: this.isModeratorUser(session.user),
+      text: `Room code ${this.room.code}`,
+      quick: true,
+      at: nowIso(),
+      channel: "lobby",
+    };
+    this.pruneChatMessages();
+    const chatRow = {
+      id: crypto.randomUUID(),
+      channel: "lobby",
+      from: payload.from,
+      userId: payload.userId,
+      badge: payload.badge,
+      moderator: payload.moderator,
+      text: payload.text,
+      quick: true,
+      createdAt: payload.at,
+    };
+    this.data.chatMessages.push(chatRow);
+    await writeChatMessageToD1(this.env, chatRow).catch(() => false);
+    await this.persist();
+    this.broadcast(payload, "", session.user.id, { channel: "lobby" });
+    send(session.ws, payload);
   }
 
   async handleSaveSync(session, msg) {

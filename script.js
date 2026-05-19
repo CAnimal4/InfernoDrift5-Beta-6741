@@ -149,6 +149,7 @@ const onlineQueue = document.getElementById("online-queue");
 const onlineCancelQueue = document.getElementById("online-cancel-queue");
 const onlineRoomCode = document.getElementById("online-room-code");
 const onlineJoinRoom = document.getElementById("online-join-room");
+const onlineShareRoom = document.getElementById("online-share-room");
 const onlineRoomState = document.getElementById("online-room-state");
 const onlinePopoutChat = document.getElementById("online-popout-chat");
 const onlineQuickChat = document.getElementById("online-quick-chat");
@@ -180,6 +181,10 @@ const chatPopoutQuick = document.getElementById("chat-popout-quick");
 const chatPopoutLog = document.getElementById("chat-popout-log");
 const chatPopoutInput = document.getElementById("chat-popout-input");
 const chatPopoutSend = document.getElementById("chat-popout-send");
+const chatNotice = document.getElementById("chat-notice");
+const chatNoticeFrom = document.getElementById("chat-notice-from");
+const chatNoticeText = document.getElementById("chat-notice-text");
+const chatNoticeClose = document.getElementById("chat-notice-close");
 const modeHelpCard = document.getElementById("mode-help-card");
 const modeHelpTitle = document.getElementById("mode-help-title");
 const modeHelpObjective = document.getElementById("mode-help-objective");
@@ -290,8 +295,12 @@ const LEGACY_SAVE_STORAGE_KEYS = ["infernoDrift3.save.v1"];
 const ONLINE_STORAGE_KEY = "infernoDrift4.online.v1";
 const FEEDBACK_STORAGE_KEY = "infernoDrift4.feedback.v1";
 const ONLINE_PROTOCOL_VERSION = 1;
+const LEGACY_PRODUCTION_BACKEND_URLS = new Set([
+  "wss://infernodrift4-online.clarkbythebay.workers.dev/ws",
+  "wss://infernodrift4-online.clarkbythebay.workers.dev/ws?room=global-v2",
+]);
 const DEFAULT_PRODUCTION_BACKEND_URL =
-  "wss://infernodrift4-online.clarkbythebay.workers.dev/ws";
+  "wss://infernodrift4-online.clarkbythebay.workers.dev/ws?room=global-v3";
 const DEFAULT_LOCAL_BACKEND_URL = "ws://127.0.0.1:8787/ws";
 const QUICK_CHAT_MESSAGES = [
   "Nice drift!",
@@ -2009,6 +2018,7 @@ const onlineState = {
   lastSnapshotAt: 0,
   lastFeedbackStatus: "not_configured",
   lastFeedbackError: "",
+  chatNoticeTimer: 0,
 };
 
 const maxTeamCustomization = {
@@ -3519,7 +3529,10 @@ function loadOnlineConfig() {
     onlinePrefs.backendUrl ||
     "";
   const configuredBackend = explicitBackend || getDefaultOnlineBackendUrl();
-  onlineState.backendUrl = normalizeOnlineBackendUrl(configuredBackend);
+  const normalizedBackend = normalizeOnlineBackendUrl(configuredBackend);
+  onlineState.backendUrl = LEGACY_PRODUCTION_BACKEND_URLS.has(normalizedBackend)
+    ? DEFAULT_PRODUCTION_BACKEND_URL
+    : normalizedBackend;
   onlineState.backendDefaulted =
     !explicitBackend && onlineState.backendUrl === DEFAULT_LOCAL_BACKEND_URL;
   onlineState.feedbackUrl =
@@ -3820,6 +3833,31 @@ function completeLocalLogout(message = "Logged out.") {
   setStartAccountStatus("Choose account or guest.");
 }
 
+function forceOnlineRemoval(text, { until = "" } = {}) {
+  state.running = false;
+  state.modeHelpOpen = false;
+  state.modeHelpWasRunning = false;
+  input.left = false;
+  input.right = false;
+  input.throttle = false;
+  input.brake = false;
+  input.drift = false;
+  input.boost = false;
+  input.laser = false;
+  input.backflip = false;
+  if (modeHelpCard) modeHelpCard.hidden = true;
+  message.classList.remove("show");
+  completeLocalLogout(text);
+  onlineState.onlineRestrictedUntil = until || "";
+  onlineState.lastModerationStatus = text;
+  onlineState.profileActionStatus = text;
+  setOnlineStatus("error", text);
+  setStartAccountStatus(text, "error");
+  setChatPopoutOpen(false);
+  setMenuOpen(true, "profile");
+  updateOnlineUi();
+}
+
 function deleteOnlineProfile() {
   const confirmUsername = String(profileDeleteConfirm?.value || "").trim();
   const currentUsername = onlineState.user?.username || onlineState.username;
@@ -3846,6 +3884,26 @@ function deleteOnlineProfile() {
 
 function claimKeyClient(value = "") {
   return sanitizeRemoteUsername(value).trim().toLowerCase();
+}
+
+function describeOnlineError(error = "") {
+  const code = String(error || "online_error");
+  const labels = {
+    account_requires_upgrade:
+      "That name was a temporary guest profile. Try signing in again to upgrade it into a normal account, or choose another username.",
+    account_not_found: "No account exists with that username yet.",
+    invalid_credentials: "That username and password do not match.",
+    username_reserved: "That username is reserved.",
+    username_taken: "That username is already taken.",
+    chat_requires_13_plus:
+      "Typed chat requires your real age to be 13 or older. Quick chat still works.",
+    room_not_found:
+      "That room code was not found. Check the code and try again.",
+    room_full: "That room is full.",
+    account_banned:
+      "This account or device is temporarily banned from online play.",
+  };
+  return labels[code] || code.replace(/_/g, " ");
 }
 
 function connectOnline({ reconnect = false } = {}) {
@@ -3899,8 +3957,20 @@ function connectOnline({ reconnect = false } = {}) {
     socket.addEventListener("message", (event) => {
       handleOnlineMessage(event.data);
     });
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       if (onlineState.socket !== socket) return;
+      if (event.code === 4002 || event.code === 4003) {
+        const banned = event.code === 4003;
+        forceOnlineRemoval(
+          banned
+            ? "You were banned by a moderator. Online access is restricted until the ban expires."
+            : "You were kicked by a moderator. Please sign in again.",
+          {
+            until: banned ? onlineState.onlineRestrictedUntil || "active" : "",
+          },
+        );
+        return;
+      }
       onlineState.socket = null;
       onlineState.user = null;
       onlineState.room = null;
@@ -4027,6 +4097,13 @@ function handleOnlineMessage(raw) {
   } else if (message.type === "room.snapshot") {
     onlineState.room = message.room || null;
     onlineState.queue = null;
+    if (
+      onlineRoomCode &&
+      onlineState.room?.code &&
+      document.activeElement !== onlineRoomCode
+    ) {
+      onlineRoomCode.value = onlineState.room.code;
+    }
     onlineState.leaderboard = Array.isArray(message.room?.leaderboard)
       ? message.room.leaderboard
       : onlineState.leaderboard;
@@ -4051,15 +4128,18 @@ function handleOnlineMessage(raw) {
   } else if (message.type === "chat.history") {
     onlineState.chatMessages = [];
     (Array.isArray(message.messages) ? message.messages : []).forEach((entry) =>
-      pushOnlineChatMessage({
-        from: entry.from || "Server",
-        userId: entry.userId || "",
-        badge: entry.badge || "",
-        moderator: Boolean(entry.moderator),
-        text: entry.text || "",
-        quick: Boolean(entry.quick),
-        at: entry.at ? Date.parse(entry.at) || Date.now() : Date.now(),
-      }),
+      pushOnlineChatMessage(
+        {
+          from: entry.from || "Server",
+          userId: entry.userId || "",
+          badge: entry.badge || "",
+          moderator: Boolean(entry.moderator),
+          text: entry.text || "",
+          quick: Boolean(entry.quick),
+          at: entry.at ? Date.parse(entry.at) || Date.now() : Date.now(),
+        },
+        { notify: false },
+      ),
     );
   } else if (message.type === "leaderboard.snapshot") {
     onlineState.leaderboard = Array.isArray(message.leaderboard)
@@ -4090,10 +4170,21 @@ function handleOnlineMessage(raw) {
     }
     if (onlineState.pendingStartAfterAuth) {
       onlineState.pendingStartAfterAuth = false;
-      setStartAccountStatus(`Account error: ${error}`, "error");
+      setStartAccountStatus(
+        `Account error: ${describeOnlineError(error)}`,
+        "error",
+      );
     }
-    setOnlineStatus("error", "Online backend rejected request", error);
-    pushOnlineChatMessage({ from: "System", text: error, quick: true });
+    setOnlineStatus(
+      "error",
+      "Online backend rejected request",
+      describeOnlineError(error),
+    );
+    pushOnlineChatMessage({
+      from: "System",
+      text: describeOnlineError(error),
+      quick: true,
+    });
   } else if (
     message.type === "moderation.kicked" ||
     message.type === "moderation.banned"
@@ -4103,10 +4194,7 @@ function handleOnlineMessage(raw) {
         ? `You were banned until ${message.until || "tomorrow"}.`
         : "You were kicked by a moderator. Please sign in again.";
     onlineState.lastModerationStatus = text;
-    onlineState.onlineRestrictedUntil = message.until || "";
-    setOnlineStatus("error", text);
-    pushOnlineChatMessage({ from: "System", text, quick: true });
-    completeLocalLogout(text);
+    forceOnlineRemoval(text, { until: message.until || "" });
   } else if (message.type === "moderation.done") {
     onlineState.lastModerationStatus = `${message.action || "Updated"} ${message.username || message.userId || "player"}`;
     pushOnlineChatMessage({
@@ -4183,7 +4271,32 @@ function sendOnlineInputFrame(dt = 1 / 60) {
   );
 }
 
-function pushOnlineChatMessage(message) {
+function hideChatNotice() {
+  if (onlineState.chatNoticeTimer) {
+    clearTimeout(onlineState.chatNoticeTimer);
+    onlineState.chatNoticeTimer = 0;
+  }
+  if (chatNotice) chatNotice.hidden = true;
+}
+
+function showChatNotice(message) {
+  if (!chatNotice || onlineState.chatOpen) return;
+  const from = sanitizeRemoteUsername(message.from || "Chat");
+  const text = String(message.text || "")
+    .replace(/[<>]/g, "")
+    .trim();
+  if (!text || from === "System") return;
+  if (chatNoticeFrom) chatNoticeFrom.textContent = from.slice(0, 24);
+  if (chatNoticeText) {
+    chatNoticeText.textContent =
+      text.length > 96 ? `${text.slice(0, 93).trim()}...` : text;
+  }
+  chatNotice.hidden = false;
+  if (onlineState.chatNoticeTimer) clearTimeout(onlineState.chatNoticeTimer);
+  onlineState.chatNoticeTimer = window.setTimeout(() => hideChatNotice(), 5000);
+}
+
+function pushOnlineChatMessage(message, { notify = true } = {}) {
   const clean = {
     from: sanitizeRemoteUsername(message.from || "System"),
     userId: String(message.userId || ""),
@@ -4196,7 +4309,17 @@ function pushOnlineChatMessage(message) {
     at: Number.isFinite(Number(message.at)) ? Number(message.at) : Date.now(),
   };
   onlineState.chatMessages.push(clean);
-  onlineState.chatMessages = onlineState.chatMessages.slice(-24);
+  onlineState.chatMessages = onlineState.chatMessages.slice(-80);
+  const ownUserId = onlineState.user?.id || "";
+  const ownName = onlineState.user?.username || onlineState.username;
+  if (
+    notify &&
+    clean.userId !== ownUserId &&
+    clean.from !== ownName &&
+    !onlineState.chatOpen
+  ) {
+    showChatNotice(clean);
+  }
 }
 
 function sendQuickChat(text) {
@@ -4520,6 +4643,7 @@ function updateOnlineUi() {
   if (onlineConnect) onlineConnect.disabled = connected;
   if (onlineDisconnect) onlineDisconnect.disabled = !onlineState.socket;
   if (onlineClaim) onlineClaim.disabled = false;
+  if (onlineShareRoom) onlineShareRoom.disabled = !onlineState.room?.code;
   if (onlineRoomState) {
     const room = onlineState.room;
     onlineRoomState.textContent = room
@@ -4555,6 +4679,7 @@ function updateOnlineUi() {
 
 function setChatPopoutOpen(open) {
   onlineState.chatOpen = open;
+  if (open) hideChatNotice();
   if (!open) returnFocusToGame();
   updateOnlineUi();
 }
@@ -15118,8 +15243,21 @@ bindPressAction(onlineJoinRoom, () => {
   if (!code) return;
   sendOnlineMessage({ type: "room.join", code });
 });
+bindPressAction(onlineShareRoom, () => {
+  if (!onlineState.room?.code) {
+    pushOnlineChatMessage({
+      from: "System",
+      text: "Create or join a room before sharing a code.",
+      quick: true,
+    });
+    updateOnlineUi();
+    return;
+  }
+  sendOnlineMessage({ type: "room.share" }, { queue: false });
+});
 bindPressAction(onlinePopoutChat, () => setChatPopoutOpen(true));
 bindPressAction(chatPopoutClose, () => setChatPopoutOpen(false));
+bindPressAction(chatNoticeClose, () => hideChatNotice());
 bindPressAction(onlineChatSend, () => sendFreeChat(onlineChatInput?.value));
 bindPressAction(chatPopoutSend, () => sendFreeChat(chatPopoutInput?.value));
 bindPressAction(onlineAddFriend, () => {
@@ -15958,7 +16096,8 @@ window.render_game_to_text = () => {
         quickChatAvailable: true,
         freeChatAvailable: canUseOnlineFreeChat(),
         messageCount: onlineState.chatMessages.length,
-        historyWindowMs: 15 * 60 * 1000,
+        historyWindowMs: 30 * 60 * 1000,
+        noticeVisible: Boolean(chatNotice && !chatNotice.hidden),
         lastMessage: onlineState.chatMessages.at(-1) ?? null,
       },
       queue: onlineState.queue

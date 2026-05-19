@@ -111,7 +111,7 @@ const BOT_NAMES = [
 ];
 
 const BAN_DURATION_MS = 24 * 60 * 60 * 1000;
-const CHAT_HISTORY_WINDOW_MS = 15 * 60 * 1000;
+const CHAT_HISTORY_WINDOW_MS = 30 * 60 * 1000;
 const CHAT_HISTORY_LIMIT = 100;
 const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
@@ -1062,7 +1062,7 @@ export function createInfernoServer(options = {}) {
     const mode = msg.mode ?? "auto";
     if (!existing && mode === "signin")
       return { ok: false, error: "account_not_found" };
-    if (existing && !existing.passwordHash)
+    if (existing && !existing.passwordHash && mode === "signin")
       return { ok: false, error: "account_requires_upgrade" };
     const ban = existing
       ? activeBanForUser(existing.id, msg.deviceId ?? existing.deviceId)
@@ -1071,7 +1071,7 @@ export function createInfernoServer(options = {}) {
 
     let user = existing;
     let restored = false;
-    if (existing) {
+    if (existing?.passwordHash) {
       const passwordHash = await hashPassword(
         msg.password,
         existing.passwordSalt,
@@ -1086,6 +1086,21 @@ export function createInfernoServer(options = {}) {
         age: Number(msg.age),
         deviceId: msg.deviceId ?? existing.deviceId ?? "",
         online: true,
+        updatedAt: nowIso(),
+      };
+    } else if (existing) {
+      const salt = randomHex(16);
+      restored = true;
+      user = {
+        ...existing,
+        username: existing.username || username,
+        age: Number(msg.age),
+        deviceId: msg.deviceId ?? existing.deviceId ?? "",
+        online: true,
+        claimedUsername: username,
+        authProvider: "password",
+        passwordSalt: salt,
+        passwordHash: await hashPassword(msg.password, salt),
         updatedAt: nowIso(),
       };
     } else {
@@ -1580,6 +1595,41 @@ export function createInfernoServer(options = {}) {
 
         if (msg.type === "room.leave" || msg.type === "queue.cancel") {
           leaveRoom(id, { notify: true });
+          return;
+        }
+
+        if (msg.type === "room.share") {
+          if (!checkRate(client, "room-share", 4, 60_000))
+            return send(ws, { type: "error", error: "rate_limited" });
+          const room = rooms.get(client.roomId);
+          if (!room?.code)
+            return send(ws, { type: "error", error: "no_room_code" });
+          const payload = {
+            type: "chat.message",
+            from: client.user.username,
+            userId: client.user.id,
+            badge: client.user.badge || "",
+            moderator: isModeratorUser(client.user),
+            text: `Room code ${room.code}`,
+            quick: true,
+            at: nowIso(),
+            channel: "lobby",
+          };
+          pruneChatMessages();
+          db.data.chatMessages.push({
+            id: randomUUID(),
+            channel: "lobby",
+            from: payload.from,
+            userId: payload.userId,
+            badge: payload.badge,
+            moderator: payload.moderator,
+            text: payload.text,
+            quick: true,
+            createdAt: payload.at,
+          });
+          db.save();
+          broadcastAll(payload, client.user.id);
+          send(ws, payload);
           return;
         }
 
