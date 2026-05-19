@@ -4232,6 +4232,15 @@ function handleOnlineMessage(raw) {
     onlineState.profileActionStatus = "Progress synced to your account.";
     requestOnlineLeaderboard({ force: true });
     updateProfileUi();
+  } else if (message.type === "progression.reward") {
+    if (message.payload) applyServerSave({ payload: message.payload });
+    const xp = Math.max(0, Number(message.xp) || 0);
+    const label = sanitizeBadgeLabel(message.label || "Online Reward");
+    onlineState.profileActionStatus = `${label}: +${xp} XP`;
+    setEffectToast(`${label} +${xp} XP`, { pulse: 0.34 });
+    requestOnlineLeaderboard({ force: true });
+    renderProgressPanel();
+    updateProfileUi();
   } else if (message.type === "profile.usernameClaimed") {
     onlineState.user = message.user || onlineState.user;
     onlineState.username = message.username || onlineState.username;

@@ -639,6 +639,73 @@ test("websocket backend supports queue, age gate, quick chat, leaderboard, and s
   await app.close();
 });
 
+test("friending Clark grants a one-time founder XP bonus", async (t) => {
+  const app = createInfernoServer({
+    port: 0,
+    dataDir: path.join(os.tmpdir(), `id4-founder-friend-${Date.now()}`),
+    allowedOrigins: "http://127.0.0.1:5173",
+  });
+  const server = await app.listen();
+  t.after(async () => {
+    await app.close();
+  });
+  const port = server.address().port;
+  const player = await makeWsClient(port);
+
+  player.ws.send(
+    JSON.stringify({ type: "auth.guest", username: "FounderFan", age: 13 }),
+  );
+  await waitForMessage(player.messages, (msg) => msg.type === "auth.ok");
+  player.ws.send(JSON.stringify({ type: "friend.request", username: "Clark" }));
+
+  const request = await waitForMessage(
+    player.messages,
+    (msg) =>
+      msg.type === "friend.requested" &&
+      msg.username === "Clark" &&
+      msg.status === "accepted",
+  );
+  assert.ok(request.requestId);
+  await waitForMessage(
+    player.messages,
+    (msg) => msg.type === "friend.accepted" && msg.username === "Clark",
+  );
+  const reward = await waitForMessage(
+    player.messages,
+    (msg) =>
+      msg.type === "progression.reward" && msg.reason === "founder_friend",
+  );
+  assert.equal(reward.xp, 1000);
+  assert.equal(reward.totalXp, 1000);
+  assert.equal(reward.payload.progressionV2.totalXp, 1000);
+  await waitForMessage(
+    player.messages,
+    (msg) =>
+      msg.type === "friends.snapshot" &&
+      msg.friends?.some((friend) => friend.username === "Clark"),
+  );
+  const leaderboard = await waitForMessage(
+    player.messages,
+    (msg) =>
+      msg.type === "leaderboard.snapshot" &&
+      msg.leaderboard.some(
+        (row) => row.username === "FounderFan" && row.xp === 1000,
+      ),
+  );
+  assert.ok(leaderboard.leaderboard[0].xp >= 1000);
+
+  player.ws.send(JSON.stringify({ type: "friend.request", username: "Clark" }));
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  assert.equal(
+    player.messages.filter(
+      (msg) =>
+        msg.type === "progression.reward" && msg.reason === "founder_friend",
+    ).length,
+    1,
+  );
+  player.ws.terminate();
+});
+
 test("seeded accounts expose badges and moderator can kick and one-day ban", async (t) => {
   const app = createInfernoServer({
     port: 0,

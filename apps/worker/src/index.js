@@ -164,6 +164,8 @@ const BOT_NAMES = [
 const BAN_DURATION_MS = 24 * 60 * 60 * 1000;
 const CHAT_HISTORY_WINDOW_MS = 30 * 60 * 1000;
 const CHAT_HISTORY_LIMIT = 100;
+const FOUNDER_USERNAME = "Clark";
+const FOUNDER_FRIEND_XP_REWARD = 1000;
 const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const PLACEHOLDER_SECRET_VALUES = new Set([
@@ -217,6 +219,7 @@ function seedSystemAccounts(state) {
       badge: account.badge,
       role: account.role,
       moderator: account.role === "moderator",
+      founderFriendXpClaimed: Boolean(existing.founderFriendXpClaimed),
       deviceId: existing.deviceId ?? "",
       createdAt: existing.createdAt ?? nowIso(),
       updatedAt: existing.updatedAt ?? nowIso(),
@@ -327,6 +330,14 @@ function compareLeaderboard(a, b) {
   return getLeaderboardXp(b) - getLeaderboardXp(a);
 }
 
+function progressionLevelForXp(totalXp) {
+  return Math.max(1, Math.floor(Math.max(0, Number(totalXp) || 0) / 500) + 1);
+}
+
+function isFounderUsername(username) {
+  return claimKey(username) === claimKey(FOUNDER_USERNAME);
+}
+
 function extractSaveXp(payload = {}) {
   const progress =
     payload.progressionV2 && typeof payload.progressionV2 === "object"
@@ -340,6 +351,60 @@ function extractSaveXp(payload = {}) {
       ) || 0,
     ),
   );
+}
+
+function buildFounderFriendSavePayload(payload = {}, user = {}) {
+  const next = structuredClone(
+    payload && typeof payload === "object" ? payload : {},
+  );
+  const progress =
+    next.progressionV2 && typeof next.progressionV2 === "object"
+      ? next.progressionV2
+      : {};
+  const totalXp =
+    Math.max(extractSaveXp(next), Math.max(0, Number(user.xp) || 0)) +
+    FOUNDER_FRIEND_XP_REWARD;
+  next.progressionV2 = {
+    ...progress,
+    xp: totalXp,
+    totalXp,
+    level: progressionLevelForXp(totalXp),
+    rewardLog: [
+      {
+        modeId: "founder-friend",
+        label: "Founder Friend",
+        medal: "Bonus",
+        xp: FOUNDER_FRIEND_XP_REWARD,
+        reward: `Founder Friend +${FOUNDER_FRIEND_XP_REWARD} XP`,
+        at: nowIso(),
+      },
+      ...(Array.isArray(progress.rewardLog) ? progress.rewardLog : []),
+    ].slice(0, 12),
+  };
+  return { payload: next, totalXp };
+}
+
+function upsertXpLeaderboard(data, user, totalXp) {
+  data.leaderboard = [
+    {
+      id: `xp-${user.id}`,
+      userId: user.id,
+      username: user.username,
+      badge: user.badge || "",
+      moderator: Boolean(user.moderator || user.role === "moderator"),
+      xp: totalXp,
+      totalXp,
+      score: totalXp,
+      rating: totalXp,
+      playlist: "all modes",
+      scope: "Total XP",
+      source: "server",
+      updatedAt: nowIso(),
+    },
+    ...data.leaderboard.filter(
+      (row) => row.id !== `xp-${user.id}` && row.userId !== user.id,
+    ),
+  ].sort(compareLeaderboard);
 }
 
 function publicUser(user) {
@@ -533,6 +598,20 @@ async function writeSaveAndLeaderboardToD1(env, user, row, totalXp) {
   return true;
 }
 
+async function writeFounderFriendRewardToD1(env, user, row, totalXp) {
+  if (!env.INFERNO_DB?.prepare) return false;
+  const now = row.serverUpdatedAt || nowIso();
+  await writeSaveAndLeaderboardToD1(env, user, row, totalXp);
+  await env.INFERNO_DB.prepare(
+    `UPDATE users
+     SET rating = ?, updated_at = ?, founder_friend_xp_claimed = 1
+     WHERE id = ?`,
+  )
+    .bind(totalXp, now, user.id)
+    .run();
+  return true;
+}
+
 async function writeUserSessionToD1(env, user, sessionToken, session = {}) {
   if (!env.INFERNO_DB?.prepare) return false;
   const now = user.updatedAt || nowIso();
@@ -543,8 +622,8 @@ async function writeUserSessionToD1(env, user, sessionToken, session = {}) {
     : "unset";
   const statements = [
     env.INFERNO_DB.prepare(
-      `INSERT OR REPLACE INTO users (id, username, age_gate, device_id, rating, founder_badge, created_at, updated_at, badge, role, banned_until)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO users (id, username, age_gate, device_id, rating, founder_badge, created_at, updated_at, badge, role, banned_until, founder_friend_xp_claimed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       user.id,
       user.username,
@@ -557,6 +636,7 @@ async function writeUserSessionToD1(env, user, sessionToken, session = {}) {
       user.badge || "",
       user.role || "player",
       user.bannedUntil || "",
+      user.founderFriendXpClaimed ? 1 : 0,
     ),
   ];
   if (user.claimedUsername) {
@@ -751,6 +831,10 @@ async function hydrateDataFromD1(env, stored) {
       role: row.role || existing.role || "player",
       moderator: row.role === "moderator" || Boolean(existing.moderator),
       bannedUntil: row.banned_until || existing.bannedUntil || "",
+      founderFriendXpClaimed: Boolean(
+        Number(row.founder_friend_xp_claimed) ||
+        existing.founderFriendXpClaimed,
+      ),
       createdAt: row.created_at || existing.createdAt || nowIso(),
       updatedAt: row.updated_at || existing.updatedAt || nowIso(),
     };
@@ -1324,6 +1408,7 @@ export class InfernoRoom {
       badge: existing.badge || "",
       role: existing.role || "player",
       moderator: Boolean(existing.moderator || existing.role === "moderator"),
+      founderFriendXpClaimed: Boolean(existing.founderFriendXpClaimed),
     };
     const sessionToken = restoredSession ? token : crypto.randomUUID();
     this.data.users[userId] = user;
@@ -1802,27 +1887,7 @@ export class InfernoRoom {
     session.user.rating = totalXp;
     session.user.updatedAt = nowIso();
     this.data.users[session.user.id] = session.user;
-    this.data.leaderboard = [
-      {
-        id: `xp-${session.user.id}`,
-        userId: session.user.id,
-        username: session.user.username,
-        badge: session.user.badge || "",
-        moderator: this.isModeratorUser(session.user),
-        xp: totalXp,
-        totalXp,
-        score: totalXp,
-        rating: totalXp,
-        playlist: "all modes",
-        scope: "Total XP",
-        source: "server",
-        updatedAt: nowIso(),
-      },
-      ...this.data.leaderboard.filter(
-        (row) =>
-          row.id !== `xp-${session.user.id}` && row.userId !== session.user.id,
-      ),
-    ].sort(compareLeaderboard);
+    upsertXpLeaderboard(this.data, session.user, totalXp);
     const row = {
       userId: session.user.id,
       schemaVersion: Number(msg.schemaVersion),
@@ -1937,25 +2002,61 @@ export class InfernoRoom {
     const target = this.findUserByUsername(username);
     if (target?.id === session.user.id)
       return send(session.ws, { type: "error", error: "friend_self_rejected" });
+    const isFounderTarget = target && isFounderUsername(target.username);
     const request = {
       id: crypto.randomUUID(),
       fromUserId: session.user.id,
       fromUsername: session.user.username,
       toUserId: target?.id ?? "",
       toUsername: username,
-      status: "pending",
+      status: isFounderTarget ? "accepted" : "pending",
       createdAt: nowIso(),
+      respondedAt: isFounderTarget ? nowIso() : "",
     };
     this.data.friendRequests[request.id] = request;
+    let founderReward = null;
+    if (isFounderTarget) {
+      this.ensureFriendState(session.user.id).friends[target.id] = {
+        since: request.respondedAt,
+      };
+      this.ensureFriendState(target.id).friends[session.user.id] = {
+        since: request.respondedAt,
+      };
+      founderReward = await this.awardFounderFriendXp(session.user);
+    }
     await writeFriendRequestToD1(this.env, request).catch(() => false);
+    if (isFounderTarget) {
+      await Promise.all([
+        writeFriendPairToD1(
+          this.env,
+          session.user.id,
+          target.id,
+          request.respondedAt,
+        ),
+        writeFriendPairToD1(
+          this.env,
+          target.id,
+          session.user.id,
+          request.respondedAt,
+        ),
+      ]).catch(() => false);
+    }
     await this.persist();
     send(session.ws, {
       type: "friend.requested",
       requestId: request.id,
       username,
-      status: "pending",
+      status: request.status,
     });
+    if (isFounderTarget) {
+      send(session.ws, {
+        type: "friend.accepted",
+        requestId: request.id,
+        username: target.username,
+      });
+    }
     send(session.ws, this.friendsSnapshot(session));
+    this.sendFounderFriendReward(session.user.id, founderReward);
     if (target) {
       const targetSession = this.clientByUserId(target.id);
       if (targetSession)
@@ -1985,6 +2086,14 @@ export class InfernoRoom {
     this.ensureFriendState(request.fromUserId).friends[session.user.id] = {
       since: request.respondedAt,
     };
+    const rewardUserId = isFounderUsername(session.user.username)
+      ? request.fromUserId
+      : isFounderUsername(request.fromUsername)
+        ? session.user.id
+        : "";
+    const founderReward = rewardUserId
+      ? await this.awardFounderFriendXp(this.data.users[rewardUserId])
+      : null;
     await Promise.all([
       writeFriendRequestToD1(this.env, request),
       writeFriendPairToD1(
@@ -2010,6 +2119,7 @@ export class InfernoRoom {
     const sourceSession = this.clientByUserId(request.fromUserId);
     if (sourceSession)
       send(sourceSession.ws, this.friendsSnapshot(sourceSession));
+    this.sendFounderFriendReward(rewardUserId, founderReward);
   }
 
   async handleFriendBlock(session, msg) {
@@ -2223,6 +2333,65 @@ export class InfernoRoom {
         .map((peer) => publicUser(peer.user))
         .filter((user) => user && user.id !== session.user.id),
     };
+  }
+
+  async awardFounderFriendXp(user) {
+    if (!user || isFounderUsername(user.username)) return null;
+    if (user.founderFriendXpClaimed) return null;
+    const previousSave = this.data.saves[user.id] ?? {
+      userId: user.id,
+      schemaVersion: 2,
+      payload: {},
+      serverUpdatedAt: nowIso(),
+    };
+    const { payload, totalXp } = buildFounderFriendSavePayload(
+      previousSave.payload,
+      user,
+    );
+    user.founderFriendXpClaimed = true;
+    user.xp = totalXp;
+    user.rating = Math.max(Number(user.rating) || 0, totalXp);
+    user.updatedAt = nowIso();
+    this.data.users[user.id] = user;
+    const row = {
+      ...previousSave,
+      userId: user.id,
+      schemaVersion: Math.max(2, Number(previousSave.schemaVersion) || 2),
+      payload,
+      serverUpdatedAt: user.updatedAt,
+    };
+    this.data.saves[user.id] = row;
+    upsertXpLeaderboard(this.data, user, totalXp);
+    await writeFounderFriendRewardToD1(this.env, user, row, totalXp).catch(
+      () => false,
+    );
+    return {
+      type: "progression.reward",
+      reason: "founder_friend",
+      label: "Founder Friend",
+      xp: FOUNDER_FRIEND_XP_REWARD,
+      totalXp,
+      payload,
+      user: publicUser(user),
+    };
+  }
+
+  sendFounderFriendReward(userId, reward) {
+    if (!reward) return;
+    const targetSession = this.clientByUserId(userId);
+    if (!targetSession) return;
+    send(targetSession.ws, reward);
+    send(targetSession.ws, {
+      type: "save.synced",
+      schemaVersion: 2,
+      payload: reward.payload,
+      serverUpdatedAt: nowIso(),
+    });
+    send(targetSession.ws, {
+      type: "leaderboard.snapshot",
+      leaderboard: this.leaderboardSnapshot("casual"),
+    });
+    send(targetSession.ws, this.profileSnapshot(targetSession));
   }
 
   profileSnapshot(session) {

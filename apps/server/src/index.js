@@ -113,6 +113,8 @@ const BOT_NAMES = [
 const BAN_DURATION_MS = 24 * 60 * 60 * 1000;
 const CHAT_HISTORY_WINDOW_MS = 30 * 60 * 1000;
 const CHAT_HISTORY_LIMIT = 100;
+const FOUNDER_USERNAME = "Clark";
+const FOUNDER_FRIEND_XP_REWARD = 1000;
 const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const PLACEHOLDER_SECRET_VALUES = new Set([
@@ -225,6 +227,7 @@ function seedSystemAccounts(db) {
       badge: account.badge,
       role: account.role,
       moderator: account.role === "moderator",
+      founderFriendXpClaimed: Boolean(existing.founderFriendXpClaimed),
       deviceId: existing.deviceId ?? "",
       createdAt: existing.createdAt ?? nowIso(),
       updatedAt: existing.updatedAt ?? nowIso(),
@@ -363,6 +366,14 @@ function getLeaderboardXp(row) {
   );
 }
 
+function progressionLevelForXp(totalXp) {
+  return Math.max(1, Math.floor(Math.max(0, Number(totalXp) || 0) / 500) + 1);
+}
+
+function isFounderUsername(username) {
+  return claimKey(username) === claimKey(FOUNDER_USERNAME);
+}
+
 function extractSaveXp(payload = {}) {
   const progress =
     payload.progressionV2 && typeof payload.progressionV2 === "object"
@@ -376,6 +387,60 @@ function extractSaveXp(payload = {}) {
       ) || 0,
     ),
   );
+}
+
+function buildFounderFriendSavePayload(payload = {}, user = {}) {
+  const next = structuredClone(
+    payload && typeof payload === "object" ? payload : {},
+  );
+  const progress =
+    next.progressionV2 && typeof next.progressionV2 === "object"
+      ? next.progressionV2
+      : {};
+  const totalXp =
+    Math.max(extractSaveXp(next), Math.max(0, Number(user.xp) || 0)) +
+    FOUNDER_FRIEND_XP_REWARD;
+  next.progressionV2 = {
+    ...progress,
+    xp: totalXp,
+    totalXp,
+    level: progressionLevelForXp(totalXp),
+    rewardLog: [
+      {
+        modeId: "founder-friend",
+        label: "Founder Friend",
+        medal: "Bonus",
+        xp: FOUNDER_FRIEND_XP_REWARD,
+        reward: `Founder Friend +${FOUNDER_FRIEND_XP_REWARD} XP`,
+        at: nowIso(),
+      },
+      ...(Array.isArray(progress.rewardLog) ? progress.rewardLog : []),
+    ].slice(0, 12),
+  };
+  return { payload: next, totalXp };
+}
+
+function upsertXpLeaderboard(data, user, totalXp) {
+  data.leaderboard = [
+    {
+      id: `xp-${user.id}`,
+      userId: user.id,
+      username: user.username,
+      badge: user.badge || "",
+      moderator: Boolean(user.moderator || user.role === "moderator"),
+      xp: totalXp,
+      totalXp,
+      score: totalXp,
+      rating: totalXp,
+      playlist: "all modes",
+      scope: "Total XP",
+      source: "server",
+      updatedAt: nowIso(),
+    },
+    ...data.leaderboard.filter(
+      (row) => row.id !== `xp-${user.id}` && row.userId !== user.id,
+    ),
+  ].sort(compareLeaderboard);
 }
 
 function usableSecret(value) {
@@ -826,6 +891,61 @@ export function createInfernoServer(options = {}) {
     };
   }
 
+  function awardFounderFriendXp(user) {
+    if (!user || isFounderUsername(user.username)) return null;
+    if (user.founderFriendXpClaimed) return null;
+    const previousSave = db.data.saves[user.id] ?? {
+      userId: user.id,
+      schemaVersion: 2,
+      payload: {},
+      serverUpdatedAt: nowIso(),
+    };
+    const { payload, totalXp } = buildFounderFriendSavePayload(
+      previousSave.payload,
+      user,
+    );
+    user.founderFriendXpClaimed = true;
+    user.xp = totalXp;
+    user.rating = Math.max(Number(user.rating) || 0, totalXp);
+    user.updatedAt = nowIso();
+    db.data.users[user.id] = user;
+    db.data.saves[user.id] = {
+      ...previousSave,
+      userId: user.id,
+      schemaVersion: Math.max(2, Number(previousSave.schemaVersion) || 2),
+      payload,
+      serverUpdatedAt: user.updatedAt,
+    };
+    upsertXpLeaderboard(db.data, user, totalXp);
+    return {
+      type: "progression.reward",
+      reason: "founder_friend",
+      label: "Founder Friend",
+      xp: FOUNDER_FRIEND_XP_REWARD,
+      totalXp,
+      payload,
+      user: publicUser(user),
+    };
+  }
+
+  function sendFounderFriendReward(userId, reward) {
+    if (!reward) return;
+    const targetClient = clientByUserId(userId);
+    if (!targetClient) return;
+    send(targetClient.ws, reward);
+    send(targetClient.ws, {
+      type: "save.synced",
+      schemaVersion: 2,
+      payload: reward.payload,
+      serverUpdatedAt: nowIso(),
+    });
+    send(targetClient.ws, {
+      type: "leaderboard.snapshot",
+      leaderboard: leaderboardSnapshot("casual"),
+    });
+    send(targetClient.ws, profileSnapshot(targetClient));
+  }
+
   function profileSnapshot(client) {
     return {
       type: "profile.snapshot",
@@ -1028,6 +1148,7 @@ export function createInfernoServer(options = {}) {
       badge: existing.badge || "",
       role: existing.role || "player",
       moderator: Boolean(existing.moderator || existing.role === "moderator"),
+      founderFriendXpClaimed: Boolean(existing.founderFriendXpClaimed),
     };
     db.data.users[userId] = user;
     db.data.sessions[sessionToken] = {
@@ -1177,24 +1298,44 @@ export function createInfernoServer(options = {}) {
     const target = findUserByUsername(username);
     if (target?.id === client.user.id)
       return send(client.ws, { type: "error", error: "friend_self_rejected" });
+    const isFounderTarget = target && isFounderUsername(target.username);
     const request = {
       id: randomUUID(),
       fromUserId: client.user.id,
       fromUsername: client.user.username,
       toUserId: target?.id ?? "",
       toUsername: username,
-      status: "pending",
+      status: isFounderTarget ? "accepted" : "pending",
       createdAt: nowIso(),
+      respondedAt: isFounderTarget ? nowIso() : "",
     };
     db.data.friendRequests[request.id] = request;
+    let founderReward = null;
+    if (isFounderTarget) {
+      ensureFriendState(client.user.id).friends[target.id] = {
+        since: request.respondedAt,
+      };
+      ensureFriendState(target.id).friends[client.user.id] = {
+        since: request.respondedAt,
+      };
+      founderReward = awardFounderFriendXp(client.user);
+    }
     db.save();
     send(client.ws, {
       type: "friend.requested",
       requestId: request.id,
       username,
-      status: "pending",
+      status: request.status,
     });
+    if (isFounderTarget) {
+      send(client.ws, {
+        type: "friend.accepted",
+        requestId: request.id,
+        username: target.username,
+      });
+    }
     send(client.ws, friendsSnapshot(client));
+    sendFounderFriendReward(client.user.id, founderReward);
     if (target) {
       const targetClient = clientByUserId(target.id);
       if (targetClient) send(targetClient.ws, friendsSnapshot(targetClient));
@@ -1223,6 +1364,14 @@ export function createInfernoServer(options = {}) {
     ensureFriendState(request.fromUserId).friends[client.user.id] = {
       since: request.respondedAt,
     };
+    const rewardUserId = isFounderUsername(client.user.username)
+      ? request.fromUserId
+      : isFounderUsername(request.fromUsername)
+        ? client.user.id
+        : "";
+    const founderReward = rewardUserId
+      ? awardFounderFriendXp(db.data.users[rewardUserId])
+      : null;
     db.save();
     send(client.ws, {
       type: "friend.accepted",
@@ -1231,7 +1380,10 @@ export function createInfernoServer(options = {}) {
     });
     send(client.ws, friendsSnapshot(client));
     const sourceClient = clientByUserId(request.fromUserId);
-    if (sourceClient) send(sourceClient.ws, friendsSnapshot(sourceClient));
+    if (sourceClient) {
+      send(sourceClient.ws, friendsSnapshot(sourceClient));
+    }
+    sendFounderFriendReward(rewardUserId, founderReward);
   }
 
   function handleFriendBlock(client, msg) {
@@ -1291,27 +1443,7 @@ export function createInfernoServer(options = {}) {
     client.user.rating = totalXp;
     client.user.updatedAt = nowIso();
     db.data.users[client.user.id] = client.user;
-    db.data.leaderboard = [
-      {
-        id: `xp-${client.user.id}`,
-        userId: client.user.id,
-        username: client.user.username,
-        badge: client.user.badge || "",
-        moderator: isModeratorUser(client.user),
-        xp: totalXp,
-        totalXp,
-        score: totalXp,
-        rating: totalXp,
-        playlist: "all modes",
-        scope: "Total XP",
-        source: "server",
-        updatedAt: nowIso(),
-      },
-      ...db.data.leaderboard.filter(
-        (row) =>
-          row.id !== `xp-${client.user.id}` && row.userId !== client.user.id,
-      ),
-    ].sort(compareLeaderboard);
+    upsertXpLeaderboard(db.data, client.user, totalXp);
     const row = {
       userId: client.user.id,
       schemaVersion: Number(msg.schemaVersion),

@@ -24,6 +24,13 @@ const smokeUrl = process.env.SMOKE_URL || "http://127.0.0.1:4173/index.html";
 const smokeUsername = `SmokeRacer${Date.now().toString().slice(-6)}`;
 await page.goto(smokeUrl, { waitUntil: "commit", timeout: 45000 });
 await waitForGameHook(page);
+await page.evaluate((username) => {
+  window.__infernodriftTestApi.configureOnlineForTest({
+    backendUrl: "",
+    username,
+    age: 13,
+  });
+}, smokeUsername);
 await page.waitForTimeout(1200);
 
 await page.locator("#start-btn").click({ force: true });
@@ -54,12 +61,13 @@ await page.evaluate(() => {
     },
   ]);
 });
-await page.evaluate(() => window.advanceTime(300));
+await page.evaluate(() => window.advanceTime(16));
 const remoteTags = await page.evaluate(() =>
   window.__infernodriftTestApi.getRemoteNameTags(),
 );
-assert.equal(remoteTags[0].text, "Clark");
-assert.equal(remoteTags[0].hidden, false);
+const clarkRemoteTag = remoteTags.find((tag) => tag.text === "Clark");
+assert.ok(clarkRemoteTag);
+assert.equal(clarkRemoteTag.hidden, false);
 const campaignWithFriend = JSON.parse(
   await page.evaluate(() => window.render_game_to_text()),
 );
