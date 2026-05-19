@@ -609,6 +609,52 @@ function usableFeedbackSender(value) {
   return sender;
 }
 
+function feedbackEmailHtml(text) {
+  return `<pre>${text.replace(/[&<>]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[char])}</pre>`;
+}
+
+function isResendSenderVerificationError(message) {
+  const text = String(message ?? "").toLowerCase();
+  return (
+    text.includes("domain is not verified") ||
+    text.includes("verify a domain") ||
+    text.includes("only send testing emails") ||
+    (text.includes("sender") && text.includes("verify"))
+  );
+}
+
+async function sendFeedbackEmail({
+  apiKey,
+  transport,
+  row,
+  from,
+  to,
+  text,
+  idempotencyKey,
+}) {
+  const response = await transport("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json",
+      "idempotency-key": idempotencyKey,
+    },
+    body: JSON.stringify({
+      from,
+      to,
+      subject: `InfernoDrift4 feedback: ${row.feedbackType}`,
+      text,
+      html: feedbackEmailHtml(text),
+    }),
+  });
+  if (response.ok) return { ok: true, error: "" };
+  const body = await response.json().catch(() => ({}));
+  return {
+    ok: false,
+    error: body?.message || body?.error || `resend_${response.status}`,
+  };
+}
+
 async function deliverFeedback(row, options) {
   const apiKey = usableSecret(
     options.resendApiKey ?? process.env.RESEND_API_KEY,
@@ -640,27 +686,48 @@ async function deliverFeedback(row, options) {
     "",
     `Diagnostics: ${JSON.stringify(row.diagnostics ?? {})}`,
   ].join("\n");
-  const response = await transport("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-      "idempotency-key": `feedback-${row.id}`,
-    },
-    body: JSON.stringify({
-      from,
-      to,
-      subject: `InfernoDrift4 feedback: ${row.feedbackType}`,
-      text,
-      html: `<pre>${text.replace(/[&<>]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[char])}</pre>`,
-    }),
+  const primary = await sendFeedbackEmail({
+    apiKey,
+    transport,
+    row,
+    from,
+    to,
+    text,
+    idempotencyKey: `feedback-${row.id}`,
   });
-  if (response.ok) return { delivery: "delivered", emailConfigured: true };
-  const body = await response.json().catch(() => ({}));
+  if (primary.ok) return { delivery: "delivered", emailConfigured: true };
+  if (isResendSenderVerificationError(primary.error)) {
+    const sandboxTo = to.includes("clark.alden@lbusd.org")
+      ? ["clark.alden@lbusd.org"]
+      : [to[0]].filter(Boolean);
+    const sandbox = await sendFeedbackEmail({
+      apiKey,
+      transport,
+      row,
+      from: "InfernoDrift4 <onboarding@resend.dev>",
+      to: sandboxTo,
+      text,
+      idempotencyKey: `feedback-${row.id}-sandbox`,
+    });
+    if (sandbox.ok) {
+      return {
+        delivery: "delivered_sandbox",
+        emailConfigured: true,
+        deliveredTo: sandboxTo,
+        emailWarning:
+          "Gmail copy requires a verified sender domain; delivered through Resend sandbox.",
+      };
+    }
+    return {
+      delivery: "stored_email_failed",
+      emailConfigured: true,
+      emailError: `${primary.error}; sandbox_fallback_failed: ${sandbox.error}`,
+    };
+  }
   return {
     delivery: "stored_email_failed",
     emailConfigured: true,
-    emailError: body?.message || body?.error || `resend_${response.status}`,
+    emailError: primary.error,
   };
 }
 

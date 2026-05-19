@@ -1412,3 +1412,65 @@ test("http feedback endpoint sends through configured Resend transport truthfull
     /Please add a cleaner room invite flow/,
   );
 });
+
+test("http feedback endpoint falls back to Resend sandbox when sender domain is unverified", async (t) => {
+  const deliveries = [];
+  const app = createInfernoServer({
+    port: 0,
+    dataDir: path.join(os.tmpdir(), `id4-feedback-sandbox-${Date.now()}`),
+    allowedOrigins: "http://127.0.0.1:5173",
+    resendApiKey: "test-resend-key",
+    feedbackFrom: "InfernoDrift4 <clark.alden@lbusd.org>",
+    feedbackTo: "clarkbythebay@gmail.com,clark.alden@lbusd.org",
+    feedbackFetch: async (url, options) => {
+      const body = JSON.parse(options.body);
+      deliveries.push({ url, body, headers: options.headers });
+      if (body.from.includes("onboarding@resend.dev")) {
+        return Response.json({ id: "sandbox-email-test" });
+      }
+      return Response.json(
+        { message: "The lbusd.org domain is not verified." },
+        { status: 403 },
+      );
+    },
+  });
+  const server = await app.listen();
+  t.after(async () => {
+    await app.close();
+  });
+  const port = server.address().port;
+
+  const response = await fetch(`http://127.0.0.1:${port}/api/feedback`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "http://127.0.0.1:5173",
+    },
+    body: JSON.stringify({
+      feedbackType: "bug",
+      message: "Feedback should still reach a real inbox without a domain.",
+      age13OrOlder: true,
+      diagnostics: { source: "sandbox-test" },
+    }),
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.delivery, "delivered_sandbox");
+  assert.equal(payload.emailConfigured, true);
+  assert.deepEqual(payload.deliveredTo, ["clark.alden@lbusd.org"]);
+  assert.match(payload.emailWarning, /Gmail copy requires/);
+  assert.equal(deliveries.length, 2);
+  assert.deepEqual(deliveries[0].body.to, [
+    "clarkbythebay@gmail.com",
+    "clark.alden@lbusd.org",
+  ]);
+  assert.equal(
+    deliveries[0].body.from,
+    "InfernoDrift4 <clark.alden@lbusd.org>",
+  );
+  assert.deepEqual(deliveries[1].body.to, ["clark.alden@lbusd.org"]);
+  assert.equal(
+    deliveries[1].body.from,
+    "InfernoDrift4 <onboarding@resend.dev>",
+  );
+});

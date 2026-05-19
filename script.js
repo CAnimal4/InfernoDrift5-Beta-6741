@@ -5334,6 +5334,9 @@ function getFeedbackDeliveryMessage(result = {}) {
   if (delivery === "delivered") {
     return "Feedback saved and email notification sent.";
   }
+  if (delivery === "delivered_sandbox") {
+    return "Feedback saved and emailed to Clark's school email. Gmail copy requires a verified sender domain.";
+  }
   if (delivery === "stored_email_failed") {
     const detail = result.emailError ? ` (${result.emailError})` : "";
     return `Feedback saved, but email delivery failed${detail}.`;
