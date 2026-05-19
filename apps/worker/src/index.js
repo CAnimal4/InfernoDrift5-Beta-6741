@@ -606,11 +606,30 @@ function usableSecret(value) {
 }
 
 function hasResendConfig(env) {
-  return Boolean(
-    usableSecret(env.RESEND_API_KEY) &&
-    usableSecret(env.FEEDBACK_TO ?? env.FEEDBACK_EMAIL_TO) &&
-    usableFeedbackSender(env.FEEDBACK_FROM ?? env.FEEDBACK_EMAIL_FROM),
+  return feedbackConfigStatus(env).ready;
+}
+
+function feedbackConfigStatus(env) {
+  const apiKeyConfigured = Boolean(usableSecret(env.RESEND_API_KEY));
+  const recipients = parseFeedbackRecipients(
+    env.FEEDBACK_TO ?? env.FEEDBACK_EMAIL_TO,
   );
+  const sender = usableFeedbackSender(
+    env.FEEDBACK_FROM ?? env.FEEDBACK_EMAIL_FROM,
+  );
+  return {
+    ready: Boolean(apiKeyConfigured && recipients.length && sender),
+    apiKeyConfigured,
+    fromConfigured: Boolean(sender),
+    from: sender || "",
+    toConfigured: Boolean(recipients.length),
+    toCount: recipients.length,
+    missing: [
+      apiKeyConfigured ? "" : "RESEND_API_KEY",
+      sender ? "" : "FEEDBACK_FROM",
+      recipients.length ? "" : "FEEDBACK_TO",
+    ].filter(Boolean),
+  };
 }
 
 function parseFeedbackRecipients(value) {
@@ -2908,6 +2927,7 @@ export default {
           d1: Boolean(env.INFERNO_DB),
           resend: hasResendConfig(env),
         },
+        feedback: feedbackConfigStatus(env),
       });
     }
     if (url.pathname === "/api/feedback" && request.method === "POST") {
