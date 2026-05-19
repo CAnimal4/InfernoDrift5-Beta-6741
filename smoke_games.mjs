@@ -149,6 +149,18 @@ onlineUiState = JSON.parse(
 );
 assert.equal(onlineUiState.ui.tab, "leaderboard");
 assert.equal(await page.locator("#online-leaderboard").isVisible(), true);
+await page.locator('[data-tab="profile"]').click({ force: true });
+await page.waitForTimeout(150);
+onlineUiState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
+assert.equal(onlineUiState.ui.tab, "profile");
+assert.equal(onlineUiState.online.profile.tabVisible, true);
+assert.match(await page.locator("#profile-display-name").textContent(), /\S/);
+assert.match(
+  (await page.locator("#profile-action-status").textContent()) ?? "",
+  /delete|account|guest|online/i,
+);
 await page.locator('[data-tab="online"]').click({ force: true });
 await page.keyboard.press("c");
 await page.waitForTimeout(180);

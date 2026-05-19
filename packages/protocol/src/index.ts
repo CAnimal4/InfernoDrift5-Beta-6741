@@ -192,6 +192,12 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
     username: z.string().min(1).max(24),
     turnstileToken: z.string().max(2048).optional(),
   }),
+  z.object({ type: z.literal("profile.get") }),
+  z.object({ type: z.literal("profile.logout") }),
+  z.object({
+    type: z.literal("profile.delete"),
+    confirmUsername: z.string().min(1).max(24),
+  }),
   z.object({
     type: z.literal("room.create"),
     playlist: rankedPlaylistSchema.default("casual"),

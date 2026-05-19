@@ -5,6 +5,9 @@ CREATE TABLE IF NOT EXISTS users (
   device_id TEXT NOT NULL DEFAULT '',
   rating INTEGER NOT NULL DEFAULT 1000,
   founder_badge INTEGER NOT NULL DEFAULT 0,
+  badge TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT 'player',
+  banned_until TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -78,9 +81,12 @@ CREATE TABLE IF NOT EXISTS leaderboards (
   mode_id TEXT NOT NULL,
   rating INTEGER NOT NULL DEFAULT 1000,
   score INTEGER NOT NULL DEFAULT 0,
+  xp INTEGER NOT NULL DEFAULT 0,
   season_id TEXT NOT NULL DEFAULT 'preseason',
   source TEXT NOT NULL DEFAULT 'server',
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  badge TEXT NOT NULL DEFAULT '',
+  moderator INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS friend_requests (

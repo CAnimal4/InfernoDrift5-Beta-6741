@@ -162,6 +162,8 @@ const BOT_NAMES = [
 ];
 
 const BAN_DURATION_MS = 24 * 60 * 60 * 1000;
+const CHAT_HISTORY_WINDOW_MS = 15 * 60 * 1000;
+const CHAT_HISTORY_LIMIT = 100;
 const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const PLACEHOLDER_SECRET_VALUES = new Set([
@@ -187,6 +189,8 @@ function emptyData() {
     moderationLogs: [],
     bans: {},
     feedback: [],
+    chatMessages: [],
+    accountDeletions: [],
     leaderboard: DEFAULT_LEADERBOARD,
   };
 }
@@ -292,6 +296,12 @@ function normalizeData(data) {
       ? state.bans
       : {};
   state.feedback = Array.isArray(state.feedback) ? state.feedback : [];
+  state.chatMessages = Array.isArray(state.chatMessages)
+    ? state.chatMessages
+    : [];
+  state.accountDeletions = Array.isArray(state.accountDeletions)
+    ? state.accountDeletions
+    : [];
   state.leaderboard =
     Array.isArray(state.leaderboard) && state.leaderboard.length
       ? state.leaderboard
@@ -360,7 +370,7 @@ function usableSecret(value) {
 function hasResendConfig(env) {
   return Boolean(
     usableSecret(env.RESEND_API_KEY) &&
-      usableSecret(env.FEEDBACK_TO ?? env.FEEDBACK_EMAIL_TO),
+    usableSecret(env.FEEDBACK_TO ?? env.FEEDBACK_EMAIL_TO),
   );
 }
 
@@ -461,6 +471,618 @@ async function writeFeedbackToD1(env, row) {
   return true;
 }
 
+async function writeChatMessageToD1(env, row) {
+  if (!env.INFERNO_DB?.prepare) return false;
+  await env.INFERNO_DB.prepare(
+    `INSERT INTO chat_messages (id, channel, user_id, username, badge, moderator, message_text, quick, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      row.id,
+      row.channel,
+      row.userId,
+      row.from,
+      row.badge || "",
+      row.moderator ? 1 : 0,
+      row.text,
+      row.quick ? 1 : 0,
+      row.createdAt,
+    )
+    .run();
+  return true;
+}
+
+async function writeSaveAndLeaderboardToD1(env, user, row, totalXp) {
+  if (!env.INFERNO_DB?.prepare) return false;
+  const now = row.serverUpdatedAt || nowIso();
+  await env.INFERNO_DB.batch([
+    env.INFERNO_DB.prepare(
+      `INSERT OR REPLACE INTO cloud_saves (user_id, schema_version, payload_json, server_updated_at)
+       VALUES (?, ?, ?, ?)`,
+    ).bind(user.id, row.schemaVersion, JSON.stringify(row.payload), now),
+    env.INFERNO_DB.prepare(
+      `INSERT OR REPLACE INTO stats (user_id, xp, level, runs, wins, updated_at)
+       VALUES (?, ?, ?, COALESCE((SELECT runs FROM stats WHERE user_id = ?), 0), COALESCE((SELECT wins FROM stats WHERE user_id = ?), 0), ?)`,
+    ).bind(
+      user.id,
+      totalXp,
+      Math.max(1, Math.floor(totalXp / 500) + 1),
+      user.id,
+      user.id,
+      now,
+    ),
+    env.INFERNO_DB.prepare(
+      `INSERT OR REPLACE INTO leaderboards (id, user_id, username, playlist, mode_id, rating, score, season_id, source, updated_at, xp, badge, moderator)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      `xp-${user.id}`,
+      user.id,
+      user.username,
+      "all modes",
+      "global-xp",
+      totalXp,
+      totalXp,
+      "preseason",
+      "server",
+      now,
+      totalXp,
+      user.badge || "",
+      user.moderator || user.role === "moderator" ? 1 : 0,
+    ),
+  ]);
+  return true;
+}
+
+async function writeUserSessionToD1(env, user, sessionToken, session = {}) {
+  if (!env.INFERNO_DB?.prepare) return false;
+  const now = user.updatedAt || nowIso();
+  const ageGate = Number.isFinite(user.age)
+    ? user.age >= 13
+      ? "13+"
+      : "under13"
+    : "unset";
+  const statements = [
+    env.INFERNO_DB.prepare(
+      `INSERT OR REPLACE INTO users (id, username, age_gate, device_id, rating, founder_badge, created_at, updated_at, badge, role, banned_until)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      user.id,
+      user.username,
+      ageGate,
+      user.deviceId || "",
+      Number(user.rating) || Number(user.xp) || 1000,
+      user.badge === "Founder" ? 1 : 0,
+      user.createdAt || now,
+      now,
+      user.badge || "",
+      user.role || "player",
+      user.bannedUntil || "",
+    ),
+  ];
+  if (user.claimedUsername) {
+    statements.push(
+      env.INFERNO_DB.prepare(
+        `INSERT OR REPLACE INTO username_claims (username_key, user_id, username, created_at)
+         VALUES (?, ?, ?, ?)`,
+      ).bind(
+        claimKey(user.claimedUsername),
+        user.id,
+        user.claimedUsername,
+        now,
+      ),
+    );
+  }
+  if (user.passwordHash && user.passwordSalt) {
+    statements.push(
+      env.INFERNO_DB.prepare(
+        `INSERT OR REPLACE INTO account_credentials (user_id, username_key, password_hash, password_salt, auth_provider, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        user.id,
+        claimKey(user.username),
+        user.passwordHash,
+        user.passwordSalt,
+        user.authProvider || "password",
+        user.createdAt || now,
+        now,
+      ),
+    );
+  }
+  if (sessionToken) {
+    statements.push(
+      env.INFERNO_DB.prepare(
+        `INSERT OR REPLACE INTO sessions (token_hash, user_id, device_id, created_at, last_seen_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      ).bind(
+        sessionToken,
+        user.id,
+        session.deviceId || user.deviceId || "",
+        session.createdAt || now,
+        now,
+      ),
+    );
+  }
+  await env.INFERNO_DB.batch(statements);
+  return true;
+}
+
+async function deleteUserFromD1(env, user) {
+  if (!env.INFERNO_DB?.prepare) return false;
+  const deletionId = crypto.randomUUID();
+  await env.INFERNO_DB.batch([
+    env.INFERNO_DB.prepare(
+      "INSERT INTO account_deletions (id, user_id, username_key, deleted_at) VALUES (?, ?, ?, ?)",
+    ).bind(deletionId, user.id, claimKey(user.username), nowIso()),
+    env.INFERNO_DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(
+      user.id,
+    ),
+    env.INFERNO_DB.prepare("DELETE FROM cloud_saves WHERE user_id = ?").bind(
+      user.id,
+    ),
+    env.INFERNO_DB.prepare("DELETE FROM stats WHERE user_id = ?").bind(user.id),
+    env.INFERNO_DB.prepare("DELETE FROM ranked_ratings WHERE user_id = ?").bind(
+      user.id,
+    ),
+    env.INFERNO_DB.prepare("DELETE FROM leaderboards WHERE user_id = ?").bind(
+      user.id,
+    ),
+    env.INFERNO_DB.prepare(
+      "DELETE FROM username_claims WHERE user_id = ?",
+    ).bind(user.id),
+    env.INFERNO_DB.prepare(
+      "DELETE FROM account_credentials WHERE user_id = ?",
+    ).bind(user.id),
+    env.INFERNO_DB.prepare(
+      "DELETE FROM friends WHERE user_id = ? OR friend_user_id = ?",
+    ).bind(user.id, user.id),
+    env.INFERNO_DB.prepare(
+      "DELETE FROM blocks WHERE user_id = ? OR blocked_user_id = ?",
+    ).bind(user.id, user.id),
+    env.INFERNO_DB.prepare("DELETE FROM account_bans WHERE user_id = ?").bind(
+      user.id,
+    ),
+    env.INFERNO_DB.prepare("DELETE FROM room_members WHERE user_id = ?").bind(
+      user.id,
+    ),
+    env.INFERNO_DB.prepare(
+      "UPDATE friend_requests SET from_username = 'Deleted Player' WHERE from_user_id = ?",
+    ).bind(user.id),
+    env.INFERNO_DB.prepare(
+      "UPDATE friend_requests SET to_username = 'Deleted Player' WHERE to_user_id = ?",
+    ).bind(user.id),
+    env.INFERNO_DB.prepare(
+      "UPDATE moderation_reports SET reporter_username = 'Deleted Player' WHERE reporter_user_id = ?",
+    ).bind(user.id),
+    env.INFERNO_DB.prepare(
+      "UPDATE moderation_reports SET target_username = 'Deleted Player' WHERE target_user_id = ?",
+    ).bind(user.id),
+    env.INFERNO_DB.prepare(
+      "UPDATE moderation_logs SET user_id = '' WHERE user_id = ?",
+    ).bind(user.id),
+    env.INFERNO_DB.prepare(
+      "UPDATE chat_messages SET username = 'Deleted Player' WHERE user_id = ?",
+    ).bind(user.id),
+    env.INFERNO_DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id),
+  ]);
+  return true;
+}
+
+async function deleteSessionFromD1(env, token) {
+  if (!env.INFERNO_DB?.prepare || !token) return false;
+  await env.INFERNO_DB.prepare("DELETE FROM sessions WHERE token_hash = ?")
+    .bind(token)
+    .run();
+  return true;
+}
+
+async function deleteSessionsForUserFromD1(env, userId) {
+  if (!env.INFERNO_DB?.prepare || !userId) return false;
+  await env.INFERNO_DB.prepare("DELETE FROM sessions WHERE user_id = ?")
+    .bind(userId)
+    .run();
+  return true;
+}
+
+async function d1All(env, sql, bindings = []) {
+  if (!env.INFERNO_DB?.prepare) return [];
+  try {
+    const statement = env.INFERNO_DB.prepare(sql);
+    const result = bindings.length
+      ? await statement.bind(...bindings).all()
+      : await statement.all();
+    return Array.isArray(result?.results) ? result.results : [];
+  } catch {
+    return [];
+  }
+}
+
+function ageFromGate(value, fallback = undefined) {
+  const gate = String(value ?? "").toLowerCase();
+  if (gate === "under13") return 12;
+  if (gate === "13+" || gate === "adult") return 13;
+  return Number.isFinite(fallback) ? fallback : undefined;
+}
+
+function parseJsonColumn(value, fallback = {}) {
+  try {
+    const parsed = JSON.parse(String(value ?? ""));
+    return parsed && typeof parsed === "object" ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function hydrateDataFromD1(env, stored) {
+  const state = normalizeData(stored);
+  if (!env.INFERNO_DB?.prepare) return state;
+
+  const userRows = await d1All(
+    env,
+    `SELECT u.*, s.xp AS stats_xp, c.password_hash, c.password_salt, c.auth_provider
+     FROM users u
+     LEFT JOIN stats s ON s.user_id = u.id
+     LEFT JOIN account_credentials c ON c.user_id = u.id`,
+  );
+  for (const row of userRows) {
+    const existing = state.users[row.id] ?? {};
+    const xp = Math.max(Number(existing.xp) || 0, Number(row.stats_xp) || 0);
+    state.users[row.id] = {
+      ...existing,
+      id: row.id,
+      username: row.username || existing.username || "Player",
+      age: ageFromGate(row.age_gate, existing.age),
+      deviceId: row.device_id || existing.deviceId || "",
+      rating: Math.max(
+        Number(row.rating) || 0,
+        xp,
+        Number(existing.rating) || 0,
+      ),
+      xp,
+      online: false,
+      claimedUsername: row.username || existing.claimedUsername || null,
+      authProvider: row.auth_provider || existing.authProvider || "guest",
+      passwordSalt: row.password_salt || existing.passwordSalt || "",
+      passwordHash: row.password_hash || existing.passwordHash || "",
+      badge:
+        row.badge ||
+        (Number(row.founder_badge) ? "Founder" : "") ||
+        existing.badge ||
+        "",
+      role: row.role || existing.role || "player",
+      moderator: row.role === "moderator" || Boolean(existing.moderator),
+      bannedUntil: row.banned_until || existing.bannedUntil || "",
+      createdAt: row.created_at || existing.createdAt || nowIso(),
+      updatedAt: row.updated_at || existing.updatedAt || nowIso(),
+    };
+  }
+
+  for (const row of await d1All(
+    env,
+    "SELECT username_key, user_id, username FROM username_claims",
+  )) {
+    if (row.username_key && row.user_id) {
+      state.usernameClaims[row.username_key] = row.user_id;
+      if (state.users[row.user_id] && row.username) {
+        state.users[row.user_id].claimedUsername = row.username;
+      }
+    }
+  }
+
+  for (const row of await d1All(
+    env,
+    "SELECT token_hash, user_id, device_id, created_at, last_seen_at FROM sessions",
+  )) {
+    if (row.token_hash && row.user_id && state.users[row.user_id]) {
+      state.sessions[row.token_hash] = {
+        token: row.token_hash,
+        userId: row.user_id,
+        deviceId: row.device_id || "",
+        account: state.users[row.user_id].authProvider === "password",
+        createdAt: row.created_at || nowIso(),
+        lastSeenAt: row.last_seen_at || nowIso(),
+      };
+    }
+  }
+
+  for (const row of await d1All(
+    env,
+    "SELECT user_id, schema_version, payload_json, server_updated_at FROM cloud_saves",
+  )) {
+    if (row.user_id) {
+      state.saves[row.user_id] = {
+        userId: row.user_id,
+        schemaVersion: Number(row.schema_version) || 1,
+        payload: parseJsonColumn(row.payload_json, {}),
+        serverUpdatedAt: row.server_updated_at || nowIso(),
+      };
+    }
+  }
+
+  const leaderboardRows = await d1All(
+    env,
+    `SELECT id, user_id, username, playlist, mode_id, rating, score, source, updated_at, xp, badge, moderator
+     FROM leaderboards`,
+  );
+  if (leaderboardRows.length) {
+    state.leaderboard = leaderboardRows
+      .map((row) => ({
+        id: row.id,
+        userId: row.user_id || "",
+        username: row.username || "Player",
+        playlist: row.playlist || "all modes",
+        modeId: row.mode_id || "global-xp",
+        rating: Number(row.rating) || Number(row.xp) || 0,
+        score: Number(row.score) || Number(row.xp) || 0,
+        xp: Number(row.xp) || Number(row.score) || Number(row.rating) || 0,
+        totalXp: Number(row.xp) || Number(row.score) || Number(row.rating) || 0,
+        badge: row.badge || "",
+        moderator: Boolean(Number(row.moderator)),
+        source: row.source || "server",
+        updatedAt: row.updated_at || nowIso(),
+      }))
+      .sort(compareLeaderboard);
+  }
+
+  const cutoff = new Date(Date.now() - CHAT_HISTORY_WINDOW_MS).toISOString();
+  state.chatMessages = (
+    await d1All(
+      env,
+      `SELECT id, channel, user_id, username, badge, moderator, message_text, quick, created_at
+       FROM chat_messages
+       WHERE created_at >= ?
+       ORDER BY created_at ASC
+       LIMIT ?`,
+      [cutoff, CHAT_HISTORY_LIMIT],
+    )
+  ).map((row) => ({
+    id: row.id,
+    channel: row.channel || "lobby",
+    from: row.username || "Player",
+    userId: row.user_id || "",
+    badge: row.badge || "",
+    moderator: Boolean(Number(row.moderator)),
+    text: row.message_text || "",
+    quick: Boolean(Number(row.quick)),
+    createdAt: row.created_at || nowIso(),
+  }));
+
+  for (const row of await d1All(
+    env,
+    "SELECT user_id, friend_user_id, created_at FROM friends",
+  )) {
+    if (!row.user_id || !row.friend_user_id) continue;
+    state.friends[row.user_id] ??= {
+      friends: {},
+      blocked: {},
+      blockedUsernames: {},
+    };
+    state.friends[row.user_id].friends[row.friend_user_id] = {
+      since: row.created_at || nowIso(),
+    };
+  }
+
+  for (const row of await d1All(
+    env,
+    "SELECT id, from_user_id, from_username, to_user_id, to_username, status, created_at, responded_at FROM friend_requests",
+  )) {
+    if (!row.id) continue;
+    state.friendRequests[row.id] = {
+      id: row.id,
+      fromUserId: row.from_user_id || "",
+      fromUsername: row.from_username || "",
+      toUserId: row.to_user_id || "",
+      toUsername: row.to_username || "",
+      status: row.status || "pending",
+      createdAt: row.created_at || nowIso(),
+      respondedAt: row.responded_at || "",
+    };
+  }
+
+  for (const row of await d1All(
+    env,
+    "SELECT user_id, blocked_user_id, blocked_username, created_at FROM blocks",
+  )) {
+    if (!row.user_id) continue;
+    state.friends[row.user_id] ??= {
+      friends: {},
+      blocked: {},
+      blockedUsernames: {},
+    };
+    if (row.blocked_user_id) {
+      state.friends[row.user_id].blocked[row.blocked_user_id] = {
+        username: row.blocked_username || "",
+        createdAt: row.created_at || nowIso(),
+      };
+    } else if (row.blocked_username) {
+      state.friends[row.user_id].blockedUsernames[row.blocked_username] = {
+        createdAt: row.created_at || nowIso(),
+      };
+    }
+  }
+
+  state.reports = (
+    await d1All(
+      env,
+      "SELECT id, reporter_user_id, reporter_username, target_user_id, target_username, reason, created_at FROM moderation_reports",
+    )
+  ).map((row) => ({
+    id: row.id,
+    reporterUserId: row.reporter_user_id || "",
+    reporterUsername: row.reporter_username || "",
+    targetUserId: row.target_user_id || "",
+    targetUsername: row.target_username || "",
+    reason: row.reason || "",
+    createdAt: row.created_at || nowIso(),
+  }));
+
+  state.moderationLogs = (
+    await d1All(
+      env,
+      "SELECT id, user_id, action, reason, metadata_json, created_at FROM moderation_logs",
+    )
+  ).map((row) => ({
+    id: row.id,
+    targetUserId: row.user_id || "",
+    action: row.action || "",
+    reason: row.reason || "",
+    metadata: parseJsonColumn(row.metadata_json, {}),
+    createdAt: row.created_at || nowIso(),
+  }));
+
+  for (const row of await d1All(
+    env,
+    "SELECT user_id, username, banned_until, banned_by_user_id, reason, created_at FROM account_bans",
+  )) {
+    if (!row.user_id) continue;
+    const ban = {
+      userId: row.user_id,
+      username: row.username || "",
+      until: row.banned_until || "",
+      byUserId: row.banned_by_user_id || "",
+      reason: row.reason || "",
+      createdAt: row.created_at || nowIso(),
+    };
+    state.bans[row.user_id] = ban;
+    const deviceId = state.users[row.user_id]?.deviceId;
+    if (deviceId)
+      state.bans[`device:${deviceId}`] = {
+        ...ban,
+        userId: `device:${deviceId}`,
+      };
+  }
+
+  seedSystemAccounts(state);
+  state.leaderboard = state.leaderboard.sort(compareLeaderboard);
+  return state;
+}
+
+async function writeFriendRequestToD1(env, request) {
+  if (!env.INFERNO_DB?.prepare) return false;
+  await env.INFERNO_DB.prepare(
+    `INSERT OR REPLACE INTO friend_requests (id, from_user_id, from_username, to_user_id, to_username, status, created_at, responded_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      request.id,
+      request.fromUserId,
+      request.fromUsername,
+      request.toUserId || "",
+      request.toUsername,
+      request.status,
+      request.createdAt,
+      request.respondedAt || "",
+    )
+    .run();
+  return true;
+}
+
+async function writeFriendPairToD1(env, userId, friendUserId, createdAt) {
+  if (!env.INFERNO_DB?.prepare) return false;
+  await env.INFERNO_DB.prepare(
+    `INSERT OR REPLACE INTO friends (user_id, friend_user_id, created_at)
+     VALUES (?, ?, ?)`,
+  )
+    .bind(userId, friendUserId, createdAt || nowIso())
+    .run();
+  return true;
+}
+
+async function writeBlockToD1(env, userId, target, username) {
+  if (!env.INFERNO_DB?.prepare) return false;
+  await env.INFERNO_DB.prepare(
+    `INSERT OR REPLACE INTO blocks (user_id, blocked_user_id, blocked_username, created_at)
+     VALUES (?, ?, ?, ?)`,
+  )
+    .bind(
+      userId,
+      target?.id || "",
+      username || target?.username || "",
+      nowIso(),
+    )
+    .run();
+  return true;
+}
+
+async function writeReportToD1(env, report) {
+  if (!env.INFERNO_DB?.prepare) return false;
+  await env.INFERNO_DB.prepare(
+    `INSERT INTO moderation_reports (id, reporter_user_id, reporter_username, target_user_id, target_username, reason, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      report.id,
+      report.reporterUserId,
+      report.reporterUsername,
+      report.targetUserId || "",
+      report.targetUsername,
+      report.reason,
+      report.createdAt,
+    )
+    .run();
+  return true;
+}
+
+async function writeModerationToD1(env, record) {
+  if (!env.INFERNO_DB?.prepare) return false;
+  const statements = [
+    env.INFERNO_DB.prepare(
+      `INSERT INTO moderation_logs (id, user_id, action, reason, metadata_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      record.id,
+      record.targetUserId || "",
+      record.action,
+      record.reason,
+      JSON.stringify({
+        moderatorUserId: record.moderatorUserId,
+        moderatorUsername: record.moderatorUsername,
+        targetUsername: record.targetUsername,
+        until: record.until || "",
+      }),
+      record.createdAt,
+    ),
+  ];
+  if (record.action === "ban") {
+    statements.push(
+      env.INFERNO_DB.prepare(
+        `INSERT OR REPLACE INTO account_bans (user_id, username, banned_until, banned_by_user_id, reason, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        record.targetUserId,
+        record.targetUsername,
+        record.until,
+        record.moderatorUserId,
+        record.reason,
+        record.createdAt,
+      ),
+    );
+  }
+  await env.INFERNO_DB.batch(statements);
+  return true;
+}
+
+async function writeRoomMemberToD1(env, room, user, left = false) {
+  if (!env.INFERNO_DB?.prepare || !room?.code || !user?.id) return false;
+  const now = nowIso();
+  await env.INFERNO_DB.prepare(
+    `INSERT OR REPLACE INTO room_members (room_code, user_id, username, mode_id, playlist, joined_at, left_at)
+     VALUES (?, ?, ?, ?, ?, COALESCE((SELECT joined_at FROM room_members WHERE room_code = ? AND user_id = ?), ?), ?)`,
+  )
+    .bind(
+      room.code,
+      user.id,
+      user.username,
+      room.mode || "",
+      room.playlist || "",
+      room.code,
+      user.id,
+      now,
+      left ? now : "",
+    )
+    .run();
+  return true;
+}
+
 export class InfernoRoom {
   constructor(state, env) {
     this.state = state;
@@ -483,7 +1105,7 @@ export class InfernoRoom {
   async load() {
     const stored = await this.state.storage.get("infernodrift4-state");
     const room = await this.state.storage.get("infernodrift4-room");
-    this.data = normalizeData(stored);
+    this.data = await hydrateDataFromD1(this.env, stored);
     if (room && typeof room === "object") {
       this.room = { ...this.room, ...room };
     }
@@ -579,12 +1201,17 @@ export class InfernoRoom {
     return null;
   }
 
-  activeBanForUser(userId) {
-    const ban = this.data.bans?.[userId];
+  activeBanForUser(userId, deviceId = "") {
+    const candidates = [
+      this.data.bans?.[userId],
+      deviceId ? this.data.bans?.[`device:${deviceId}`] : null,
+    ].filter(Boolean);
+    const ban = candidates[0];
     if (!ban) return null;
     const untilMs = Date.parse(ban.until);
     if (!Number.isFinite(untilMs) || untilMs <= Date.now()) {
       delete this.data.bans[userId];
+      if (deviceId) delete this.data.bans[`device:${deviceId}`];
       return null;
     }
     return ban;
@@ -600,6 +1227,40 @@ export class InfernoRoom {
     return Boolean(
       fromState.blocked?.[toUserId] || toState.blocked?.[fromUserId],
     );
+  }
+
+  pruneChatMessages() {
+    const cutoff = Date.now() - CHAT_HISTORY_WINDOW_MS;
+    this.data.chatMessages = this.data.chatMessages.filter((message) => {
+      const createdAt = Date.parse(message.createdAt);
+      return Number.isFinite(createdAt) && createdAt >= cutoff;
+    });
+  }
+
+  chatChannelForSession(session) {
+    return session?.inRoom ? `room:${this.room.code || this.room.id}` : "lobby";
+  }
+
+  chatHistoryPayload(session) {
+    this.pruneChatMessages();
+    const channel = this.chatChannelForSession(session);
+    return {
+      type: "chat.history",
+      channel,
+      windowMs: CHAT_HISTORY_WINDOW_MS,
+      messages: this.data.chatMessages
+        .filter((message) => message.channel === channel)
+        .slice(-CHAT_HISTORY_LIMIT)
+        .map((message) => ({
+          from: message.from,
+          userId: message.userId,
+          badge: message.badge || "",
+          moderator: Boolean(message.moderator),
+          text: message.text,
+          quick: Boolean(message.quick),
+          at: message.createdAt,
+        })),
+    };
   }
 
   ensureFriendState(userId) {
@@ -701,7 +1362,9 @@ export class InfernoRoom {
       return { ok: false, error: "account_not_found" };
     if (existing && !existing.passwordHash)
       return { ok: false, error: "account_requires_upgrade" };
-    const ban = existing ? this.activeBanForUser(existing.id) : null;
+    const ban = existing
+      ? this.activeBanForUser(existing.id, msg.deviceId ?? existing.deviceId)
+      : this.activeBanForUser("", msg.deviceId ?? "");
     if (ban) return { ok: false, error: "account_banned", until: ban.until };
 
     let user = existing;
@@ -719,6 +1382,7 @@ export class InfernoRoom {
         ...existing,
         username: existing.username || username,
         age: Number(msg.age),
+        deviceId: msg.deviceId ?? existing.deviceId ?? "",
         online: true,
         updatedAt: nowIso(),
       };
@@ -805,11 +1469,14 @@ export class InfernoRoom {
     }
     if (msg.type === "auth.guest" || msg.type === "reconnect") {
       if (msg.type === "reconnect") {
+        if (!this.data.sessions[msg.sessionToken]) {
+          return send(session.ws, { type: "error", error: "session_expired" });
+        }
         msg.username = session.user.username;
         msg.deviceId = session.user.deviceId ?? "";
       }
       const auth = this.createOrRestoreUser(session, msg);
-      const ban = this.activeBanForUser(auth.user.id);
+      const ban = this.activeBanForUser(auth.user.id, auth.user.deviceId);
       if (ban) {
         await this.persist();
         send(session.ws, {
@@ -821,6 +1488,12 @@ export class InfernoRoom {
         return;
       }
       await this.persist();
+      await writeUserSessionToD1(
+        this.env,
+        auth.user,
+        auth.sessionToken,
+        this.data.sessions[auth.sessionToken],
+      ).catch(() => false);
       send(session.ws, {
         type: msg.type === "reconnect" ? "reconnect.ok" : "auth.ok",
         user: publicUser(auth.user),
@@ -828,7 +1501,9 @@ export class InfernoRoom {
         restored: auth.restored,
         save: this.data.saves[auth.user.id] ?? null,
       });
+      send(session.ws, this.profileSnapshot(session));
       send(session.ws, this.friendsSnapshot(session));
+      send(session.ws, this.chatHistoryPayload(session));
       return;
     }
     if (msg.type === "auth.account") {
@@ -840,6 +1515,12 @@ export class InfernoRoom {
           until: auth.until || null,
         });
       await this.persist();
+      await writeUserSessionToD1(
+        this.env,
+        auth.user,
+        auth.sessionToken,
+        this.data.sessions[auth.sessionToken],
+      ).catch(() => false);
       send(session.ws, {
         type: "auth.ok",
         user: publicUser(auth.user),
@@ -847,7 +1528,9 @@ export class InfernoRoom {
         restored: auth.restored,
         save: this.data.saves[auth.user.id] ?? null,
       });
+      send(session.ws, this.profileSnapshot(session));
       send(session.ws, this.friendsSnapshot(session));
+      send(session.ws, this.chatHistoryPayload(session));
       if (session.inRoom) this.broadcast(this.roomSnapshot());
       return;
     }
@@ -856,12 +1539,35 @@ export class InfernoRoom {
       if (!result.ok)
         return send(session.ws, { type: "error", error: result.error });
       await this.persist();
+      await writeUserSessionToD1(
+        this.env,
+        session.user,
+        session.sessionToken,
+        this.data.sessions[session.sessionToken],
+      ).catch(() => false);
       send(session.ws, {
         type: "profile.usernameClaimed",
         username: result.username,
         user: publicUser(session.user),
       });
+      send(session.ws, this.profileSnapshot(session));
+      send(session.ws, {
+        type: "leaderboard.snapshot",
+        leaderboard: this.leaderboardSnapshot("casual"),
+      });
       if (session.inRoom) this.broadcast(this.roomSnapshot());
+      return;
+    }
+    if (msg.type === "profile.get") {
+      send(session.ws, this.profileSnapshot(session));
+      return;
+    }
+    if (msg.type === "profile.logout") {
+      await this.handleProfileLogout(session);
+      return;
+    }
+    if (msg.type === "profile.delete") {
+      await this.handleProfileDelete(id, session, msg);
       return;
     }
     if (msg.type === "room.create" || msg.type === "queue.join") {
@@ -875,6 +1581,9 @@ export class InfernoRoom {
       this.room.ranked = roomOptions.ranked;
       this.room.botFill = roomOptions.botFill;
       await this.persist();
+      await writeRoomMemberToD1(this.env, this.room, session.user).catch(
+        () => false,
+      );
       if (msg.type === "queue.join") {
         send(session.ws, {
           type: "queue.joined",
@@ -885,17 +1594,25 @@ export class InfernoRoom {
         });
       }
       this.broadcast(this.roomSnapshot());
+      send(session.ws, this.chatHistoryPayload(session));
       return;
     }
     if (msg.type === "room.join") {
       session.inRoom = true;
       this.room.code = String(msg.code || this.room.code).toUpperCase();
       await this.persist();
+      await writeRoomMemberToD1(this.env, this.room, session.user).catch(
+        () => false,
+      );
       this.broadcast(this.roomSnapshot());
+      send(session.ws, this.chatHistoryPayload(session));
       return;
     }
     if (msg.type === "room.leave" || msg.type === "queue.cancel") {
       session.inRoom = false;
+      await writeRoomMemberToD1(this.env, this.room, session.user, true).catch(
+        () => false,
+      );
       send(session.ws, { type: "room.left" });
       this.broadcast(this.roomSnapshot());
       return;
@@ -984,19 +1701,37 @@ export class InfernoRoom {
       send(session.ws, { type: "error", error: "message_blocked" });
       return;
     }
-    this.broadcast(
-      {
-        type: "chat.message",
-        from: session.user.username,
-        userId: session.user.id,
-        badge: session.user.badge || "",
-        moderator: this.isModeratorUser(session.user),
-        text,
-        quick: msg.type === "quick.send",
-      },
-      "",
-      session.user.id,
-    );
+    const channel = this.chatChannelForSession(session);
+    const payload = {
+      type: "chat.message",
+      from: session.user.username,
+      userId: session.user.id,
+      badge: session.user.badge || "",
+      moderator: this.isModeratorUser(session.user),
+      text,
+      quick: msg.type === "quick.send",
+      at: nowIso(),
+      channel,
+    };
+    this.pruneChatMessages();
+    const chatRow = {
+      id: crypto.randomUUID(),
+      channel,
+      from: payload.from,
+      userId: payload.userId,
+      badge: payload.badge,
+      moderator: payload.moderator,
+      text: payload.text,
+      quick: payload.quick,
+      createdAt: payload.at,
+    };
+    this.data.chatMessages.push(chatRow);
+    writeChatMessageToD1(this.env, chatRow).catch(() => {});
+    this.persist().catch(() => {});
+    this.broadcast(payload, "", session.user.id, {
+      roomOnly: session.inRoom,
+      channel,
+    });
   }
 
   async handleSaveSync(session, msg) {
@@ -1036,6 +1771,12 @@ export class InfernoRoom {
       serverUpdatedAt: nowIso(),
     };
     this.data.saves[session.user.id] = row;
+    await writeSaveAndLeaderboardToD1(
+      this.env,
+      session.user,
+      row,
+      totalXp,
+    ).catch(() => false);
     await this.persist();
     send(session.ws, {
       type: "save.synced",
@@ -1043,6 +1784,11 @@ export class InfernoRoom {
       payload: row.payload,
       serverUpdatedAt: row.serverUpdatedAt,
     });
+    send(session.ws, {
+      type: "leaderboard.snapshot",
+      leaderboard: this.leaderboardSnapshot("casual"),
+    });
+    send(session.ws, this.profileSnapshot(session));
   }
 
   async handleModerationAction(session, msg, action) {
@@ -1077,7 +1823,7 @@ export class InfernoRoom {
     };
     if (action === "ban") {
       record.until = new Date(Date.now() + BAN_DURATION_MS).toISOString();
-      this.data.bans[target.id] = {
+      const banRecord = {
         userId: target.id,
         username: target.username,
         until: record.until,
@@ -1085,20 +1831,36 @@ export class InfernoRoom {
         reason: record.reason,
         createdAt: record.createdAt,
       };
+      this.data.bans[target.id] = banRecord;
+      if (target.deviceId) {
+        this.data.bans[`device:${target.deviceId}`] = {
+          ...banRecord,
+          userId: `device:${target.deviceId}`,
+        };
+      }
     }
     this.data.moderationLogs.push(record);
+    await writeModerationToD1(this.env, record).catch(() => false);
     await this.persist();
-    const targetRecord = this.clientRecordByUserId(target.id);
-    if (targetRecord) {
-      send(targetRecord.session.ws, {
+    for (const [targetId, targetSession] of this.sessions.entries()) {
+      if (targetSession.user?.id !== target.id) continue;
+      targetSession.inRoom = false;
+      if (targetSession.sessionToken) {
+        delete this.data.sessions[targetSession.sessionToken];
+        await deleteSessionFromD1(this.env, targetSession.sessionToken).catch(
+          () => false,
+        );
+      }
+      send(targetSession.ws, {
         type: action === "ban" ? "moderation.banned" : "moderation.kicked",
         username: target.username,
         until: record.until || null,
         reason: record.reason,
       });
-      targetRecord.session.ws.close(action === "ban" ? 4003 : 4002, action);
-      this.sessions.delete(targetRecord.id);
+      targetSession.ws.close(action === "ban" ? 4003 : 4002, action);
+      this.sessions.delete(targetId);
     }
+    await this.persist();
     send(session.ws, {
       type: "moderation.done",
       action,
@@ -1126,6 +1888,7 @@ export class InfernoRoom {
       createdAt: nowIso(),
     };
     this.data.friendRequests[request.id] = request;
+    await writeFriendRequestToD1(this.env, request).catch(() => false);
     await this.persist();
     send(session.ws, {
       type: "friend.requested",
@@ -1163,6 +1926,21 @@ export class InfernoRoom {
     this.ensureFriendState(request.fromUserId).friends[session.user.id] = {
       since: request.respondedAt,
     };
+    await Promise.all([
+      writeFriendRequestToD1(this.env, request),
+      writeFriendPairToD1(
+        this.env,
+        session.user.id,
+        request.fromUserId,
+        request.respondedAt,
+      ),
+      writeFriendPairToD1(
+        this.env,
+        request.fromUserId,
+        session.user.id,
+        request.respondedAt,
+      ),
+    ]).catch(() => false);
     await this.persist();
     send(session.ws, {
       type: "friend.accepted",
@@ -1192,6 +1970,9 @@ export class InfernoRoom {
     } else {
       state.blockedUsernames[username] = { createdAt: nowIso() };
     }
+    await writeBlockToD1(this.env, session.user.id, target, username).catch(
+      () => false,
+    );
     await this.persist();
     send(session.ws, {
       type: "friend.blocked",
@@ -1219,6 +2000,7 @@ export class InfernoRoom {
       createdAt: nowIso(),
     };
     this.data.reports.push(report);
+    await writeReportToD1(this.env, report).catch(() => false);
     await this.persist();
     send(session.ws, {
       type: "friend.reported",
@@ -1267,9 +2049,10 @@ export class InfernoRoom {
     if (wasInRoom) this.broadcast(this.roomSnapshot());
   }
 
-  broadcast(payload, exceptId = "", fromUserId = "") {
+  broadcast(payload, exceptId = "", fromUserId = "", options = {}) {
     for (const [id, session] of this.sessions) {
       if (id === exceptId) continue;
+      if (options.roomOnly && !session.inRoom) continue;
       if (fromUserId && this.isBlockedBetween(fromUserId, session.user.id))
         continue;
       send(session.ws, payload);
@@ -1310,16 +2093,15 @@ export class InfernoRoom {
     const activePlayers = [...this.sessions.values()].filter(
       (session) => session.inRoom,
     ).length;
-    return BOT_NAMES.slice(
-      0,
-      Math.max(0, this.room.size - activePlayers),
-    ).map((name, index) => ({
-      id: `bot-${this.room.id}-${index + 1}`,
-      username: name,
-      rating: 900 + index * 25,
-      badge: "BOT",
-      bot: true,
-    }));
+    return BOT_NAMES.slice(0, Math.max(0, this.room.size - activePlayers)).map(
+      (name, index) => ({
+        id: `bot-${this.room.id}-${index + 1}`,
+        username: name,
+        rating: 900 + index * 25,
+        badge: "BOT",
+        bot: true,
+      }),
+    );
   }
 
   roomSnapshot() {
@@ -1382,6 +2164,105 @@ export class InfernoRoom {
         .map((peer) => publicUser(peer.user))
         .filter((user) => user && user.id !== session.user.id),
     };
+  }
+
+  profileSnapshot(session) {
+    return {
+      type: "profile.snapshot",
+      user: publicUser(session.user),
+      profileMode:
+        session.user?.authProvider === "password" ? "account" : "guest",
+      sessionActive: Boolean(session.sessionToken),
+      save: this.data.saves[session.user.id] ?? null,
+      leaderboardRow:
+        this.data.leaderboard.find((row) => row.userId === session.user.id) ??
+        null,
+      restrictions: {
+        banned: Boolean(
+          this.activeBanForUser(session.user.id, session.user.deviceId),
+        ),
+        ban: this.activeBanForUser(session.user.id, session.user.deviceId),
+      },
+    };
+  }
+
+  async handleProfileLogout(session) {
+    if (session.sessionToken) delete this.data.sessions[session.sessionToken];
+    await deleteSessionFromD1(this.env, session.sessionToken).catch(
+      () => false,
+    );
+    if (session.user?.id && this.data.users[session.user.id]) {
+      this.data.users[session.user.id].online = false;
+      this.data.users[session.user.id].updatedAt = nowIso();
+    }
+    await this.persist();
+    send(session.ws, { type: "profile.loggedOut" });
+  }
+
+  anonymizeUserRecords(userId, username) {
+    const anonymousName = "Deleted Player";
+    for (const request of Object.values(this.data.friendRequests)) {
+      if (request.fromUserId === userId) request.fromUsername = anonymousName;
+      if (request.toUserId === userId) request.toUsername = anonymousName;
+    }
+    for (const report of this.data.reports) {
+      if (report.reporterUserId === userId)
+        report.reporterUsername = anonymousName;
+      if (report.targetUserId === userId) report.targetUsername = anonymousName;
+    }
+    for (const log of this.data.moderationLogs) {
+      if (log.moderatorUserId === userId) log.moderatorUsername = anonymousName;
+      if (log.targetUserId === userId) log.targetUsername = anonymousName;
+    }
+    for (const message of this.data.chatMessages) {
+      if (message.userId === userId) message.from = anonymousName;
+    }
+    this.data.accountDeletions.push({
+      id: crypto.randomUUID(),
+      userId,
+      usernameKey: claimKey(username),
+      deletedAt: nowIso(),
+    });
+  }
+
+  async handleProfileDelete(id, session, msg) {
+    const user = session.user;
+    if (claimKey(msg.confirmUsername) !== claimKey(user.username)) {
+      return send(session.ws, {
+        type: "error",
+        error: "profile_delete_confirmation_mismatch",
+      });
+    }
+    if (user.claimedUsername)
+      delete this.data.usernameClaims[claimKey(user.claimedUsername)];
+    delete this.data.usernameClaims[claimKey(user.username)];
+    delete this.data.saves[user.id];
+    delete this.data.users[user.id];
+    delete this.data.friends[user.id];
+    delete this.data.bans[user.id];
+    this.data.leaderboard = this.data.leaderboard.filter(
+      (row) => row.userId !== user.id,
+    );
+    for (const state of Object.values(this.data.friends)) {
+      delete state.friends?.[user.id];
+      delete state.blocked?.[user.id];
+    }
+    for (const [token, savedSession] of Object.entries(this.data.sessions)) {
+      if (savedSession?.userId === user.id) delete this.data.sessions[token];
+    }
+    await deleteSessionsForUserFromD1(this.env, user.id).catch(() => false);
+    this.anonymizeUserRecords(user.id, user.username);
+    await deleteUserFromD1(this.env, user).catch(() => false);
+    await this.persist();
+    send(session.ws, { type: "profile.deleted", username: user.username });
+    for (const [peerId, peer] of this.sessions.entries()) {
+      if (peer.user?.id !== user.id) continue;
+      peer.inRoom = false;
+      send(peer.ws, { type: "session.revoked", reason: "profile_deleted" });
+      peer.ws.close(4001, "profile_deleted");
+      this.sessions.delete(peerId);
+    }
+    if (session.inRoom) this.broadcast(this.roomSnapshot());
   }
 }
 

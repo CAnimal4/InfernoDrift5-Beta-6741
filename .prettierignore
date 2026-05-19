@@ -2,3 +2,4 @@ worker-configuration.d.ts
 assets/
 index.html
 output/web-game-audit*/
+migrations/*.sql

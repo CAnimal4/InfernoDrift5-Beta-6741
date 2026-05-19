@@ -111,6 +111,8 @@ const BOT_NAMES = [
 ];
 
 const BAN_DURATION_MS = 24 * 60 * 60 * 1000;
+const CHAT_HISTORY_WINDOW_MS = 15 * 60 * 1000;
+const CHAT_HISTORY_LIMIT = 100;
 const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const PLACEHOLDER_SECRET_VALUES = new Set([
@@ -195,6 +197,8 @@ function emptyDb() {
     moderationLogs: [],
     bans: {},
     feedback: [],
+    chatMessages: [],
+    accountDeletions: [],
     leaderboard: DEFAULT_LEADERBOARD,
   };
 }
@@ -292,6 +296,10 @@ function normalizeDbShape(data) {
       ? db.bans
       : {};
   db.feedback = Array.isArray(db.feedback) ? db.feedback : [];
+  db.chatMessages = Array.isArray(db.chatMessages) ? db.chatMessages : [];
+  db.accountDeletions = Array.isArray(db.accountDeletions)
+    ? db.accountDeletions
+    : [];
   db.leaderboard =
     Array.isArray(db.leaderboard) && db.leaderboard.length
       ? db.leaderboard
@@ -381,12 +389,12 @@ function usableSecret(value) {
 function hasResendConfig(options = {}) {
   return Boolean(
     usableSecret(options.resendApiKey ?? process.env.RESEND_API_KEY) &&
-      usableSecret(
-        options.feedbackTo ??
-          options.feedbackEmailTo ??
-          process.env.FEEDBACK_TO ??
-          process.env.FEEDBACK_EMAIL_TO,
-      ),
+    usableSecret(
+      options.feedbackTo ??
+        options.feedbackEmailTo ??
+        process.env.FEEDBACK_TO ??
+        process.env.FEEDBACK_EMAIL_TO,
+    ),
   );
 }
 
@@ -407,8 +415,7 @@ async function deliverFeedback(row, options) {
         options.feedbackEmailFrom ??
         process.env.FEEDBACK_FROM ??
         process.env.FEEDBACK_EMAIL_FROM,
-    ) ||
-    "InfernoDrift4 <feedback@infernodrift.local>";
+    ) || "InfernoDrift4 <feedback@infernodrift.local>";
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -499,10 +506,9 @@ export function createInfernoServer(options = {}) {
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
-  const clarkReservationToken =
-    usableSecret(
-      options.clarkReservationToken ?? process.env.CLARK_RESERVATION_TOKEN,
-    );
+  const clarkReservationToken = usableSecret(
+    options.clarkReservationToken ?? process.env.CLARK_RESERVATION_TOKEN,
+  );
   const db = loadDb(dataDir);
   const rooms = new Map();
   const clients = new Map();
@@ -632,12 +638,17 @@ export function createInfernoServer(options = {}) {
     return clientRecordByUserId(userId)?.client ?? null;
   }
 
-  function activeBanForUser(userId) {
-    const ban = db.data.bans?.[userId];
+  function activeBanForUser(userId, deviceId = "") {
+    const candidates = [
+      db.data.bans?.[userId],
+      deviceId ? db.data.bans?.[`device:${deviceId}`] : null,
+    ].filter(Boolean);
+    const ban = candidates[0];
     if (!ban) return null;
     const untilMs = Date.parse(ban.until);
     if (!Number.isFinite(untilMs) || untilMs <= Date.now()) {
       delete db.data.bans[userId];
+      if (deviceId) delete db.data.bans[`device:${deviceId}`];
       db.save();
       return null;
     }
@@ -663,6 +674,48 @@ export function createInfernoServer(options = {}) {
       if (fromUserId && isBlockedBetween(fromUserId, peer.user.id)) continue;
       send(peer.ws, payload);
     }
+  }
+
+  function broadcastAll(payload, fromUserId = "") {
+    for (const peer of clients.values()) {
+      if (fromUserId && isBlockedBetween(fromUserId, peer.user.id)) continue;
+      send(peer.ws, payload);
+    }
+  }
+
+  function pruneChatMessages() {
+    const cutoff = Date.now() - CHAT_HISTORY_WINDOW_MS;
+    db.data.chatMessages = db.data.chatMessages.filter((message) => {
+      const createdAt = Date.parse(message.createdAt);
+      return Number.isFinite(createdAt) && createdAt >= cutoff;
+    });
+  }
+
+  function chatChannelForClient(client) {
+    const room = client?.roomId ? rooms.get(client.roomId) : null;
+    return room ? `room:${room.code || room.id}` : "lobby";
+  }
+
+  function chatHistoryPayload(client) {
+    pruneChatMessages();
+    const channel = chatChannelForClient(client);
+    return {
+      type: "chat.history",
+      channel,
+      windowMs: CHAT_HISTORY_WINDOW_MS,
+      messages: db.data.chatMessages
+        .filter((message) => message.channel === channel)
+        .slice(-CHAT_HISTORY_LIMIT)
+        .map((message) => ({
+          from: message.from,
+          userId: message.userId,
+          badge: message.badge || "",
+          moderator: Boolean(message.moderator),
+          text: message.text,
+          quick: Boolean(message.quick),
+          at: message.createdAt,
+        })),
+    };
   }
 
   function checkRate(client, key, limit, windowMs) {
@@ -773,6 +826,102 @@ export function createInfernoServer(options = {}) {
     };
   }
 
+  function profileSnapshot(client) {
+    return {
+      type: "profile.snapshot",
+      user: publicUser(client.user),
+      profileMode:
+        client.user?.authProvider === "password" ? "account" : "guest",
+      sessionActive: Boolean(client.sessionToken),
+      save: db.data.saves[client.user.id] ?? null,
+      leaderboardRow:
+        db.data.leaderboard.find((row) => row.userId === client.user.id) ??
+        null,
+      restrictions: {
+        banned: Boolean(activeBanForUser(client.user.id, client.user.deviceId)),
+        ban: activeBanForUser(client.user.id, client.user.deviceId),
+      },
+    };
+  }
+
+  function invalidateSessionsForUser(userId, reason = "session_revoked") {
+    for (const [token, session] of Object.entries(db.data.sessions)) {
+      if (session?.userId === userId) delete db.data.sessions[token];
+    }
+    for (const [clientId, peer] of clients.entries()) {
+      if (peer.user?.id !== userId) continue;
+      leaveRoom(clientId);
+      send(peer.ws, { type: "session.revoked", reason });
+      peer.ws.close(4001, reason);
+      clients.delete(clientId);
+    }
+  }
+
+  function handleProfileLogout(client) {
+    if (client.sessionToken) delete db.data.sessions[client.sessionToken];
+    if (client.user?.id && db.data.users[client.user.id]) {
+      db.data.users[client.user.id].online = false;
+      db.data.users[client.user.id].updatedAt = nowIso();
+    }
+    db.save();
+    send(client.ws, { type: "profile.loggedOut" });
+  }
+
+  function anonymizeUserRecords(userId, username) {
+    const anonymousName = "Deleted Player";
+    for (const request of Object.values(db.data.friendRequests)) {
+      if (request.fromUserId === userId) request.fromUsername = anonymousName;
+      if (request.toUserId === userId) request.toUsername = anonymousName;
+    }
+    for (const report of db.data.reports) {
+      if (report.reporterUserId === userId)
+        report.reporterUsername = anonymousName;
+      if (report.targetUserId === userId) report.targetUsername = anonymousName;
+    }
+    for (const log of db.data.moderationLogs) {
+      if (log.moderatorUserId === userId) log.moderatorUsername = anonymousName;
+      if (log.targetUserId === userId) log.targetUsername = anonymousName;
+    }
+    for (const message of db.data.chatMessages) {
+      if (message.userId === userId) message.from = anonymousName;
+    }
+    db.data.accountDeletions.push({
+      id: randomUUID(),
+      userId,
+      usernameKey: claimKey(username),
+      deletedAt: nowIso(),
+    });
+  }
+
+  function handleProfileDelete(client, msg) {
+    const user = client.user;
+    const confirmed = claimKey(msg.confirmUsername) === claimKey(user.username);
+    if (!confirmed) {
+      return send(client.ws, {
+        type: "error",
+        error: "profile_delete_confirmation_mismatch",
+      });
+    }
+    if (user.claimedUsername)
+      delete db.data.usernameClaims[claimKey(user.claimedUsername)];
+    delete db.data.usernameClaims[claimKey(user.username)];
+    delete db.data.saves[user.id];
+    delete db.data.users[user.id];
+    delete db.data.friends[user.id];
+    delete db.data.bans[user.id];
+    db.data.leaderboard = db.data.leaderboard.filter(
+      (row) => row.userId !== user.id,
+    );
+    for (const state of Object.values(db.data.friends)) {
+      delete state.friends?.[user.id];
+      delete state.blocked?.[user.id];
+    }
+    anonymizeUserRecords(user.id, user.username);
+    db.save();
+    send(client.ws, { type: "profile.deleted", username: user.username });
+    invalidateSessionsForUser(user.id, "profile_deleted");
+  }
+
   function roomSnapshot(room) {
     const bots = buildBotPlayers(room);
     return {
@@ -829,6 +978,7 @@ export function createInfernoServer(options = {}) {
     room.players.add(id);
     client.roomId = room.id;
     broadcast(room, roomSnapshot(room));
+    send(client.ws, chatHistoryPayload(client));
   }
 
   function findQueuedRoom(options) {
@@ -914,7 +1064,9 @@ export function createInfernoServer(options = {}) {
       return { ok: false, error: "account_not_found" };
     if (existing && !existing.passwordHash)
       return { ok: false, error: "account_requires_upgrade" };
-    const ban = existing ? activeBanForUser(existing.id) : null;
+    const ban = existing
+      ? activeBanForUser(existing.id, msg.deviceId ?? existing.deviceId)
+      : activeBanForUser("", msg.deviceId ?? "");
     if (ban) return { ok: false, error: "account_banned", until: ban.until };
 
     let user = existing;
@@ -932,6 +1084,7 @@ export function createInfernoServer(options = {}) {
         ...existing,
         username: existing.username || username,
         age: Number(msg.age),
+        deviceId: msg.deviceId ?? existing.deviceId ?? "",
         online: true,
         updatedAt: nowIso(),
       };
@@ -1159,6 +1312,11 @@ export function createInfernoServer(options = {}) {
       payload: row.payload,
       serverUpdatedAt: row.serverUpdatedAt,
     });
+    send(client.ws, {
+      type: "leaderboard.snapshot",
+      leaderboard: leaderboardSnapshot("casual"),
+    });
+    send(client.ws, profileSnapshot(client));
   }
 
   function handleModerationAction(client, msg, action) {
@@ -1193,7 +1351,7 @@ export function createInfernoServer(options = {}) {
     };
     if (action === "ban") {
       record.until = new Date(Date.now() + BAN_DURATION_MS).toISOString();
-      db.data.bans[target.id] = {
+      const banRecord = {
         userId: target.id,
         username: target.username,
         until: record.until,
@@ -1201,21 +1359,32 @@ export function createInfernoServer(options = {}) {
         reason: record.reason,
         createdAt: record.createdAt,
       };
+      db.data.bans[target.id] = banRecord;
+      if (target.deviceId) {
+        db.data.bans[`device:${target.deviceId}`] = {
+          ...banRecord,
+          userId: `device:${target.deviceId}`,
+        };
+      }
     }
     db.data.moderationLogs.push(record);
     db.save();
 
-    const targetRecord = clientRecordByUserId(target.id);
-    if (targetRecord) {
-      leaveRoom(targetRecord.id);
-      send(targetRecord.client.ws, {
+    for (const [targetId, targetClient] of clients.entries()) {
+      if (targetClient.user?.id !== target.id) continue;
+      leaveRoom(targetId);
+      send(targetClient.ws, {
         type: action === "ban" ? "moderation.banned" : "moderation.kicked",
         username: target.username,
         until: record.until || null,
         reason: record.reason,
       });
-      targetRecord.client.ws.close(action === "ban" ? 4003 : 4002, action);
+      if (targetClient.sessionToken)
+        delete db.data.sessions[targetClient.sessionToken];
+      targetClient.ws.close(action === "ban" ? 4003 : 4002, action);
+      clients.delete(targetId);
     }
+    db.save();
     send(client.ws, {
       type: "moderation.done",
       action,
@@ -1283,11 +1452,14 @@ export function createInfernoServer(options = {}) {
 
         if (msg.type === "auth.guest" || msg.type === "reconnect") {
           if (msg.type === "reconnect") {
+            if (!db.data.sessions[msg.sessionToken]) {
+              return send(ws, { type: "error", error: "session_expired" });
+            }
             msg.username = client.user.username;
             msg.deviceId = client.user.deviceId ?? "";
           }
           const auth = createOrRestoreUser(client, msg);
-          const ban = activeBanForUser(auth.user.id);
+          const ban = activeBanForUser(auth.user.id, auth.user.deviceId);
           if (ban) {
             send(ws, {
               type: "error",
@@ -1304,7 +1476,9 @@ export function createInfernoServer(options = {}) {
             restored: auth.restored,
             save: db.data.saves[auth.user.id] ?? null,
           });
+          send(ws, profileSnapshot(client));
           send(ws, friendsSnapshot(client));
+          send(ws, chatHistoryPayload(client));
           if (msg.roomCode) {
             const room = [...rooms.values()].find(
               (candidate) =>
@@ -1330,7 +1504,9 @@ export function createInfernoServer(options = {}) {
             restored: auth.restored,
             save: db.data.saves[auth.user.id] ?? null,
           });
+          send(ws, profileSnapshot(client));
           send(ws, friendsSnapshot(client));
+          send(ws, chatHistoryPayload(client));
           return;
         }
 
@@ -1343,6 +1519,26 @@ export function createInfernoServer(options = {}) {
             username: result.username,
             user: publicUser(client.user),
           });
+          send(ws, profileSnapshot(client));
+          send(ws, {
+            type: "leaderboard.snapshot",
+            leaderboard: leaderboardSnapshot("casual"),
+          });
+          return;
+        }
+
+        if (msg.type === "profile.get") {
+          send(ws, profileSnapshot(client));
+          return;
+        }
+
+        if (msg.type === "profile.logout") {
+          handleProfileLogout(client);
+          return;
+        }
+
+        if (msg.type === "profile.delete") {
+          handleProfileDelete(client, msg);
           return;
         }
 
@@ -1403,6 +1599,7 @@ export function createInfernoServer(options = {}) {
           if (!text || text === "[blocked]")
             return send(ws, { type: "error", error: "message_blocked" });
           const room = rooms.get(client.roomId);
+          const channel = room ? `room:${room.code || room.id}` : "lobby";
           const payload = {
             type: "chat.message",
             from: client.user.username,
@@ -1411,9 +1608,24 @@ export function createInfernoServer(options = {}) {
             moderator: isModeratorUser(client.user),
             text,
             quick: msg.type === "quick.send",
+            at: nowIso(),
+            channel,
           };
+          pruneChatMessages();
+          db.data.chatMessages.push({
+            id: randomUUID(),
+            channel,
+            from: payload.from,
+            userId: payload.userId,
+            badge: payload.badge,
+            moderator: payload.moderator,
+            text: payload.text,
+            quick: payload.quick,
+            createdAt: payload.at,
+          });
+          db.save();
           if (room) broadcast(room, payload, client.user.id);
-          else send(ws, payload);
+          else broadcastAll(payload, client.user.id);
           return;
         }
 

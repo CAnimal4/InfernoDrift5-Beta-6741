@@ -62,6 +62,9 @@ const ALLOWED_TYPES = new Set([
   "ping",
   "auth.guest",
   "auth.account",
+  "profile.get",
+  "profile.logout",
+  "profile.delete",
   "profile.claimUsername",
   "room.create",
   "room.join",
@@ -462,6 +465,20 @@ export function validateClientMessage(raw) {
       (hasOwn(data, "turnstileToken") &&
         (typeof data.turnstileToken !== "string" ||
           data.turnstileToken.length > 2048))
+    ) {
+      error = "invalid_protocol";
+    }
+  }
+  if (data.type === "profile.get" || data.type === "profile.logout") {
+    if (!onlyKeys(data, new Set(["type"]))) error = "invalid_protocol";
+  }
+  if (data.type === "profile.delete") {
+    const keys = new Set(["type", "confirmUsername"]);
+    if (
+      !onlyKeys(data, keys) ||
+      typeof data.confirmUsername !== "string" ||
+      data.confirmUsername.trim().length < 1 ||
+      data.confirmUsername.length > 24
     ) {
       error = "invalid_protocol";
     }

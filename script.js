@@ -160,6 +160,20 @@ const onlineFriendName = document.getElementById("online-friend-name");
 const onlineAddFriend = document.getElementById("online-add-friend");
 const onlineFriends = document.getElementById("online-friends");
 const onlineRecent = document.getElementById("online-recent");
+const profileDisplayName = document.getElementById("profile-display-name");
+const profileStatusText = document.getElementById("profile-status-text");
+const profileBadges = document.getElementById("profile-badges");
+const profileLevel = document.getElementById("profile-level");
+const profileXp = document.getElementById("profile-xp");
+const profileSaveState = document.getElementById("profile-save-state");
+const profileLeaderboardState = document.getElementById(
+  "profile-leaderboard-state",
+);
+const profileRefresh = document.getElementById("profile-refresh");
+const profileLogout = document.getElementById("profile-logout");
+const profileDeleteConfirm = document.getElementById("profile-delete-confirm");
+const profileDelete = document.getElementById("profile-delete");
+const profileActionStatus = document.getElementById("profile-action-status");
 const chatPopout = document.getElementById("chat-popout");
 const chatPopoutClose = document.getElementById("chat-popout-close");
 const chatPopoutQuick = document.getElementById("chat-popout-quick");
@@ -1979,6 +1993,12 @@ const onlineState = {
   feedbackReturnToMenu: false,
   chatMessages: [],
   leaderboard: [],
+  leaderboardSyncedAt: 0,
+  saveSyncedAt: 0,
+  profileSnapshot: null,
+  profileActionStatus: "",
+  profileDeleteStatus: "",
+  onlineRestrictedUntil: "",
   friends: [],
   recentPlayers: [],
   remoteSnapshots: [],
@@ -3263,6 +3283,21 @@ function syncProgressionToBackend() {
   });
 }
 
+function applyServerSave(serverSave) {
+  const payload = serverSave?.payload;
+  if (!payload || typeof payload !== "object") return false;
+  if (payload.progressionV2 && typeof payload.progressionV2 === "object") {
+    const remoteProgress = normalizeProgressionV2(payload.progressionV2);
+    if (getProgressionTotalXp(remoteProgress) >= getProgressionTotalXp()) {
+      state.progressionV2 = remoteProgress;
+      renderProgressPanel();
+      refreshGamesUi();
+    }
+  }
+  onlineState.saveSyncedAt = Date.now();
+  return true;
+}
+
 function loadPersistentState() {
   try {
     const raw =
@@ -3742,6 +3777,77 @@ function claimOnlineUsername() {
   setOnlineStatus("connected", `Claiming username ${onlineState.username}`);
 }
 
+function requestOnlineProfile() {
+  sendOnlineMessage({ type: "profile.get" }, { queue: false });
+}
+
+function requestOnlineLeaderboard({ force = false } = {}) {
+  if (!isOnlineSocketOpen()) return false;
+  const now = performance.now();
+  if (!force && now - onlineState.leaderboardSyncedAt < 12000) return false;
+  onlineState.leaderboardSyncedAt = now;
+  return sendOnlineMessage(
+    { type: "leaderboard.get", playlist: "casual" },
+    { queue: false },
+  );
+}
+
+function logoutOnlineProfile() {
+  onlineState.profileActionStatus = "Logging out...";
+  if (isOnlineSocketOpen()) {
+    sendOnlineMessage({ type: "profile.logout" }, { queue: false });
+  } else {
+    completeLocalLogout("Logged out locally.");
+  }
+  updateOnlineUi();
+}
+
+function completeLocalLogout(message = "Logged out.") {
+  onlineState.sessionToken = "";
+  onlineState.user = null;
+  onlineState.room = null;
+  onlineState.queue = null;
+  onlineState.profileMode = "offline";
+  onlineState.guestTemporary = false;
+  onlineState.authRequired = true;
+  onlineState.chatMessages = [];
+  onlineState.remoteSnapshots = [];
+  onlineState.profileSnapshot = null;
+  onlineState.profileActionStatus = message;
+  setRemoteHumanPlayers([]);
+  saveOnlineConfig();
+  disconnectOnline({ manual: false, suppressReconnect: true });
+  setStartAccountStatus("Choose account or guest.");
+}
+
+function deleteOnlineProfile() {
+  const confirmUsername = String(profileDeleteConfirm?.value || "").trim();
+  const currentUsername = onlineState.user?.username || onlineState.username;
+  if (
+    !confirmUsername ||
+    claimKeyClient(confirmUsername) !== claimKeyClient(currentUsername)
+  ) {
+    onlineState.profileDeleteStatus = `Type ${currentUsername} to confirm account deletion.`;
+    updateOnlineUi();
+    return;
+  }
+  onlineState.profileDeleteStatus = "Deleting account...";
+  if (isOnlineSocketOpen()) {
+    sendOnlineMessage(
+      { type: "profile.delete", confirmUsername },
+      { queue: false },
+    );
+  } else {
+    onlineState.profileDeleteStatus =
+      "Connect to the backend before deleting an account.";
+  }
+  updateOnlineUi();
+}
+
+function claimKeyClient(value = "") {
+  return sanitizeRemoteUsername(value).trim().toLowerCase();
+}
+
 function connectOnline({ reconnect = false } = {}) {
   onlineState.backendUrl = normalizeOnlineBackendUrl(
     onlineBackendUrlInput?.value || onlineState.backendUrl,
@@ -3801,7 +3907,7 @@ function connectOnline({ reconnect = false } = {}) {
       onlineState.remoteSnapshots = [];
       setRemoteHumanPlayers([]);
       setOnlineStatus("offline", "Offline: backend disconnected");
-      scheduleOnlineReconnect();
+      if (!onlineState.onlineRestrictedUntil) scheduleOnlineReconnect();
       updateOnlineUi();
     });
     socket.addEventListener("error", () => {
@@ -3816,7 +3922,7 @@ function connectOnline({ reconnect = false } = {}) {
   return true;
 }
 
-function disconnectOnline({ manual = true } = {}) {
+function disconnectOnline({ manual = true, suppressReconnect = false } = {}) {
   if (onlineState.reconnectTimer) clearTimeout(onlineState.reconnectTimer);
   onlineState.reconnectTimer = 0;
   onlineState.pending = [];
@@ -3835,6 +3941,7 @@ function disconnectOnline({ manual = true } = {}) {
 }
 
 function scheduleOnlineReconnect() {
+  if (onlineState.onlineRestrictedUntil) return;
   if (!onlineState.backendUrl || onlineState.reconnectTimer) return;
   onlineState.reconnectAttempts += 1;
   const delay = Math.min(12000, 1800 * onlineState.reconnectAttempts);
@@ -3859,8 +3966,12 @@ function handleOnlineMessage(raw) {
     onlineState.sessionToken = message.sessionToken || onlineState.sessionToken;
     if (onlineState.user?.username)
       onlineState.username = onlineState.user.username;
+    applyServerSave(message.save);
     saveOnlineConfig();
     onlineState.authRequired = false;
+    onlineState.profileActionStatus = "";
+    onlineState.profileDeleteStatus = "";
+    onlineState.onlineRestrictedUntil = "";
     onlineState.profileMode = message.user?.account
       ? "account"
       : onlineState.profileMode;
@@ -3874,10 +3985,23 @@ function handleOnlineMessage(raw) {
       "authenticated",
       `Online as ${onlineState.user?.username || onlineState.username}`,
     );
+    requestOnlineLeaderboard({ force: true });
+    requestOnlineProfile();
     if (onlineState.pendingStartAfterAuth) {
       onlineState.pendingStartAfterAuth = false;
       if (overlay.classList.contains("show")) startRun(true);
     }
+  } else if (message.type === "profile.snapshot") {
+    onlineState.profileSnapshot = message;
+    if (message.user) onlineState.user = message.user;
+    applyServerSave(message.save);
+    updateProfileUi();
+  } else if (message.type === "save.synced") {
+    applyServerSave({ payload: message.payload });
+    onlineState.saveSyncedAt = performance.now();
+    onlineState.profileActionStatus = "Progress synced to your account.";
+    requestOnlineLeaderboard({ force: true });
+    updateProfileUi();
   } else if (message.type === "profile.usernameClaimed") {
     onlineState.user = message.user || onlineState.user;
     onlineState.username = message.username || onlineState.username;
@@ -3886,6 +4010,20 @@ function handleOnlineMessage(raw) {
       "authenticated",
       `Username claimed: ${onlineState.username}`,
     );
+    requestOnlineLeaderboard({ force: true });
+  } else if (message.type === "profile.loggedOut") {
+    completeLocalLogout("Logged out of online account.");
+  } else if (message.type === "profile.deleted") {
+    onlineState.profileDeleteStatus =
+      "Account deleted. Your online identity was removed.";
+    completeLocalLogout("Account deleted.");
+  } else if (message.type === "session.revoked") {
+    const text =
+      message.reason === "profile_deleted"
+        ? "Session ended because the account was deleted."
+        : "Session ended. Please sign in again.";
+    onlineState.profileActionStatus = text;
+    completeLocalLogout(text);
   } else if (message.type === "room.snapshot") {
     onlineState.room = message.room || null;
     onlineState.queue = null;
@@ -3908,11 +4046,26 @@ function handleOnlineMessage(raw) {
       moderator: Boolean(message.moderator),
       text: message.text || "",
       quick: Boolean(message.quick),
+      at: message.at ? Date.parse(message.at) || Date.now() : Date.now(),
     });
+  } else if (message.type === "chat.history") {
+    onlineState.chatMessages = [];
+    (Array.isArray(message.messages) ? message.messages : []).forEach((entry) =>
+      pushOnlineChatMessage({
+        from: entry.from || "Server",
+        userId: entry.userId || "",
+        badge: entry.badge || "",
+        moderator: Boolean(entry.moderator),
+        text: entry.text || "",
+        quick: Boolean(entry.quick),
+        at: entry.at ? Date.parse(entry.at) || Date.now() : Date.now(),
+      }),
+    );
   } else if (message.type === "leaderboard.snapshot") {
     onlineState.leaderboard = Array.isArray(message.leaderboard)
       ? message.leaderboard
       : [];
+    onlineState.leaderboardSyncedAt = performance.now();
   } else if (message.type === "friends.snapshot") {
     onlineState.friends = Array.isArray(message.friends) ? message.friends : [];
     onlineState.recentPlayers = Array.isArray(message.recentPlayers)
@@ -3932,6 +4085,9 @@ function handleOnlineMessage(raw) {
     updateRemoteSnapshotsFromMatch();
   } else if (message.type === "error") {
     const error = message.error || "online_error";
+    if (error === "account_banned") {
+      onlineState.onlineRestrictedUntil = message.until || "active";
+    }
     if (onlineState.pendingStartAfterAuth) {
       onlineState.pendingStartAfterAuth = false;
       setStartAccountStatus(`Account error: ${error}`, "error");
@@ -3947,9 +4103,10 @@ function handleOnlineMessage(raw) {
         ? `You were banned until ${message.until || "tomorrow"}.`
         : "You were kicked by a moderator. Please sign in again.";
     onlineState.lastModerationStatus = text;
+    onlineState.onlineRestrictedUntil = message.until || "";
     setOnlineStatus("error", text);
     pushOnlineChatMessage({ from: "System", text, quick: true });
-    disconnectOnline({ manual: false });
+    completeLocalLogout(text);
   } else if (message.type === "moderation.done") {
     onlineState.lastModerationStatus = `${message.action || "Updated"} ${message.username || message.userId || "player"}`;
     pushOnlineChatMessage({
@@ -4036,7 +4193,7 @@ function pushOnlineChatMessage(message) {
       .replace(/[<>]/g, "")
       .slice(0, 180),
     quick: Boolean(message.quick),
-    at: Date.now(),
+    at: Number.isFinite(Number(message.at)) ? Number(message.at) : Date.now(),
   };
   onlineState.chatMessages.push(clean);
   onlineState.chatMessages = onlineState.chatMessages.slice(-24);
@@ -4262,8 +4419,80 @@ function renderLeaderboardRows(target, rows, emptyText) {
   });
 }
 
+function updateProfileUi() {
+  const user = onlineState.user;
+  const username = user?.username || onlineState.username || "Offline Driver";
+  const totalXp = getProgressionTotalXp();
+  if (profileDisplayName) profileDisplayName.textContent = username;
+  if (profileStatusText) {
+    profileStatusText.textContent = user
+      ? onlineState.guestTemporary
+        ? "Temporary guest profile. Online rooms work, but durable progress requires an account."
+        : "Signed in. Progress, friends, chat, and leaderboard sync use the InfernoDrift4 backend."
+      : "Offline profile. Sign in or play as guest to use online rooms, friends, chat, and leaderboard sync.";
+  }
+  if (profileBadges) {
+    profileBadges.replaceChildren();
+    [
+      user?.badge,
+      user?.moderator ? "Moderator" : "",
+      onlineState.guestTemporary ? "Guest" : user ? "Account" : "Offline",
+    ]
+      .filter(Boolean)
+      .forEach((label) => {
+        const badge = document.createElement("span");
+        badge.className = "profile-badge";
+        badge.textContent = label;
+        profileBadges.appendChild(badge);
+      });
+  }
+  if (profileLevel) profileLevel.textContent = String(getProgressionLevel());
+  if (profileXp) profileXp.textContent = totalXp.toLocaleString();
+  if (profileSaveState) {
+    profileSaveState.textContent =
+      onlineState.profileMode === "account"
+        ? onlineState.saveSyncedAt
+          ? "Synced"
+          : "Ready"
+        : onlineState.guestTemporary
+          ? "Guest"
+          : "Local";
+  }
+  if (profileLeaderboardState) {
+    profileLeaderboardState.textContent = onlineState.leaderboardSyncedAt
+      ? "Live XP"
+      : isOnlineSocketOpen()
+        ? "Refreshing"
+        : "Offline";
+  }
+  if (profileLogout) profileLogout.disabled = !onlineState.sessionToken;
+  if (profileDelete) {
+    profileDelete.disabled =
+      !onlineState.user || onlineState.profileMode !== "account";
+  }
+  if (profileActionStatus) {
+    profileActionStatus.textContent =
+      onlineState.profileDeleteStatus ||
+      onlineState.profileActionStatus ||
+      "Deleting removes your online account, saves, friends, leaderboard identity, and releases your username.";
+  }
+}
+
 function updateOnlineUi() {
   const connected = isOnlineSocketOpen();
+  const activeTab =
+    document.querySelector(".tab-btn.active")?.dataset.tab ?? "";
+  if (connected && (activeTab === "leaderboard" || activeTab === "progress")) {
+    requestOnlineLeaderboard();
+  }
+  if (
+    connected &&
+    activeTab === "profile" &&
+    performance.now() - onlineState.leaderboardSyncedAt > 12000
+  ) {
+    requestOnlineProfile();
+    requestOnlineLeaderboard();
+  }
   if (
     onlineBackendUrlInput &&
     document.activeElement !== onlineBackendUrlInput
@@ -4308,6 +4537,7 @@ function updateOnlineUi() {
     leaderboardRows,
     "Finish any run to enter the XP leaderboard.",
   );
+  updateProfileUi();
   renderOnlinePlayerRows(
     onlineFriends,
     onlineState.friends,
@@ -4790,8 +5020,15 @@ function setActiveTab(tabName = "settings") {
   }
   if (tabName === "progress") renderProgressPanel();
   if (tabName === "controls") renderControlsUi();
+  if (tabName === "profile") {
+    if (isOnlineSocketOpen()) requestOnlineProfile();
+    updateOnlineUi();
+  }
   if (tabName === "online") updateOnlineUi();
-  if (tabName === "leaderboard") updateOnlineUi();
+  if (tabName === "leaderboard") {
+    requestOnlineLeaderboard({ force: true });
+    updateOnlineUi();
+  }
 }
 
 function setActiveGameMode(mode, { save = true, reset = false } = {}) {
@@ -14851,6 +15088,12 @@ renderQuickChat(chatPopoutQuick);
 bindPressAction(onlineConnect, () => connectOnline());
 bindPressAction(onlineDisconnect, () => disconnectOnline());
 bindPressAction(onlineClaim, () => claimOnlineUsername());
+bindPressAction(profileRefresh, () => {
+  requestOnlineProfile();
+  requestOnlineLeaderboard({ force: true });
+});
+bindPressAction(profileLogout, () => logoutOnlineProfile());
+bindPressAction(profileDelete, () => deleteOnlineProfile());
 bindPressAction(onlineCreateRoom, () => {
   const options = getOnlineRoomOptions();
   sendOnlineMessage({
@@ -15684,6 +15927,17 @@ window.render_game_to_text = () => {
         submitStatus: onlineState.lastFeedbackStatus,
         lastError: onlineState.lastFeedbackError,
       },
+      profile: {
+        tabVisible: Boolean(
+          document.getElementById("tab-profile")?.classList.contains("active"),
+        ),
+        snapshot: onlineState.profileSnapshot,
+        actionStatus: onlineState.profileActionStatus,
+        deleteStatus: onlineState.profileDeleteStatus,
+        saveSyncedAt: onlineState.saveSyncedAt,
+        leaderboardSyncedAt: onlineState.leaderboardSyncedAt,
+        restrictedUntil: onlineState.onlineRestrictedUntil,
+      },
       authenticated: Boolean(onlineState.user),
       profileMode: onlineState.profileMode,
       guestTemporary: Boolean(onlineState.guestTemporary),
@@ -15704,6 +15958,7 @@ window.render_game_to_text = () => {
         quickChatAvailable: true,
         freeChatAvailable: canUseOnlineFreeChat(),
         messageCount: onlineState.chatMessages.length,
+        historyWindowMs: 15 * 60 * 1000,
         lastMessage: onlineState.chatMessages.at(-1) ?? null,
       },
       queue: onlineState.queue

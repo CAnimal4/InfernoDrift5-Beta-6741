@@ -55,6 +55,20 @@ test("protocol accepts known messages and rejects unknown messages", () => {
     true,
   );
   assert.equal(
+    validateClientMessage(JSON.stringify({ type: "profile.get" })).ok,
+    true,
+  );
+  assert.equal(
+    validateClientMessage(JSON.stringify({ type: "profile.logout" })).ok,
+    true,
+  );
+  assert.equal(
+    validateClientMessage(
+      JSON.stringify({ type: "profile.delete", confirmUsername: "Drifter" }),
+    ).ok,
+    true,
+  );
+  assert.equal(
     validateClientMessage(
       JSON.stringify({
         type: "auth.account",
@@ -258,6 +272,114 @@ test("websocket backend supports password account create and sign in", async (t)
   wrong.ws.terminate();
   signin.ws.terminate();
   clark.ws.terminate();
+});
+
+test("profile logout/delete and 15 minute chat history are live", async (t) => {
+  const app = createInfernoServer({
+    port: 0,
+    dataDir: path.join(os.tmpdir(), `id4-profile-${Date.now()}`),
+    allowedOrigins: "http://127.0.0.1:5173",
+  });
+  const server = await app.listen();
+  t.after(async () => {
+    await app.close();
+  });
+  const port = server.address().port;
+  const alpha = await makeWsClient(port);
+
+  alpha.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "auto",
+      username: "HistoryAce",
+      password: "secret123",
+      age: 13,
+      deviceId: "history-device",
+    }),
+  );
+  const alphaAuth = await waitForMessage(
+    alpha.messages,
+    (msg) => msg.type === "auth.ok",
+  );
+  await waitForMessage(
+    alpha.messages,
+    (msg) => msg.type === "profile.snapshot",
+  );
+
+  alpha.ws.send(JSON.stringify({ type: "chat.send", text: "hi from lobby" }));
+  await waitForMessage(
+    alpha.messages,
+    (msg) => msg.type === "chat.message" && msg.text === "hi from lobby",
+  );
+
+  const beta = await makeWsClient(port);
+  beta.ws.send(
+    JSON.stringify({
+      type: "auth.guest",
+      username: "HistoryGuest",
+      age: 13,
+      deviceId: "history-guest-device",
+    }),
+  );
+  await waitForMessage(beta.messages, (msg) => msg.type === "auth.ok");
+  const history = await waitForMessage(
+    beta.messages,
+    (msg) =>
+      msg.type === "chat.history" &&
+      msg.messages.some((entry) => entry.text === "hi from lobby"),
+  );
+  assert.equal(history.windowMs, 15 * 60 * 1000);
+
+  alpha.ws.send(JSON.stringify({ type: "profile.logout" }));
+  await waitForMessage(
+    alpha.messages,
+    (msg) => msg.type === "profile.loggedOut",
+  );
+  const reconnect = await makeWsClient(port);
+  reconnect.ws.send(
+    JSON.stringify({ type: "reconnect", sessionToken: alphaAuth.sessionToken }),
+  );
+  await waitForMessage(
+    reconnect.messages,
+    (msg) => msg.type === "error" && msg.error === "session_expired",
+  );
+
+  const deleteClient = await makeWsClient(port);
+  deleteClient.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "signin",
+      username: "HistoryAce",
+      password: "secret123",
+      age: 13,
+    }),
+  );
+  await waitForMessage(deleteClient.messages, (msg) => msg.type === "auth.ok");
+  deleteClient.ws.send(
+    JSON.stringify({
+      type: "profile.delete",
+      confirmUsername: "HistoryAce",
+    }),
+  );
+  await waitForMessage(
+    deleteClient.messages,
+    (msg) => msg.type === "profile.deleted",
+  );
+  assert.equal(app.db.data.usernameClaims.historyace, undefined);
+  assert.equal(app.db.data.users[alphaAuth.user.id], undefined);
+  assert.equal(
+    app.db.data.chatMessages.some(
+      (message) =>
+        message.userId === alphaAuth.user.id &&
+        message.from === "Deleted Player",
+    ),
+    true,
+  );
+
+  alpha.ws.terminate();
+  beta.ws.terminate();
+  reconnect.ws.terminate();
+  deleteClient.ws.terminate();
 });
 
 test("chat sanitizer strips markup and basic profanity", () => {
@@ -511,6 +633,7 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
       username: "Joshua",
       password: "footballcards",
       age: 13,
+      deviceId: "joshua-device",
     }),
   );
   const joshuaAuth = await waitForMessage(
@@ -565,6 +688,7 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
       username: "Joshua",
       password: "footballcards",
       age: 13,
+      deviceId: "joshua-device",
     }),
   );
   await waitForMessage(joshuaAgain.messages, (msg) => msg.type === "auth.ok");
@@ -594,6 +718,7 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
       username: "Joshua",
       password: "footballcards",
       age: 13,
+      deviceId: "joshua-device",
     }),
   );
   const error = await waitForMessage(
@@ -602,8 +727,23 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
   );
   assert.ok(error.until);
 
+  const bannedGuest = await makeWsClient(port);
+  bannedGuest.ws.send(
+    JSON.stringify({
+      type: "auth.guest",
+      username: "GuestAfterBan",
+      age: 13,
+      deviceId: "joshua-device",
+    }),
+  );
+  await waitForMessage(
+    bannedGuest.messages,
+    (msg) => msg.type === "error" && msg.error === "account_banned",
+  );
+
   moderator.ws.terminate();
   banned.ws.terminate();
+  bannedGuest.ws.terminate();
 });
 
 test("websocket backend persists sessions, claims, saves, friends, reports, feedback, and authoritative leaderboards", async (t) => {
@@ -762,7 +902,15 @@ test("websocket backend persists sessions, claims, saves, friends, reports, feed
   a.ws.send(JSON.stringify({ type: "leaderboard.get", playlist: "ranked" }));
   const leaderboard = await waitForMessage(
     a.messages,
-    (msg) => msg.type === "leaderboard.snapshot",
+    (msg) =>
+      msg.type === "leaderboard.snapshot" &&
+      msg.leaderboard.some(
+        (row) =>
+          row.username === "RacerOne" &&
+          row.xp === 450 &&
+          row.score === 450 &&
+          row.scope === "Total XP",
+      ),
   );
   assert.ok(leaderboard.leaderboard.every((row) => row.source === "server"));
   assert.ok(

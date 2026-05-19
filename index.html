@@ -176,6 +176,7 @@
             <button class="tab-btn active" id="games-tab-btn" data-tab="games" type="button">Play</button>
             <button class="tab-btn" data-tab="customize" type="button">Garage</button>
             <button class="tab-btn" data-tab="progress" type="button">Progress</button>
+            <button class="tab-btn" data-tab="profile" type="button">Profile</button>
             <button class="tab-btn" data-tab="online" type="button">Online</button>
             <button class="tab-btn" data-tab="leaderboard" type="button">Leaderboard</button>
             <button class="tab-btn" data-tab="settings" type="button">Settings</button>
@@ -263,6 +264,38 @@
             <section class="tab-panel" id="tab-progress">
               <div class="progress-grid" id="progress-panel"></div>
               <p class="hint">Progress stays local unless an InfernoDrift4 backend URL is configured and connected.</p>
+            </section>
+            <section class="tab-panel" id="tab-profile">
+              <div class="profile-shell">
+                <div class="profile-card profile-hero-card">
+                  <div class="custom-section-title">Player Profile</div>
+                  <h3 id="profile-display-name">Offline Driver</h3>
+                  <p class="hint" id="profile-status-text">Sign in or play as guest to use online rooms, friends, chat, and leaderboard sync.</p>
+                  <div class="profile-badges" id="profile-badges"></div>
+                </div>
+                <div class="profile-card">
+                  <div class="custom-section-title">Progress Sync</div>
+                  <div class="profile-stat-grid">
+                    <div><span>Level</span><strong id="profile-level">1</strong></div>
+                    <div><span>Total XP</span><strong id="profile-xp">0</strong></div>
+                    <div><span>Save</span><strong id="profile-save-state">Local</strong></div>
+                    <div><span>Leaderboard</span><strong id="profile-leaderboard-state">Waiting</strong></div>
+                  </div>
+                </div>
+                <div class="profile-card">
+                  <div class="custom-section-title">Account Actions</div>
+                  <div class="cta-row compact-actions">
+                    <button class="ghost" id="profile-refresh" type="button">Refresh Profile</button>
+                    <button class="ghost" id="profile-logout" type="button">Log Out</button>
+                  </div>
+                  <label class="field">
+                    <span>Delete Confirmation</span>
+                    <input id="profile-delete-confirm" type="text" maxlength="24" placeholder="Type your username" autocomplete="off" />
+                  </label>
+                  <button class="danger" id="profile-delete" type="button">Delete Account</button>
+                  <p class="hint" id="profile-action-status">Deleting removes your online account, saves, friends, leaderboard identity, and releases your username.</p>
+                </div>
+              </div>
             </section>
             <section class="tab-panel" id="tab-leaderboard">
               <div class="leaderboard-shell">
