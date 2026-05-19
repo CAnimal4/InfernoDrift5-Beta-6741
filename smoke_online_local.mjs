@@ -33,6 +33,7 @@ try {
   host.send({
     type: "room.create",
     playlist: "casual",
+    mode: "battle-arena",
     teamSize: 2,
     botFill: true,
     private: true,
@@ -40,7 +41,28 @@ try {
   const firstRoom = await host.waitFor("room.snapshot");
   const code = firstRoom.room.code;
   assert.match(code, /^[A-Z0-9]{4,10}$/);
+  assert.equal(firstRoom.room.mode, "battle-arena");
   assert.equal(firstRoom.room.players.length, 1);
+
+  child.send({
+    type: "room.create",
+    playlist: "private",
+    mode: "boost-bowling",
+    teamSize: 1,
+    botFill: false,
+    private: true,
+  });
+  const secondRoom = await child.waitFor("room.snapshot");
+  assert.equal(secondRoom.room.mode, "boost-bowling");
+  assert.notEqual(secondRoom.room.code, code);
+
+  host.send({ type: "room.share" });
+  await host.waitFor("room.shared", (message) => message.status === "shared");
+  host.send({ type: "room.share" });
+  await host.waitFor(
+    "room.shared",
+    (message) => message.status === "already_shared",
+  );
 
   guest.send({ type: "room.join", code });
   const joinedHostRoom = await host.waitFor(
@@ -55,7 +77,10 @@ try {
   assert.equal(joinedGuestRoom.room.code, code);
 
   host.send({ type: "quick.send", text: "Nice drift!" });
-  const quick = await guest.waitFor("chat.message");
+  const quick = await guest.waitFor(
+    "chat.message",
+    (message) => message.text === "Nice drift!",
+  );
   assert.equal(quick.quick, true);
   assert.equal(quick.text, "Nice drift!");
 
@@ -88,12 +113,24 @@ try {
     drift: true,
     boost: false,
     jump: false,
-    client: { x: 4, z: -9, speed: 82 },
+    y: 2,
+    heading: 0.8,
+    airborne: true,
+    backflip: true,
+    cosmetics: { paintId: "red-hot", glowId: "cyan" },
+    client: { x: 4, y: 2, z: -9, speed: 82, heading: 0.8 },
   });
   const inputAccepted = await host.waitFor("input.accepted");
   assert.equal(inputAccepted.tick, 1);
   const snapshot = await guest.waitFor("match.snapshot");
-  assert.ok(snapshot.players.some((player) => player.input?.speed === 82));
+  assert.ok(
+    snapshot.players.some(
+      (player) =>
+        player.input?.speed === 82 &&
+        player.input?.backflip === true &&
+        player.input?.cosmetics?.paintId === "red-hot",
+    ),
+  );
 
   host.send({ type: "leaderboard.get", playlist: "casual" });
   const leaderboard = await host.waitFor("leaderboard.snapshot");
@@ -123,6 +160,7 @@ try {
       {
         serverUrl,
         roomCode: code,
+        secondRoomCode: secondRoom.room.code,
         players: joinedHostRoom.room.players.length,
         bots: joinedHostRoom.room.bots,
         sanitizedChat: chat.text,

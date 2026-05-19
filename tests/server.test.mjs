@@ -132,6 +132,29 @@ test("protocol accepts known messages and rejects unknown messages", () => {
   assert.equal(
     validateClientMessage(
       JSON.stringify({
+        type: "input.frame",
+        seq: 4,
+        dt: 0.016,
+        throttle: 1,
+        steer: 0.2,
+        drift: true,
+        boost: true,
+        jump: false,
+        y: 3,
+        heading: 1.2,
+        airborne: true,
+        backflip: true,
+        barrelRoll: false,
+        trick: "backflip",
+        cosmetics: { paintId: "red-hot", glowId: "cyan" },
+        client: { x: 4, y: 3, z: -8, speed: 92, heading: 1.2 },
+      }),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    validateClientMessage(
+      JSON.stringify({
         type: "results.commit",
         mode: "campaign-survival",
         runId: "local-run",
@@ -498,13 +521,20 @@ test("websocket backend rejects origin prefix spoofing", async () => {
   await app.close();
 });
 
-test("websocket backend supports two clients, chat filtering, and private join", async () => {
+test("websocket backend supports two clients, chat filtering, and private join", async (t) => {
   const app = createInfernoServer({
     port: 0,
     dataDir: path.join(os.tmpdir(), `id4-two-${Date.now()}`),
     allowedOrigins: "http://127.0.0.1:5173",
   });
   const server = await app.listen();
+  let a;
+  let b;
+  t.after(async () => {
+    a?.ws.terminate();
+    b?.ws.terminate();
+    await app.close();
+  });
   const port = server.address().port;
   const makeClient = async () => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}`, {
@@ -515,14 +545,25 @@ test("websocket backend supports two clients, chat filtering, and private join",
     await new Promise((resolve) => ws.once("open", resolve));
     return { ws, messages };
   };
-  const a = await makeClient();
-  const b = await makeClient();
+  a = await makeClient();
+  b = await makeClient();
   a.ws.send(JSON.stringify({ type: "auth.guest", username: "Alpha", age: 13 }));
   b.ws.send(JSON.stringify({ type: "auth.guest", username: "Beta", age: 13 }));
+  await waitForMessage(a.messages, (msg) => msg.type === "auth.ok");
+  await waitForMessage(b.messages, (msg) => msg.type === "auth.ok");
   a.ws.send(JSON.stringify({ type: "room.create", mode: "casual", size: 2 }));
   await new Promise((resolve) => setTimeout(resolve, 120));
   const code = a.messages.find((msg) => msg.type === "room.snapshot").room.code;
   a.ws.send(JSON.stringify({ type: "room.share" }));
+  await waitForMessage(
+    a.messages,
+    (msg) => msg.type === "room.shared" && msg.status === "shared",
+  );
+  a.ws.send(JSON.stringify({ type: "room.share" }));
+  await waitForMessage(
+    a.messages,
+    (msg) => msg.type === "room.shared" && msg.status === "already_shared",
+  );
   b.ws.send(JSON.stringify({ type: "room.join", code }));
   b.ws.send(
     JSON.stringify({
@@ -542,14 +583,137 @@ test("websocket backend supports two clients, chat filtering, and private join",
       (msg) => msg.type === "chat.message" && msg.text === `Room code ${code}`,
     ),
   );
+  assert.equal(
+    a.messages.filter(
+      (msg) => msg.type === "chat.message" && msg.text === `Room code ${code}`,
+    ).length,
+    1,
+  );
   assert.ok(
     a.messages.some(
       (msg) => msg.type === "room.snapshot" && msg.room.players.length === 2,
     ),
   );
-  a.ws.terminate();
-  b.ws.terminate();
-  await app.close();
+});
+
+test("private rooms use unique codes, modes, isolated snapshots, and rich live state", async (t) => {
+  const app = createInfernoServer({
+    port: 0,
+    dataDir: path.join(os.tmpdir(), `id4-rooms-${Date.now()}`),
+    allowedOrigins: "http://127.0.0.1:5173",
+  });
+  const server = await app.listen();
+  t.after(async () => {
+    await app.close();
+  });
+  const port = server.address().port;
+  const hostA = await makeWsClient(port);
+  const joinA = await makeWsClient(port);
+  const hostB = await makeWsClient(port);
+  const joinB = await makeWsClient(port);
+
+  hostA.ws.send(
+    JSON.stringify({ type: "auth.guest", username: "RoomA", age: 13 }),
+  );
+  joinA.ws.send(
+    JSON.stringify({ type: "auth.guest", username: "JoinA", age: 13 }),
+  );
+  hostB.ws.send(
+    JSON.stringify({ type: "auth.guest", username: "RoomB", age: 13 }),
+  );
+  joinB.ws.send(
+    JSON.stringify({ type: "auth.guest", username: "JoinB", age: 13 }),
+  );
+  await waitForMessage(hostA.messages, (msg) => msg.type === "auth.ok");
+  await waitForMessage(joinA.messages, (msg) => msg.type === "auth.ok");
+  await waitForMessage(hostB.messages, (msg) => msg.type === "auth.ok");
+  await waitForMessage(joinB.messages, (msg) => msg.type === "auth.ok");
+
+  hostA.ws.send(
+    JSON.stringify({
+      type: "room.create",
+      mode: "battle-arena",
+      playlist: "private",
+      teamSize: 1,
+      botFill: false,
+    }),
+  );
+  hostB.ws.send(
+    JSON.stringify({
+      type: "room.create",
+      mode: "boost-bowling",
+      playlist: "private",
+      teamSize: 1,
+      botFill: false,
+    }),
+  );
+  const roomA = await waitForMessage(
+    hostA.messages,
+    (msg) => msg.type === "room.snapshot" && msg.room.mode === "battle-arena",
+  );
+  const roomB = await waitForMessage(
+    hostB.messages,
+    (msg) => msg.type === "room.snapshot" && msg.room.mode === "boost-bowling",
+  );
+  assert.notEqual(roomA.room.code, roomB.room.code);
+
+  joinA.ws.send(JSON.stringify({ type: "room.join", code: roomA.room.code }));
+  joinB.ws.send(JSON.stringify({ type: "room.join", code: roomB.room.code }));
+  await waitForMessage(
+    joinA.messages,
+    (msg) =>
+      msg.type === "room.snapshot" &&
+      msg.room.code === roomA.room.code &&
+      msg.room.players.length === 2,
+  );
+  await waitForMessage(
+    joinB.messages,
+    (msg) =>
+      msg.type === "room.snapshot" &&
+      msg.room.code === roomB.room.code &&
+      msg.room.players.length === 2,
+  );
+
+  hostA.ws.send(
+    JSON.stringify({
+      type: "input.frame",
+      seq: 8,
+      dt: 0.016,
+      throttle: 1,
+      steer: 0.1,
+      drift: false,
+      boost: true,
+      jump: false,
+      x: 12,
+      y: 4,
+      z: -32,
+      heading: 0.72,
+      speed: 98,
+      airborne: true,
+      backflip: true,
+      cosmetics: { paintId: "red-hot", glowId: "cyan" },
+    }),
+  );
+  const snapshotA = await waitForMessage(
+    joinA.messages,
+    (msg) =>
+      msg.type === "match.snapshot" &&
+      msg.roomCode === roomA.room.code &&
+      msg.players.some((player) => player.username === "RoomA"),
+  );
+  const hostAState = snapshotA.players.find(
+    (player) => player.username === "RoomA",
+  );
+  assert.equal(hostAState.input.backflip, true);
+  assert.equal(hostAState.input.cosmetics.paintId, "red-hot");
+  assert.equal(
+    joinB.messages.some(
+      (msg) =>
+        msg.type === "match.snapshot" &&
+        msg.players?.some((player) => player.username === "RoomA"),
+    ),
+    false,
+  );
 });
 
 test("websocket backend supports queue, age gate, quick chat, leaderboard, and social shell", async () => {
@@ -653,7 +817,13 @@ test("friending Clark grants a one-time founder XP bonus", async (t) => {
   const player = await makeWsClient(port);
 
   player.ws.send(
-    JSON.stringify({ type: "auth.guest", username: "FounderFan", age: 13 }),
+    JSON.stringify({
+      type: "auth.account",
+      mode: "create",
+      username: "FounderFan",
+      password: "founderfanpass",
+      age: 13,
+    }),
   );
   await waitForMessage(player.messages, (msg) => msg.type === "auth.ok");
   player.ws.send(JSON.stringify({ type: "friend.request", username: "Clark" }));
@@ -786,7 +956,11 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
   );
   const updatedLeaderboard = await waitForMessage(
     joshua.messages,
-    (msg) => msg.type === "leaderboard.snapshot",
+    (msg) =>
+      msg.type === "leaderboard.snapshot" &&
+      msg.leaderboard.some(
+        (row) => row.username === "Joshua" && row.xp === 9350,
+      ),
   );
   const updatedJoshua = updatedLeaderboard.leaderboard.find(
     (row) => row.username === "Joshua",
@@ -893,8 +1067,24 @@ test("websocket backend persists sessions, claims, saves, friends, reports, feed
   const a = await makeWsClient(port);
   const b = await makeWsClient(port);
 
-  a.ws.send(JSON.stringify({ type: "auth.guest", username: "Alpha", age: 13 }));
-  b.ws.send(JSON.stringify({ type: "auth.guest", username: "Bravo", age: 13 }));
+  a.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "create",
+      username: "Alpha",
+      password: "alpha-password",
+      age: 13,
+    }),
+  );
+  b.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "create",
+      username: "Bravo",
+      password: "bravo-password",
+      age: 13,
+    }),
+  );
   const authA = await waitForMessage(
     a.messages,
     (msg) => msg.type === "auth.ok",
@@ -909,6 +1099,15 @@ test("websocket backend persists sessions, claims, saves, friends, reports, feed
     (msg) =>
       msg.type === "profile.usernameClaimed" && msg.username === "RacerOne",
   );
+  a.ws.send(JSON.stringify({ type: "leaderboard.get", playlist: "casual" }));
+  const initialLeaderboard = await waitForMessage(
+    a.messages,
+    (msg) =>
+      msg.type === "leaderboard.snapshot" &&
+      msg.playerRow?.username === "RacerOne",
+  );
+  assert.equal(initialLeaderboard.playerRow.xp, 0);
+  assert.equal(initialLeaderboard.playerRow.scope, "Total XP");
   b.ws.send(
     JSON.stringify({ type: "profile.claimUsername", username: "RacerOne" }),
   );
@@ -1015,7 +1214,9 @@ test("websocket backend persists sessions, claims, saves, friends, reports, feed
   );
   await waitForMessage(
     a.messages,
-    (msg) => msg.type === "feedback.received" && msg.delivery === "stored",
+    (msg) =>
+      msg.type === "feedback.received" &&
+      msg.delivery === "stored_email_not_configured",
   );
 
   a.ws.send(
@@ -1044,6 +1245,8 @@ test("websocket backend persists sessions, claims, saves, friends, reports, feed
       ),
   );
   assert.ok(leaderboard.leaderboard.every((row) => row.source === "server"));
+  assert.equal(leaderboard.playerRow.username, "RacerOne");
+  assert.equal(leaderboard.playerRow.xp, 450);
   assert.ok(
     leaderboard.leaderboard.some(
       (row) =>
@@ -1118,7 +1321,7 @@ test("http feedback endpoint stores sanitized submissions and keeps reply email 
   const payload = await response.json();
   assert.equal(response.status, 200);
   assert.equal(payload.ok, true);
-  assert.equal(payload.delivery, "stored");
+  assert.equal(payload.delivery, "stored_email_not_configured");
   assert.equal(app.db.data.feedback.length, 1);
   assert.equal(app.db.data.feedback[0].feedbackType, "fix");
   assert.equal(
@@ -1126,4 +1329,58 @@ test("http feedback endpoint stores sanitized submissions and keeps reply email 
     "The bowling reset is boost after a spare.",
   );
   assert.equal(app.db.data.feedback[0].replyEmail, "");
+});
+
+test("http feedback endpoint sends through configured Resend transport truthfully", async (t) => {
+  const deliveries = [];
+  const app = createInfernoServer({
+    port: 0,
+    dataDir: path.join(os.tmpdir(), `id4-feedback-email-${Date.now()}`),
+    allowedOrigins: "http://127.0.0.1:5173",
+    resendApiKey: "test-resend-key",
+    feedbackFrom: "InfernoDrift4 <feedback@example.com>",
+    feedbackTo: "clarkbythebay@gmail.com,clark.alden@lbusd.org",
+    feedbackFetch: async (url, options) => {
+      deliveries.push({
+        url,
+        body: JSON.parse(options.body),
+        headers: options.headers,
+      });
+      return Response.json({ id: "email-test" });
+    },
+  });
+  const server = await app.listen();
+  t.after(async () => {
+    await app.close();
+  });
+  const port = server.address().port;
+
+  const response = await fetch(`http://127.0.0.1:${port}/api/feedback`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "http://127.0.0.1:5173",
+    },
+    body: JSON.stringify({
+      feedbackType: "feature",
+      message: "Please add a cleaner room invite flow.",
+      age13OrOlder: true,
+      replyEmail: "driver@example.com",
+      diagnostics: { room: "ABCD12" },
+    }),
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.delivery, "delivered");
+  assert.equal(payload.emailConfigured, true);
+  assert.equal(deliveries.length, 1);
+  assert.deepEqual(deliveries[0].body.to, [
+    "clarkbythebay@gmail.com",
+    "clark.alden@lbusd.org",
+  ]);
+  assert.equal(deliveries[0].body.from, "InfernoDrift4 <feedback@example.com>");
+  assert.match(
+    deliveries[0].body.text,
+    /Please add a cleaner room invite flow/,
+  );
 });

@@ -193,6 +193,7 @@ function emptyData() {
     feedback: [],
     chatMessages: [],
     accountDeletions: [],
+    rooms: {},
     leaderboard: DEFAULT_LEADERBOARD,
   };
 }
@@ -305,11 +306,18 @@ function normalizeData(data) {
   state.accountDeletions = Array.isArray(state.accountDeletions)
     ? state.accountDeletions
     : [];
+  state.rooms =
+    state.rooms &&
+    typeof state.rooms === "object" &&
+    !Array.isArray(state.rooms)
+      ? state.rooms
+      : {};
   state.leaderboard =
     Array.isArray(state.leaderboard) && state.leaderboard.length
       ? state.leaderboard
       : DEFAULT_LEADERBOARD;
   seedSystemAccounts(state);
+  ensureAllAccountLeaderboardRows(state);
   return state;
 }
 
@@ -328,6 +336,14 @@ function getLeaderboardXp(row) {
 
 function compareLeaderboard(a, b) {
   return getLeaderboardXp(b) - getLeaderboardXp(a);
+}
+
+function isLeaderboardEligibleUser(user) {
+  return Boolean(
+    user?.id &&
+    user?.username &&
+    (user.authProvider === "password" || user.account === true),
+  );
 }
 
 function progressionLevelForXp(totalXp) {
@@ -385,26 +401,90 @@ function buildFounderFriendSavePayload(payload = {}, user = {}) {
 }
 
 function upsertXpLeaderboard(data, user, totalXp) {
+  if (!isLeaderboardEligibleUser(user)) return null;
+  const xp = Math.max(0, Math.floor(Number(totalXp) || 0));
+  const row = {
+    id: `xp-${user.id}`,
+    userId: user.id,
+    username: user.username,
+    badge: user.badge || "",
+    moderator: Boolean(user.moderator || user.role === "moderator"),
+    xp,
+    totalXp: xp,
+    score: xp,
+    rating: xp,
+    playlist: "all modes",
+    scope: "Total XP",
+    source: "server",
+    updatedAt: nowIso(),
+  };
   data.leaderboard = [
-    {
-      id: `xp-${user.id}`,
-      userId: user.id,
-      username: user.username,
-      badge: user.badge || "",
-      moderator: Boolean(user.moderator || user.role === "moderator"),
-      xp: totalXp,
-      totalXp,
-      score: totalXp,
-      rating: totalXp,
-      playlist: "all modes",
-      scope: "Total XP",
-      source: "server",
-      updatedAt: nowIso(),
-    },
+    row,
     ...data.leaderboard.filter(
       (row) => row.id !== `xp-${user.id}` && row.userId !== user.id,
     ),
   ].sort(compareLeaderboard);
+  return row;
+}
+
+function ensureUserLeaderboardRow(data, user) {
+  if (!isLeaderboardEligibleUser(user)) return null;
+  const saved = data.saves?.[user.id]?.payload ?? {};
+  const totalXp = Math.max(
+    extractSaveXp(saved),
+    Math.max(0, Number(user.xp) || 0),
+  );
+  user.xp = totalXp;
+  user.rating = Math.max(Number(user.rating) || 0, totalXp);
+  return upsertXpLeaderboard(data, user, totalXp);
+}
+
+function ensureAllAccountLeaderboardRows(data) {
+  for (const user of Object.values(data.users ?? {})) {
+    ensureUserLeaderboardRow(data, user);
+  }
+}
+
+function clampNumber(value, min, max, fallback = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(max, Math.max(min, numeric));
+}
+
+function sanitizeLiveInput(msg) {
+  const client = msg.client && typeof msg.client === "object" ? msg.client : {};
+  const cosmetics =
+    msg.cosmetics && typeof msg.cosmetics === "object"
+      ? Object.fromEntries(
+          Object.entries(msg.cosmetics)
+            .filter(([, value]) => typeof value === "string")
+            .slice(0, 12),
+        )
+      : {};
+  return {
+    tick: Math.floor(clampNumber(msg.tick ?? msg.seq, 0, 1e9, 0)),
+    x: clampNumber(msg.x ?? client.x, -1000, 1000),
+    y: clampNumber(msg.y ?? client.y, -40, 160),
+    z: clampNumber(msg.z ?? client.z, -1000, 1000),
+    heading: clampNumber(msg.heading ?? client.heading, -20, 20),
+    speed: clampNumber(msg.speed ?? client.speed, -420, 420),
+    throttle: clampNumber(msg.throttle, -1, 1),
+    steer: clampNumber(msg.steer, -1, 1),
+    drift: Boolean(msg.drift),
+    boost: Boolean(msg.boost),
+    jump: Boolean(msg.jump),
+    airborne: Boolean(msg.airborne ?? client.airborne),
+    backflip: Boolean(msg.backflip),
+    barrelRoll: Boolean(msg.barrelRoll),
+    trick: String(msg.trick || "").slice(0, 32),
+    shield: clampNumber(msg.shield, 0, 1),
+    health: clampNumber(msg.health, 0, 500),
+    ammo: clampNumber(msg.ammo, 0, 50),
+    team: ["blue", "red", "neutral"].includes(msg.team) ? msg.team : "neutral",
+    mode: String(msg.mode || "").slice(0, 32),
+    cosmetics,
+    at: Date.now(),
+  };
 }
 
 function publicUser(user) {
@@ -435,40 +515,69 @@ function usableSecret(value) {
 function hasResendConfig(env) {
   return Boolean(
     usableSecret(env.RESEND_API_KEY) &&
-    usableSecret(env.FEEDBACK_TO ?? env.FEEDBACK_EMAIL_TO),
+    usableSecret(env.FEEDBACK_TO ?? env.FEEDBACK_EMAIL_TO) &&
+    usableFeedbackSender(env.FEEDBACK_FROM ?? env.FEEDBACK_EMAIL_FROM),
   );
+}
+
+function parseFeedbackRecipients(value) {
+  return usableSecret(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function usableFeedbackSender(value) {
+  const sender = usableSecret(value);
+  const email = sender.match(/<([^>]+)>/)?.[1] ?? sender;
+  if (!EMAIL_PATTERN.test(email)) return "";
+  if (email.toLowerCase().endsWith(".local")) return "";
+  return sender;
 }
 
 async function deliverFeedback(row, env) {
   const apiKey = usableSecret(env.RESEND_API_KEY);
-  const to = usableSecret(env.FEEDBACK_TO ?? env.FEEDBACK_EMAIL_TO);
-  if (!apiKey || !to) return "stored";
-  const from =
-    usableSecret(env.FEEDBACK_FROM ?? env.FEEDBACK_EMAIL_FROM) ||
-    "InfernoDrift4 <feedback@infernodrift.local>";
+  const to = parseFeedbackRecipients(env.FEEDBACK_TO ?? env.FEEDBACK_EMAIL_TO);
+  const from = usableFeedbackSender(
+    env.FEEDBACK_FROM ?? env.FEEDBACK_EMAIL_FROM,
+  );
+  if (!apiKey || !to.length || !from) {
+    return { delivery: "stored_email_not_configured", emailConfigured: false };
+  }
+  const text = [
+    `Feedback ID: ${row.id}`,
+    `From: ${row.username} (${row.userId})`,
+    `Reply: ${row.replyEmail || "none"}`,
+    `Type: ${row.feedbackType}`,
+    `At: ${row.createdAt}`,
+    "",
+    row.message,
+    "",
+    `Diagnostics: ${JSON.stringify(row.diagnostics ?? {})}`,
+  ].join("\n");
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       authorization: `Bearer ${apiKey}`,
       "content-type": "application/json",
+      "idempotency-key": `feedback-${row.id}`,
     },
     body: JSON.stringify({
       from,
       to,
       subject: `InfernoDrift4 feedback: ${row.feedbackType}`,
-      text: [
-        `Feedback ID: ${row.id}`,
-        `From: ${row.username} (${row.userId})`,
-        `Reply: ${row.replyEmail || "none"}`,
-        `Type: ${row.feedbackType}`,
-        "",
-        row.message,
-        "",
-        `Diagnostics: ${JSON.stringify(row.diagnostics ?? {})}`,
-      ].join("\n"),
+      text,
+      html: `<pre>${text.replace(/[&<>]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[char])}</pre>`,
     }),
   });
-  return response.ok ? "delivered" : "stored";
+  if (response.ok) return { delivery: "delivered", emailConfigured: true };
+  const body = await response.json().catch(() => ({}));
+  return {
+    delivery: "stored_email_failed",
+    emailConfigured: true,
+    emailError: body?.message || body?.error || `resend_${response.status}`,
+  };
 }
 
 function normalizeFeedbackType(value) {
@@ -591,6 +700,38 @@ async function writeSaveAndLeaderboardToD1(env, user, row, totalXp) {
       "server",
       now,
       totalXp,
+      user.badge || "",
+      user.moderator || user.role === "moderator" ? 1 : 0,
+    ),
+  ]);
+  return true;
+}
+
+async function writeLeaderboardUserToD1(env, user, totalXp = 0) {
+  if (!env.INFERNO_DB?.prepare || !isLeaderboardEligibleUser(user))
+    return false;
+  const now = user.updatedAt || nowIso();
+  const xp = Math.max(0, Math.floor(Number(totalXp) || 0));
+  await env.INFERNO_DB.batch([
+    env.INFERNO_DB.prepare(
+      `INSERT OR REPLACE INTO stats (user_id, xp, level, runs, wins, updated_at)
+       VALUES (?, ?, ?, COALESCE((SELECT runs FROM stats WHERE user_id = ?), 0), COALESCE((SELECT wins FROM stats WHERE user_id = ?), 0), ?)`,
+    ).bind(user.id, xp, progressionLevelForXp(xp), user.id, user.id, now),
+    env.INFERNO_DB.prepare(
+      `INSERT OR REPLACE INTO leaderboards (id, user_id, username, playlist, mode_id, rating, score, season_id, source, updated_at, xp, badge, moderator)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      `xp-${user.id}`,
+      user.id,
+      user.username,
+      "all modes",
+      "global-xp",
+      xp,
+      xp,
+      "preseason",
+      "server",
+      now,
+      xp,
       user.badge || "",
       user.moderator || user.role === "moderator" ? 1 : 0,
     ),
@@ -906,6 +1047,7 @@ async function hydrateDataFromD1(env, stored) {
       }))
       .sort(compareLeaderboard);
   }
+  ensureAllAccountLeaderboardRows(state);
 
   const cutoff = new Date(Date.now() - CHAT_HISTORY_WINDOW_MS).toISOString();
   state.chatMessages = (
@@ -1321,8 +1463,53 @@ export class InfernoRoom {
     });
   }
 
+  makeUniqueRoomCode() {
+    const activeCodes = new Set(
+      Object.values(this.data.rooms ?? {}).map((room) =>
+        String(room.code || "").toUpperCase(),
+      ),
+    );
+    activeCodes.add(String(this.room.code || "").toUpperCase());
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const code = makePrivateCode().toUpperCase();
+      if (!activeCodes.has(code)) return code;
+    }
+    return `${makePrivateCode().slice(0, 4)}${String(Object.keys(this.data.rooms ?? {}).length % 99).padStart(2, "0")}`.toUpperCase();
+  }
+
+  createRoom(options, source = "private") {
+    const code = this.makeUniqueRoomCode();
+    const room = {
+      id: crypto.randomUUID(),
+      code,
+      source,
+      mode: options.mode,
+      playlist: options.playlist,
+      size: options.size,
+      teamSize: options.teamSize,
+      ranked: options.ranked,
+      botFill: options.botFill,
+      hostUserId: "",
+      sharedBy: [],
+    };
+    this.data.rooms[code] = room;
+    return room;
+  }
+
+  roomForSession(session) {
+    const code = String(session?.roomCode || "").toUpperCase();
+    return code ? this.data.rooms?.[code] || null : null;
+  }
+
+  sessionsInRoom(room) {
+    return [...this.sessions.values()].filter(
+      (session) => session.inRoom && session.roomCode === room?.code,
+    );
+  }
+
   chatChannelForSession(session) {
-    return session?.inRoom ? `room:${this.room.code || this.room.id}` : "lobby";
+    const room = this.roomForSession(session);
+    return session?.inRoom && room ? `room:${room.code}` : "lobby";
   }
 
   chatHistoryPayload(session) {
@@ -1412,6 +1599,7 @@ export class InfernoRoom {
     };
     const sessionToken = restoredSession ? token : crypto.randomUUID();
     this.data.users[userId] = user;
+    ensureUserLeaderboardRow(this.data, user);
     this.data.sessions[sessionToken] = {
       token: sessionToken,
       userId,
@@ -1510,6 +1698,7 @@ export class InfernoRoom {
     const sessionToken = crypto.randomUUID();
     this.data.users[user.id] = user;
     this.data.usernameClaims[key] = user.id;
+    ensureUserLeaderboardRow(this.data, user);
     this.data.sessions[sessionToken] = {
       token: sessionToken,
       userId: user.id,
@@ -1549,6 +1738,7 @@ export class InfernoRoom {
     session.user.updatedAt = nowIso();
     this.data.users[session.user.id] = session.user;
     this.data.usernameClaims[key] = session.user.id;
+    ensureUserLeaderboardRow(this.data, session.user);
     return { ok: true, username };
   }
 
@@ -1594,6 +1784,14 @@ export class InfernoRoom {
         auth.sessionToken,
         this.data.sessions[auth.sessionToken],
       ).catch(() => false);
+      await writeLeaderboardUserToD1(
+        this.env,
+        auth.user,
+        Math.max(
+          Number(auth.user.xp) || 0,
+          extractSaveXp(this.data.saves[auth.user.id]?.payload ?? {}),
+        ),
+      ).catch(() => false);
       send(session.ws, {
         type: msg.type === "reconnect" ? "reconnect.ok" : "auth.ok",
         user: publicUser(auth.user),
@@ -1604,6 +1802,7 @@ export class InfernoRoom {
       send(session.ws, this.profileSnapshot(session));
       send(session.ws, this.friendsSnapshot(session));
       send(session.ws, this.chatHistoryPayload(session));
+      this.sendLeaderboardSnapshot(session);
       return;
     }
     if (msg.type === "auth.account") {
@@ -1621,6 +1820,14 @@ export class InfernoRoom {
         auth.sessionToken,
         this.data.sessions[auth.sessionToken],
       ).catch(() => false);
+      await writeLeaderboardUserToD1(
+        this.env,
+        auth.user,
+        Math.max(
+          Number(auth.user.xp) || 0,
+          extractSaveXp(this.data.saves[auth.user.id]?.payload ?? {}),
+        ),
+      ).catch(() => false);
       send(session.ws, {
         type: "auth.ok",
         user: publicUser(auth.user),
@@ -1631,7 +1838,14 @@ export class InfernoRoom {
       send(session.ws, this.profileSnapshot(session));
       send(session.ws, this.friendsSnapshot(session));
       send(session.ws, this.chatHistoryPayload(session));
-      if (session.inRoom) this.broadcast(this.roomSnapshot());
+      this.sendLeaderboardSnapshot(session);
+      if (session.inRoom) {
+        const room = this.roomForSession(session);
+        if (room)
+          this.broadcast(this.roomSnapshot(room), "", "", {
+            roomCode: room.code,
+          });
+      }
       return;
     }
     if (msg.type === "profile.claimUsername") {
@@ -1645,17 +1859,28 @@ export class InfernoRoom {
         session.sessionToken,
         this.data.sessions[session.sessionToken],
       ).catch(() => false);
+      await writeLeaderboardUserToD1(
+        this.env,
+        session.user,
+        Math.max(
+          Number(session.user.xp) || 0,
+          extractSaveXp(this.data.saves[session.user.id]?.payload ?? {}),
+        ),
+      ).catch(() => false);
       send(session.ws, {
         type: "profile.usernameClaimed",
         username: result.username,
         user: publicUser(session.user),
       });
       send(session.ws, this.profileSnapshot(session));
-      send(session.ws, {
-        type: "leaderboard.snapshot",
-        leaderboard: this.leaderboardSnapshot("casual"),
-      });
-      if (session.inRoom) this.broadcast(this.roomSnapshot());
+      this.sendLeaderboardSnapshot(session);
+      if (session.inRoom) {
+        const room = this.roomForSession(session);
+        if (room)
+          this.broadcast(this.roomSnapshot(room), "", "", {
+            roomCode: room.code,
+          });
+      }
       return;
     }
     if (msg.type === "profile.get") {
@@ -1672,52 +1897,73 @@ export class InfernoRoom {
     }
     if (msg.type === "room.create" || msg.type === "queue.join") {
       const roomOptions = normalizeRoomOptions(msg);
+      const room =
+        msg.type === "queue.join"
+          ? Object.values(this.data.rooms ?? {}).find(
+              (candidate) =>
+                candidate.source === "queue" &&
+                candidate.playlist === roomOptions.playlist &&
+                candidate.teamSize === roomOptions.teamSize &&
+                candidate.ranked === roomOptions.ranked &&
+                this.sessionsInRoom(candidate).length < candidate.size,
+            ) || this.createRoom(roomOptions, "queue")
+          : this.createRoom(roomOptions, "private");
+      if (!room.hostUserId) room.hostUserId = session.user.id;
       session.inRoom = true;
-      this.room.code = (this.room.code || makePrivateCode()).toUpperCase();
-      this.room.mode = roomOptions.mode;
-      this.room.playlist = roomOptions.playlist;
-      this.room.size = roomOptions.size;
-      this.room.teamSize = roomOptions.teamSize;
-      this.room.ranked = roomOptions.ranked;
-      this.room.botFill = roomOptions.botFill;
+      session.roomCode = room.code;
       await this.persist();
-      await writeRoomMemberToD1(this.env, this.room, session.user).catch(
+      await writeRoomMemberToD1(this.env, room, session.user).catch(
         () => false,
       );
       if (msg.type === "queue.join") {
         send(session.ws, {
           type: "queue.joined",
-          playlist: this.room.playlist,
-          teamSize: this.room.teamSize,
-          ranked: this.room.ranked,
-          botFill: this.room.botFill,
+          playlist: room.playlist,
+          teamSize: room.teamSize,
+          ranked: room.ranked,
+          botFill: room.botFill,
         });
       }
-      this.broadcast(this.roomSnapshot());
+      this.broadcast(this.roomSnapshot(room), "", "", { roomCode: room.code });
       send(session.ws, this.chatHistoryPayload(session));
       return;
     }
     if (msg.type === "room.join") {
       const requestedCode = String(msg.code || "").toUpperCase();
-      if (!this.room.code || this.room.code !== requestedCode) {
+      const room = this.data.rooms?.[requestedCode];
+      if (!room) {
         return send(session.ws, { type: "error", error: "room_not_found" });
       }
+      if (
+        this.sessionsInRoom(room).length >= room.size &&
+        session.roomCode !== room.code
+      ) {
+        return send(session.ws, { type: "error", error: "room_full" });
+      }
       session.inRoom = true;
+      session.roomCode = room.code;
       await this.persist();
-      await writeRoomMemberToD1(this.env, this.room, session.user).catch(
+      await writeRoomMemberToD1(this.env, room, session.user).catch(
         () => false,
       );
-      this.broadcast(this.roomSnapshot());
+      this.broadcast(this.roomSnapshot(room), "", "", { roomCode: room.code });
       send(session.ws, this.chatHistoryPayload(session));
       return;
     }
     if (msg.type === "room.leave" || msg.type === "queue.cancel") {
+      const room = this.roomForSession(session);
       session.inRoom = false;
-      await writeRoomMemberToD1(this.env, this.room, session.user, true).catch(
-        () => false,
-      );
+      session.roomCode = "";
+      if (room) {
+        await writeRoomMemberToD1(this.env, room, session.user, true).catch(
+          () => false,
+        );
+      }
       send(session.ws, { type: "room.left" });
-      this.broadcast(this.roomSnapshot());
+      if (room)
+        this.broadcast(this.roomSnapshot(room), "", "", {
+          roomCode: room.code,
+        });
       return;
     }
     if (msg.type === "room.share") {
@@ -1729,25 +1975,20 @@ export class InfernoRoom {
       return;
     }
     if (msg.type === "input.frame") {
-      session.latestInput = {
-        tick: Number(msg.tick ?? msg.seq ?? 0),
-        x: Number(msg.x ?? msg.client?.x ?? 0),
-        z: Number(msg.z ?? msg.client?.z ?? 0),
-        speed: Number(msg.speed ?? msg.client?.speed ?? 0),
-        at: Date.now(),
-      };
+      session.latestInput = sanitizeLiveInput(msg);
       send(session.ws, {
         type: "input.accepted",
         tick: session.latestInput.tick,
       });
-      this.broadcast(this.matchSnapshot(), id);
+      const room = this.roomForSession(session);
+      if (room)
+        this.broadcast(this.matchSnapshot(room), id, "", {
+          roomCode: room.code,
+        });
       return;
     }
     if (msg.type === "leaderboard.get") {
-      send(session.ws, {
-        type: "leaderboard.snapshot",
-        leaderboard: this.leaderboardSnapshot(msg.playlist),
-      });
+      this.sendLeaderboardSnapshot(session, msg.playlist);
       return;
     }
     if (msg.type === "save.sync") {
@@ -1838,6 +2079,7 @@ export class InfernoRoom {
     this.broadcast(payload, "", session.user.id, {
       roomOnly: session.inRoom,
       channel,
+      roomCode: session.roomCode,
     });
   }
 
@@ -1845,16 +2087,27 @@ export class InfernoRoom {
     if (!this.checkRate(session, "room-share", 4, 60_000)) {
       return send(session.ws, { type: "error", error: "rate_limited" });
     }
-    if (!session.inRoom || !this.room.code) {
+    const room = this.roomForSession(session);
+    if (!session.inRoom || !room?.code) {
       return send(session.ws, { type: "error", error: "no_room_code" });
     }
+    room.sharedBy = Array.isArray(room.sharedBy) ? room.sharedBy : [];
+    if (room.sharedBy.includes(session.user.id)) {
+      send(session.ws, {
+        type: "room.shared",
+        code: room.code,
+        status: "already_shared",
+      });
+      return;
+    }
+    room.sharedBy.push(session.user.id);
     const payload = {
       type: "chat.message",
       from: session.user.username,
       userId: session.user.id,
       badge: session.user.badge || "",
       moderator: this.isModeratorUser(session.user),
-      text: `Room code ${this.room.code}`,
+      text: `Room code ${room.code}`,
       quick: true,
       at: nowIso(),
       channel: "lobby",
@@ -1875,7 +2128,12 @@ export class InfernoRoom {
     await writeChatMessageToD1(this.env, chatRow).catch(() => false);
     await this.persist();
     this.broadcast(payload, "", session.user.id, { channel: "lobby" });
-    send(session.ws, payload);
+    send(session.ws, {
+      type: "room.shared",
+      code: room.code,
+      status: "shared",
+    });
+    this.broadcast(this.roomSnapshot(room), "", "", { roomCode: room.code });
   }
 
   async handleSaveSync(session, msg) {
@@ -1908,10 +2166,7 @@ export class InfernoRoom {
       payload: row.payload,
       serverUpdatedAt: row.serverUpdatedAt,
     });
-    send(session.ws, {
-      type: "leaderboard.snapshot",
-      leaderboard: this.leaderboardSnapshot("casual"),
-    });
+    this.sendLeaderboardSnapshot(session);
     send(session.ws, this.profileSnapshot(session));
   }
 
@@ -1992,7 +2247,9 @@ export class InfernoRoom {
       userId: target.id,
       until: record.until || null,
     });
-    this.broadcast(this.roomSnapshot());
+    for (const room of Object.values(this.data.rooms ?? {})) {
+      this.broadcast(this.roomSnapshot(room), "", "", { roomCode: room.code });
+    }
   }
 
   async handleFriendRequest(session, msg) {
@@ -2192,16 +2449,20 @@ export class InfernoRoom {
       d1Stored = false;
     }
     await this.persist();
-    let delivery = "stored";
+    let delivery = {
+      delivery: "stored_email_failed",
+      emailConfigured: hasResendConfig(this.env),
+      emailError: "delivery_exception",
+    };
     try {
       delivery = await deliverFeedback(result.row, this.env);
-    } catch {
-      delivery = "stored";
+    } catch (error) {
+      delivery.emailError = error?.message || "delivery_exception";
     }
     send(session.ws, {
       type: "feedback.received",
       feedbackId: result.row.id,
-      delivery,
+      ...delivery,
       d1Stored,
     });
   }
@@ -2215,24 +2476,32 @@ export class InfernoRoom {
       this.persist().catch(() => {});
     }
     this.sessions.delete(id);
-    if (wasInRoom) this.broadcast(this.roomSnapshot());
+    if (wasInRoom) {
+      const room = this.roomForSession(session);
+      if (room)
+        this.broadcast(this.roomSnapshot(room), "", "", {
+          roomCode: room.code,
+        });
+    }
   }
 
   broadcast(payload, exceptId = "", fromUserId = "", options = {}) {
     for (const [id, session] of this.sessions) {
       if (id === exceptId) continue;
       if (options.roomOnly && !session.inRoom) continue;
+      if (options.roomCode && session.roomCode !== options.roomCode) continue;
       if (fromUserId && this.isBlockedBetween(fromUserId, session.user.id))
         continue;
       send(session.ws, payload);
     }
   }
 
-  leaderboardSnapshot(playlist = "") {
+  leaderboardSnapshot(playlist = "", viewerUser = null) {
+    if (viewerUser) ensureUserLeaderboardRow(this.data, viewerUser);
     const rows = Array.isArray(this.data.leaderboard)
       ? this.data.leaderboard
       : DEFAULT_LEADERBOARD;
-    return (rows.length ? rows : DEFAULT_LEADERBOARD)
+    const mappedRows = (rows.length ? rows : DEFAULT_LEADERBOARD)
       .map((row) => {
         const user = row.userId ? this.data.users[row.userId] : null;
         const xp = getLeaderboardXp(row);
@@ -2253,18 +2522,30 @@ export class InfernoRoom {
           source: "server",
         };
       })
-      .sort(compareLeaderboard)
-      .slice(0, 10);
+      .sort(compareLeaderboard);
+    const playerRow =
+      viewerUser?.id && mappedRows.find((row) => row.userId === viewerUser.id);
+    return {
+      rows: mappedRows.slice(0, 10),
+      playerRow: playerRow || null,
+    };
   }
 
-  botPlayers() {
-    if (!this.room.botFill) return [];
-    const activePlayers = [...this.sessions.values()].filter(
-      (session) => session.inRoom,
-    ).length;
-    return BOT_NAMES.slice(0, Math.max(0, this.room.size - activePlayers)).map(
+  sendLeaderboardSnapshot(session, playlist = "casual") {
+    const snapshot = this.leaderboardSnapshot(playlist, session?.user);
+    send(session.ws, {
+      type: "leaderboard.snapshot",
+      leaderboard: snapshot.rows,
+      playerRow: snapshot.playerRow,
+    });
+  }
+
+  botPlayers(room = this.room) {
+    if (!room?.botFill) return [];
+    const activePlayers = this.sessionsInRoom(room).length;
+    return BOT_NAMES.slice(0, Math.max(0, room.size - activePlayers)).map(
       (name, index) => ({
-        id: `bot-${this.room.id}-${index + 1}`,
+        id: `bot-${room.id}-${index + 1}`,
         username: name,
         rating: 900 + index * 25,
         badge: "BOT",
@@ -2273,35 +2554,38 @@ export class InfernoRoom {
     );
   }
 
-  roomSnapshot() {
-    const players = [...this.sessions.values()]
-      .filter((session) => session.inRoom)
-      .map((session) => publicUser(session.user));
-    const bots = this.botPlayers();
+  roomSnapshot(room = this.room) {
+    const players = this.sessionsInRoom(room).map((session) =>
+      publicUser(session.user),
+    );
+    const bots = this.botPlayers(room);
     return {
       type: "room.snapshot",
       room: {
-        ...this.room,
+        ...room,
+        host: room.hostUserId || "",
+        sharedBy: Array.isArray(room.sharedBy) ? room.sharedBy : [],
         players,
         bots: bots.length,
         botPlayers: bots,
-        leaderboard: this.leaderboardSnapshot(this.room.playlist),
+        leaderboard: this.leaderboardSnapshot(room.playlist).rows,
       },
     };
   }
 
-  matchSnapshot() {
+  matchSnapshot(room = this.room) {
     return {
       type: "match.snapshot",
-      players: [...this.sessions.values()]
-        .filter((session) => session.inRoom)
-        .map((session) => ({
-          id: session.user.id,
-          username: session.user.username,
-          badge: session.user.badge || "",
-          moderator: this.isModeratorUser(session.user),
-          input: session.latestInput,
-        })),
+      roomCode: room.code || "",
+      mode: room.mode || "",
+      tick: Date.now(),
+      players: this.sessionsInRoom(room).map((session) => ({
+        id: session.user.id,
+        username: session.user.username,
+        badge: session.user.badge || "",
+        moderator: this.isModeratorUser(session.user),
+        input: session.latestInput,
+      })),
     };
   }
 
@@ -2387,10 +2671,7 @@ export class InfernoRoom {
       payload: reward.payload,
       serverUpdatedAt: nowIso(),
     });
-    send(targetSession.ws, {
-      type: "leaderboard.snapshot",
-      leaderboard: this.leaderboardSnapshot("casual"),
-    });
+    this.sendLeaderboardSnapshot(targetSession);
     send(targetSession.ws, this.profileSnapshot(targetSession));
   }
 
@@ -2483,14 +2764,22 @@ export class InfernoRoom {
     await deleteUserFromD1(this.env, user).catch(() => false);
     await this.persist();
     send(session.ws, { type: "profile.deleted", username: user.username });
+    const affectedRoomCodes = new Set();
     for (const [peerId, peer] of this.sessions.entries()) {
       if (peer.user?.id !== user.id) continue;
+      if (peer.roomCode) affectedRoomCodes.add(peer.roomCode);
       peer.inRoom = false;
       send(peer.ws, { type: "session.revoked", reason: "profile_deleted" });
       peer.ws.close(4001, "profile_deleted");
       this.sessions.delete(peerId);
     }
-    if (session.inRoom) this.broadcast(this.roomSnapshot());
+    for (const roomCode of affectedRoomCodes) {
+      const room = this.data.rooms?.[roomCode];
+      if (room)
+        this.broadcast(this.roomSnapshot(room), "", "", {
+          roomCode: room.code,
+        });
+    }
   }
 }
 
@@ -2539,18 +2828,21 @@ export default {
             body: JSON.stringify(result.row),
           }),
         );
-        let delivery = "stored";
+        let delivery = {
+          delivery: "stored_email_failed",
+          emailConfigured: hasResendConfig(env),
+          emailError: "delivery_exception",
+        };
         try {
           delivery = await deliverFeedback(result.row, env);
-        } catch {
-          delivery = "stored";
+        } catch (error) {
+          delivery.emailError = error?.message || "delivery_exception";
         }
         return json({
           ok: true,
           feedbackId: result.row.id,
-          delivery,
           d1Stored,
-          emailConfigured: delivery === "delivered",
+          ...delivery,
         });
       } catch {
         return json({ ok: false, error: "invalid_feedback" }, { status: 400 });

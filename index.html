@@ -353,6 +353,22 @@
                   <div class="custom-section-title">Rooms</div>
                   <div class="online-grid">
                     <label class="field">
+                      <span>Room Mode</span>
+                      <select id="online-room-mode">
+                        <option value="infernodrift33">Campaign Survival</option>
+                        <option value="infernodriftmax1">Max Arena</option>
+                        <option value="race">Race</option>
+                        <option value="time-trial">Time Trial</option>
+                        <option value="stunt-park">Stunt Park</option>
+                        <option value="hunter-tag">Hunter Tag</option>
+                        <option value="battle-arena">Battle Arena</option>
+                        <option value="ramp-rush">Ramp Rush</option>
+                        <option value="boost-bowling">Boost Bowling</option>
+                        <option value="lava-floor">Lava Floor</option>
+                        <option value="king-zone">King of the Zone</option>
+                      </select>
+                    </label>
+                    <label class="field">
                       <span>Playlist</span>
                       <select id="online-playlist">
                         <option value="casual">Casual</option>
@@ -404,6 +420,8 @@
                     <input id="online-friend-name" type="text" maxlength="24" placeholder="Username" autocomplete="off" />
                     <button class="ghost" id="online-add-friend" type="button">Add</button>
                   </div>
+                  <div class="custom-section-title">Friend Requests</div>
+                  <div class="online-list" id="online-friend-requests">No friend requests yet.</div>
                   <div class="online-list" id="online-friends">No friend state yet.</div>
                   <div class="custom-section-title">Recent</div>
                   <div class="online-list" id="online-recent">No recent players yet.</div>

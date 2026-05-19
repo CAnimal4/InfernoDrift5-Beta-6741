@@ -7,7 +7,7 @@
     "enabled": true,
   },
   "vars": {
-    "FEEDBACK_FROM": "InfernoDrift4 <feedback@infernodrift.local>",
+    "FEEDBACK_FROM": "not-configured",
     "FEEDBACK_TO": "clarkbythebay@gmail.com,clark.alden@lbusd.org",
   },
   "d1_databases": [

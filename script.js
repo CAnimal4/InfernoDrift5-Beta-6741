@@ -143,6 +143,7 @@ const onlineUsernameInput = document.getElementById("online-username");
 const onlineAgeInput = document.getElementById("online-age");
 const onlineClaim = document.getElementById("online-claim");
 const onlineAgeNote = document.getElementById("online-age-note");
+const onlineRoomMode = document.getElementById("online-room-mode");
 const onlinePlaylist = document.getElementById("online-playlist");
 const onlineTeamSize = document.getElementById("online-team-size");
 const onlineBotFill = document.getElementById("online-bot-fill");
@@ -161,6 +162,7 @@ const onlineChatSend = document.getElementById("online-chat-send");
 const onlineLeaderboard = document.getElementById("online-leaderboard");
 const onlineFriendName = document.getElementById("online-friend-name");
 const onlineAddFriend = document.getElementById("online-add-friend");
+const onlineFriendRequests = document.getElementById("online-friend-requests");
 const onlineFriends = document.getElementById("online-friends");
 const onlineRecent = document.getElementById("online-recent");
 const profileDisplayName = document.getElementById("profile-display-name");
@@ -2004,6 +2006,8 @@ const onlineState = {
   feedbackReturnToMenu: false,
   chatMessages: [],
   leaderboard: [],
+  leaderboardPlayerRow: null,
+  leaderboardSyncStatus: "local",
   leaderboardSyncedAt: 0,
   saveSyncedAt: 0,
   profileSnapshot: null,
@@ -2011,8 +2015,11 @@ const onlineState = {
   profileDeleteStatus: "",
   onlineRestrictedUntil: "",
   friends: [],
+  incomingFriendRequests: [],
+  outgoingFriendRequests: [],
   recentPlayers: [],
   remoteSnapshots: [],
+  roomShared: false,
   lastModerationStatus: "",
   moderationAction: null,
   pending: [],
@@ -2020,6 +2027,8 @@ const onlineState = {
   lastSnapshotAt: 0,
   lastFeedbackStatus: "not_configured",
   lastFeedbackError: "",
+  lastFeedbackDelivery: "not_configured",
+  feedbackEmailConfigured: false,
   chatNoticeTimer: 0,
 };
 
@@ -3443,6 +3452,11 @@ function syncProgressionToBackend() {
   ) {
     return;
   }
+  onlineState.leaderboardSyncStatus = "syncing";
+  onlineState.leaderboardPlayerRow = {
+    ...getCurrentPlayerXpLeaderboardRow(),
+    source: "pending",
+  };
   sendOnlineMessage({
     type: "save.sync",
     schemaVersion: 2,
@@ -3778,6 +3792,7 @@ function flushOnlinePending() {
 
 function getOnlineRoomOptions() {
   return {
+    mode: normalizeGameModeId(onlineRoomMode?.value || settings.activeGameMode),
     playlist: onlinePlaylist?.value || "casual",
     teamSize: Math.max(1, Math.min(3, Number(onlineTeamSize?.value) || 2)),
     botFill: onlineBotFill?.checked !== false,
@@ -4264,8 +4279,21 @@ function handleOnlineMessage(raw) {
     onlineState.profileActionStatus = text;
     completeLocalLogout(text);
   } else if (message.type === "room.snapshot") {
+    const previousCode = onlineState.room?.code || "";
     onlineState.room = message.room || null;
     onlineState.queue = null;
+    onlineState.roomShared = Boolean(
+      onlineState.room?.sharedBy?.includes?.(onlineState.user?.id),
+    );
+    if (previousCode && onlineState.room?.code !== previousCode) {
+      onlineState.roomShared = false;
+    }
+    if (onlineState.room?.mode && MODE_BY_ID[onlineState.room.mode]) {
+      settings.activeGameMode = onlineState.room.mode;
+      if (onlineRoomMode && document.activeElement !== onlineRoomMode) {
+        onlineRoomMode.value = onlineState.room.mode;
+      }
+    }
     if (
       onlineRoomCode &&
       onlineState.room?.code &&
@@ -4282,6 +4310,7 @@ function handleOnlineMessage(raw) {
   } else if (message.type === "room.left") {
     onlineState.room = null;
     onlineState.queue = null;
+    onlineState.roomShared = false;
     onlineState.remoteSnapshots = [];
     setRemoteHumanPlayers([]);
   } else if (message.type === "chat.message") {
@@ -4314,9 +4343,21 @@ function handleOnlineMessage(raw) {
     onlineState.leaderboard = Array.isArray(message.leaderboard)
       ? message.leaderboard
       : [];
+    onlineState.leaderboardPlayerRow = message.playerRow || null;
+    onlineState.leaderboardSyncStatus = message.playerRow
+      ? "server"
+      : onlineState.leaderboard.length
+        ? "server"
+        : "local";
     onlineState.leaderboardSyncedAt = performance.now();
   } else if (message.type === "friends.snapshot") {
     onlineState.friends = Array.isArray(message.friends) ? message.friends : [];
+    onlineState.incomingFriendRequests = Array.isArray(message.incomingRequests)
+      ? message.incomingRequests
+      : [];
+    onlineState.outgoingFriendRequests = Array.isArray(message.outgoingRequests)
+      ? message.outgoingRequests
+      : [];
     onlineState.recentPlayers = Array.isArray(message.recentPlayers)
       ? message.recentPlayers
       : [];
@@ -4326,6 +4367,22 @@ function handleOnlineMessage(raw) {
       text: `Request to ${message.username || "player"}: ${message.status || "sent"}`,
       quick: true,
     });
+  } else if (message.type === "friend.accepted") {
+    pushOnlineChatMessage({
+      from: "Friends",
+      text: `You are now friends with ${message.username || "that player"}.`,
+      quick: true,
+    });
+  } else if (message.type === "room.shared") {
+    onlineState.roomShared =
+      message.status === "shared" || message.status === "already_shared";
+    updateOnlineUi();
+  } else if (message.type === "feedback.received") {
+    onlineState.lastFeedbackStatus = "saved";
+    onlineState.lastFeedbackDelivery = message.delivery || "stored";
+    onlineState.feedbackEmailConfigured = Boolean(message.emailConfigured);
+    onlineState.lastFeedbackError = message.emailError || "";
+    updateFeedbackStatus(getFeedbackDeliveryMessage(message));
   } else if (message.type === "match.snapshot") {
     onlineState.lastSnapshotAt = performance.now();
     onlineState.remoteSnapshots = Array.isArray(message.players)
@@ -4406,12 +4463,21 @@ function updateRemoteSnapshotsFromMatch() {
         username: remote.username,
         badge: remote.badge || "",
         moderator: Boolean(remote.moderator),
-        team: index % 2 === 0 ? "blue" : "red",
+        team: remote.input?.team || (index % 2 === 0 ? "blue" : "red"),
         x: Number(remote.input?.x ?? player.position.x + 8 + index * 4),
-        y: 0,
+        y: Number(remote.input?.y ?? 0),
         z: Number(remote.input?.z ?? player.position.z + 8 + index * 4),
-        heading: 0,
+        heading: Number(remote.input?.heading ?? 0),
         speed: Number(remote.input?.speed ?? 0),
+        airborne: Boolean(remote.input?.airborne),
+        backflip: Boolean(remote.input?.backflip),
+        barrelRoll: Boolean(remote.input?.barrelRoll),
+        boost: Boolean(remote.input?.boost),
+        shield: Number(remote.input?.shield ?? 0),
+        health: Number(remote.input?.health ?? 0),
+        ammo: Number(remote.input?.ammo ?? 0),
+        trick: remote.input?.trick || "",
+        cosmetics: remote.input?.cosmetics || null,
       })),
   );
 }
@@ -4419,20 +4485,54 @@ function updateRemoteSnapshotsFromMatch() {
 function sendOnlineInputFrame(dt = 1 / 60) {
   if (!isOnlineSocketOpen() || !onlineState.room || !state.running) return;
   onlineState.inputSeq += 1;
-  if (onlineState.inputSeq % 12 !== 0) return;
+  if (onlineState.inputSeq % 4 !== 0) return;
+  const battle = state.modeRun?.battle || {};
   sendOnlineMessage(
     {
       type: "input.frame",
       seq: onlineState.inputSeq,
       dt: Number(Math.min(0.12, Math.max(0, dt)).toFixed(3)),
+      mode: getModeDefinition().id,
+      x: Number(player.position.x.toFixed(2)),
+      y: Number(player.position.y.toFixed(2)),
+      z: Number(player.position.z.toFixed(2)),
+      heading: Number(player.heading.toFixed(4)),
+      speed: Math.round(Math.abs(player.speed) * SPEED_TO_MPH_MULT),
       throttle: input.throttle ? 1 : input.brake ? -1 : 0,
       steer: Number(getSteer().toFixed(3)),
       drift: Boolean(input.drift),
       boost: Boolean(input.boost),
       jump: Boolean(input.backflip),
+      airborne: isCarAirborne(player),
+      backflip: Boolean(player.backflipActive),
+      barrelRoll: Boolean(player.barrelRollActive),
+      trick: state.modeRun?.stunt?.trick
+        ? state.modeRun.stunt.trick.toLowerCase().replace(/[^a-z0-9-]+/g, "-")
+        : "",
+      shield: Number(
+        Math.max(state.shield || 0, (battle.shield || 0) / 5).toFixed(2),
+      ),
+      health: Math.round(battle.health || 0),
+      ammo: Math.round(battle.ammo || 0),
+      team: isBattleMode() || isMaxMode() ? "blue" : "neutral",
+      cosmetics: {
+        bodyId: customization.bodyId,
+        wheelId: customization.wheelId,
+        styleId: customization.styleId,
+        powerId: customization.powerId,
+        paintId: customization.paintId,
+        accentId: customization.accentId,
+        tintId: customization.tintId,
+        spoilerId: customization.spoilerId,
+        glowId: customization.glowId,
+        classId: getActiveLoadout()?.classId || "balanced",
+      },
       client: {
         x: Number(player.position.x.toFixed(2)),
+        y: Number(player.position.y.toFixed(2)),
         z: Number(player.position.z.toFixed(2)),
+        heading: Number(player.heading.toFixed(4)),
+        airborne: isCarAirborne(player),
         speed: Math.round(Math.abs(player.speed) * SPEED_TO_MPH_MULT),
       },
     },
@@ -4605,6 +4705,54 @@ function renderOnlinePlayerRows(target, rows, emptyText, rightFormatter) {
   });
 }
 
+function renderFriendRequestRows() {
+  if (!onlineFriendRequests) return;
+  onlineFriendRequests.replaceChildren();
+  const incoming = onlineState.incomingFriendRequests;
+  const outgoing = onlineState.outgoingFriendRequests;
+  if (!incoming.length && !outgoing.length) {
+    onlineFriendRequests.textContent = "No friend requests yet.";
+    return;
+  }
+  incoming.forEach((request) => {
+    const item = document.createElement("div");
+    item.className = "online-row player-row";
+    const leftNode = document.createElement("span");
+    leftNode.className = "online-player-name";
+    renderPlayerNameInline(leftNode, {
+      username: request.fromUsername || request.username || "Player",
+      userId: request.fromUserId,
+      badge: request.badge,
+      moderator: request.moderator,
+    });
+    const button = document.createElement("button");
+    button.className = "ghost mini-action";
+    button.type = "button";
+    button.textContent = "Accept";
+    bindPressAction(button, () => {
+      sendOnlineMessage({ type: "friend.accept", requestId: request.id });
+    });
+    item.append(leftNode, button);
+    onlineFriendRequests.appendChild(item);
+  });
+  outgoing.forEach((request) => {
+    const item = document.createElement("div");
+    item.className = "online-row player-row";
+    const leftNode = document.createElement("span");
+    leftNode.className = "online-player-name";
+    renderPlayerNameInline(leftNode, {
+      username: request.toUsername || request.username || "Player",
+      userId: request.toUserId,
+      badge: request.badge,
+      moderator: request.moderator,
+    });
+    const rightNode = document.createElement("strong");
+    rightNode.textContent = "Pending";
+    item.append(leftNode, rightNode);
+    onlineFriendRequests.appendChild(item);
+  });
+}
+
 function getLeaderboardXp(row) {
   return Math.max(
     0,
@@ -4654,7 +4802,12 @@ function getDisplayLeaderboardRows() {
   const rows = onlineState.leaderboard.length
     ? [...onlineState.leaderboard]
     : getLocalXpLeaderboardRows();
-  const playerRow = getCurrentPlayerXpLeaderboardRow();
+  const playerRow = onlineState.leaderboardPlayerRow
+    ? {
+        ...onlineState.leaderboardPlayerRow,
+        source: onlineState.leaderboardPlayerRow.source || "server",
+      }
+    : getCurrentPlayerXpLeaderboardRow();
   const existingIndex = rows.findIndex(
     (row) => playerRow.userId && row.userId === playerRow.userId,
   );
@@ -4665,7 +4818,11 @@ function getDisplayLeaderboardRows() {
       xp,
       totalXp: xp,
     };
-  } else if (playerRow.xp > 0 || onlineState.guestTemporary) {
+  } else if (
+    playerRow.userId ||
+    playerRow.xp > 0 ||
+    onlineState.guestTemporary
+  ) {
     rows.push(playerRow);
   }
   return rows.sort(compareLeaderboard);
@@ -4812,11 +4969,20 @@ function updateOnlineUi() {
   if (onlineConnect) onlineConnect.disabled = connected;
   if (onlineDisconnect) onlineDisconnect.disabled = !onlineState.socket;
   if (onlineClaim) onlineClaim.disabled = false;
-  if (onlineShareRoom) onlineShareRoom.disabled = !onlineState.room?.code;
+  if (onlineRoomMode && document.activeElement !== onlineRoomMode) {
+    onlineRoomMode.value = onlineState.room?.mode || settings.activeGameMode;
+  }
+  if (onlineShareRoom) {
+    onlineShareRoom.disabled =
+      !onlineState.room?.code || onlineState.roomShared;
+    onlineShareRoom.textContent = onlineState.roomShared
+      ? "Shared"
+      : "Share Code";
+  }
   if (onlineRoomState) {
     const room = onlineState.room;
     onlineRoomState.textContent = room
-      ? `Room ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${room.bots || 0} bots, ${room.playlist || "casual"}`
+      ? `Room ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${room.bots || 0} bots, ${getModeDefinition(room.mode).label}`
       : onlineState.queue
         ? `Queued for ${onlineState.queue.playlist || "casual"} ${onlineState.queue.teamSize || 2}v${onlineState.queue.teamSize || 2}`
         : "No room joined.";
@@ -4831,6 +4997,7 @@ function updateOnlineUi() {
     "Finish any run to enter the XP leaderboard.",
   );
   updateProfileUi();
+  renderFriendRequestRows();
   renderOnlinePlayerRows(
     onlineFriends,
     onlineState.friends,
@@ -4867,7 +5034,11 @@ function openFeedbackModal() {
     feedbackStatus.dataset.state = onlineState.lastFeedbackStatus;
     feedbackStatus.textContent =
       onlineState.lastFeedbackStatus === "saved"
-        ? "Last feedback was saved by the configured backend."
+        ? getFeedbackDeliveryMessage({
+            delivery: onlineState.lastFeedbackDelivery,
+            emailConfigured: onlineState.feedbackEmailConfigured,
+            emailError: onlineState.lastFeedbackError,
+          })
         : onlineState.lastFeedbackError ||
           "Feedback saves only when a backend endpoint is configured.";
   }
@@ -4886,6 +5057,23 @@ function closeFeedbackModal() {
   } else {
     returnFocusToGame();
   }
+}
+
+function getFeedbackDeliveryMessage(result = {}) {
+  const delivery = result.delivery || "stored";
+  if (delivery === "delivered") {
+    return "Feedback saved and email notification sent.";
+  }
+  if (delivery === "stored_email_failed") {
+    const detail = result.emailError ? ` (${result.emailError})` : "";
+    return `Feedback saved, but email delivery failed${detail}.`;
+  }
+  if (delivery === "stored_email_not_configured") {
+    return "Feedback saved by the backend. Email delivery is not configured yet.";
+  }
+  return result.emailConfigured
+    ? "Feedback saved by the configured backend."
+    : "Feedback saved by the backend. Email delivery is not configured yet.";
 }
 
 async function submitFeedback() {
@@ -4933,16 +5121,16 @@ async function submitFeedback() {
     const result = await response.json().catch(() => ({}));
     onlineState.feedbackUrl = configuredUrl;
     onlineState.lastFeedbackStatus = "saved";
-    onlineState.lastFeedbackError = "";
+    onlineState.lastFeedbackDelivery = result.delivery || "stored";
+    onlineState.feedbackEmailConfigured = Boolean(result.emailConfigured);
+    onlineState.lastFeedbackError = result.emailError || "";
     saveOnlineConfig();
     if (feedbackMessage) feedbackMessage.value = "";
-    updateFeedbackStatus(
-      result.delivery === "delivered"
-        ? "Feedback saved and email notification sent."
-        : "Feedback saved by the backend. Email delivery is not configured yet.",
-    );
+    updateFeedbackStatus(getFeedbackDeliveryMessage(result));
   } catch (error) {
     onlineState.lastFeedbackStatus = "error";
+    onlineState.lastFeedbackDelivery = "error";
+    onlineState.feedbackEmailConfigured = false;
     onlineState.lastFeedbackError = `Feedback was not saved: ${error?.message || "request failed"}`;
     updateFeedbackStatus();
   }
@@ -6392,6 +6580,55 @@ function makeRemoteCar(team = "neutral") {
   return car;
 }
 
+function getRemoteVisualConfigFromIds(cosmetics = null, team = "neutral") {
+  const ids = cosmetics && typeof cosmetics === "object" ? cosmetics : {};
+  const loadout = {
+    body: getOptionById(BODY_OPTIONS, ids.bodyId, DEFAULT_CUSTOMIZATION.bodyId),
+    wheels: getOptionById(
+      WHEEL_OPTIONS,
+      ids.wheelId,
+      DEFAULT_CUSTOMIZATION.wheelId,
+    ),
+    style: getOptionById(
+      STYLE_OPTIONS,
+      ids.styleId,
+      DEFAULT_CUSTOMIZATION.styleId,
+    ),
+    power: getOptionById(
+      POWER_OPTIONS,
+      ids.powerId,
+      DEFAULT_CUSTOMIZATION.powerId,
+    ),
+    paint: getOptionById(
+      PAINT_OPTIONS,
+      ids.paintId,
+      DEFAULT_CUSTOMIZATION.paintId,
+    ),
+    accent: getOptionById(
+      ACCENT_OPTIONS,
+      ids.accentId,
+      DEFAULT_CUSTOMIZATION.accentId,
+    ),
+    tint: getOptionById(TINT_OPTIONS, ids.tintId, DEFAULT_CUSTOMIZATION.tintId),
+    spoiler: getOptionById(
+      SPOILER_OPTIONS,
+      ids.spoilerId,
+      DEFAULT_CUSTOMIZATION.spoilerId,
+    ),
+    glow: getOptionById(GLOW_OPTIONS, ids.glowId, DEFAULT_CUSTOMIZATION.glowId),
+  };
+  const visual = getCarVisualConfig(loadout);
+  if (team === "blue" || team === "red") {
+    const teamVisual = getTeamCarVisualConfig(team);
+    return {
+      ...visual,
+      primary: teamVisual.primary,
+      glowColor: teamVisual.glowColor,
+    };
+  }
+  return visual;
+}
+
 function createModeratorButton(target = {}) {
   if (!isCurrentOnlineModerator()) return null;
   const targetUsername = sanitizeRemoteUsername(target.username || target.name);
@@ -6491,6 +6728,11 @@ function setRemoteHumanPlayers(players = []) {
         tag,
         target: new THREE.Vector3(),
         speed: 0,
+        cosmeticsKey: "",
+        backflip: false,
+        barrelRoll: false,
+        boost: false,
+        airborne: false,
         visible: false,
       };
       remotePlayers.set(id, remote);
@@ -6506,16 +6748,14 @@ function setRemoteHumanPlayers(players = []) {
       remote.moderator = moderator;
       renderPlayerNameInline(remote.tag, { ...playerData, username, badge });
     }
-    if (remote.team !== team) {
+    const cosmeticsKey = JSON.stringify(playerData.cosmetics || {});
+    if (remote.team !== team || remote.cosmeticsKey !== cosmeticsKey) {
       remote.team = team;
+      remote.cosmeticsKey = cosmeticsKey;
       remote.tag.className = `remote-name-tag team-${team}`;
-      remote.car.rebuildVisual({
-        ...remote.car.visualConfig,
-        primary: getRemotePlayerColor(team),
-        accent: team === "red" ? 0x241316 : 0x111a24,
-        tintColor: 0x263f5b,
-        glowColor: team === "red" ? 0xff7f7f : 0x78f0ff,
-      });
+      remote.car.rebuildVisual(
+        getRemoteVisualConfigFromIds(playerData.cosmetics, team),
+      );
     }
     const x = Number.isFinite(Number(playerData.x))
       ? Number(playerData.x)
@@ -6536,6 +6776,19 @@ function setRemoteHumanPlayers(players = []) {
       ? Number(playerData.heading)
       : remote.car.heading;
     remote.car.moveHeading = remote.car.heading;
+    remote.airborne = Boolean(playerData.airborne);
+    remote.backflip = Boolean(playerData.backflip);
+    remote.barrelRoll = Boolean(playerData.barrelRoll);
+    remote.boost = Boolean(playerData.boost);
+    if (remote.backflip && !remote.car.backflipActive) {
+      remote.car.backflipActive = true;
+      remote.car.backflipProgress = 0;
+    }
+    if (remote.barrelRoll && !remote.car.barrelRollActive) {
+      remote.car.barrelRollActive = true;
+      remote.car.barrelRollProgress = 0;
+      remote.car.barrelRollDirection = 1;
+    }
     remote.car.setDemolished(Boolean(playerData.demolished));
   });
   for (const id of [...remotePlayers.keys()]) {
@@ -6554,6 +6807,15 @@ function updateRemoteHumanPlayers(dt) {
     remote.car.group.position.copy(remote.car.position);
     remote.car.group.rotation.y = remote.car.heading;
     remote.car.updateWheels(remote.speed * dt);
+    if (remote.boost && Math.random() < 0.16) {
+      spawnFx(
+        remote.car.position,
+        new THREE.Vector3(0, 0.4, -0.3),
+        0x78f0ff,
+        0.55,
+        0.28,
+      );
+    }
   }
 }
 
@@ -15942,6 +16204,35 @@ window.render_game_to_text = () => {
     document.querySelector(".tab-btn.active")?.dataset.tab ?? "";
   const activeScreen = getUiScreen();
   const publicModeId = getPublicModeId(mode);
+  const displayLeaderboard = getDisplayLeaderboardRows();
+  const currentOnlineUserId = onlineState.user?.id || "";
+  const currentOnlineUsername =
+    onlineState.user?.username || onlineState.username;
+  const currentPlayerPresentOnLeaderboard = displayLeaderboard.some(
+    (row) =>
+      (currentOnlineUserId && row.userId === currentOnlineUserId) ||
+      row.username === currentOnlineUsername,
+  );
+  const remotePlayerSnapshots = [...remotePlayers.values()].map((remote) => ({
+    id: remote.id,
+    username: remote.username,
+    badge: remote.badge,
+    team: remote.team,
+    x: Number(remote.car.position.x.toFixed(2)),
+    y: Number(remote.car.position.y.toFixed(2)),
+    z: Number(remote.car.position.z.toFixed(2)),
+    heading: Number(remote.car.heading.toFixed(3)),
+    speed: Number(remote.speed.toFixed(2)),
+    airborne: Boolean(remote.airborne),
+    backflip: Boolean(remote.backflip),
+    barrelRoll: Boolean(remote.barrelRoll),
+    boost: Boolean(remote.boost),
+    cosmeticsKey: remote.cosmeticsKey,
+    snapshotAgeMs: Math.max(
+      0,
+      Math.round(performance.now() - onlineState.lastSnapshotAt),
+    ),
+  }));
   const payload = {
     mode: publicModeId,
     modeInfo: {
@@ -16240,6 +16531,8 @@ window.render_game_to_text = () => {
       feedback: {
         popupVisible: Boolean(feedbackModal?.classList.contains("show")),
         submitStatus: onlineState.lastFeedbackStatus,
+        delivery: onlineState.lastFeedbackDelivery,
+        emailConfigured: Boolean(onlineState.feedbackEmailConfigured),
         lastError: onlineState.lastFeedbackError,
       },
       profile: {
@@ -16288,15 +16581,35 @@ window.render_game_to_text = () => {
         ? {
             id: onlineState.room.id,
             code: onlineState.room.code,
+            modeId: onlineState.room.mode || "",
+            modeLabel: getModeDefinition(onlineState.room.mode).label,
             playlist: onlineState.room.playlist,
+            host: onlineState.room.host || onlineState.room.hostUserId || "",
+            shared: Boolean(onlineState.roomShared),
+            sharedBy: onlineState.room.sharedBy || [],
+            routingId: onlineState.room.routingId || onlineState.room.id,
             size: onlineState.room.size,
+            members: onlineState.room.players || [],
             players: onlineState.room.players?.length ?? 0,
             bots: onlineState.room.bots ?? 0,
           }
         : null,
-      leaderboard: getDisplayLeaderboardRows().slice(0, 10),
+      leaderboard: displayLeaderboard.slice(0, 10),
+      leaderboardState: {
+        playerRow: onlineState.leaderboardPlayerRow,
+        currentPlayerPresent: currentPlayerPresentOnLeaderboard,
+        syncStatus: onlineState.leaderboardSyncStatus,
+        rowSource:
+          onlineState.leaderboardPlayerRow?.source ||
+          (currentPlayerPresentOnLeaderboard ? "server" : "pending-local"),
+      },
       friends: onlineState.friends,
+      friendRequests: {
+        incomingRequests: onlineState.incomingFriendRequests,
+        outgoingRequests: onlineState.outgoingFriendRequests,
+      },
       recentPlayers: onlineState.recentPlayers.slice(0, 8),
+      remotePlayers: remotePlayerSnapshots,
       reconnect: {
         attempts: onlineState.reconnectAttempts,
         pendingMessages: onlineState.pending.length,

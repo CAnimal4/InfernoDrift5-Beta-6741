@@ -233,8 +233,19 @@ function validateInputFrame(data) {
     "dt",
     "mode",
     "x",
+    "y",
     "z",
     "speed",
+    "heading",
+    "airborne",
+    "backflip",
+    "barrelRoll",
+    "trick",
+    "shield",
+    "health",
+    "ammo",
+    "team",
+    "cosmetics",
     "throttle",
     "steer",
     "drift",
@@ -259,17 +270,30 @@ function validateInputFrame(data) {
   if (!onlyKeys(data, keys)) return "invalid_protocol";
   if (hasOwn(data, "client")) {
     if (!isPlainObject(data.client)) return "invalid_protocol";
-    if (!onlyKeys(data.client, new Set(["x", "z", "speed"]))) {
+    if (
+      !onlyKeys(
+        data.client,
+        new Set(["x", "y", "z", "speed", "heading", "airborne"]),
+      )
+    ) {
       return "invalid_protocol";
     }
     if (
       !isOptionalFinite(data.client, "x", -1000, 1000) ||
+      !isOptionalFinite(data.client, "y", -40, 160) ||
       !isOptionalFinite(data.client, "z", -1000, 1000) ||
-      !isOptionalFinite(data.client, "speed", -420, 420)
+      !isOptionalFinite(data.client, "speed", -420, 420) ||
+      !isOptionalFinite(data.client, "heading", -20, 20)
     ) {
       return hasOwn(data.client, "speed")
         ? "speed_rejected"
         : "invalid_protocol";
+    }
+    if (
+      hasOwn(data.client, "airborne") &&
+      typeof data.client.airborne !== "boolean"
+    ) {
+      return "invalid_protocol";
     }
   }
   if (hasOwn(data, "speed")) {
@@ -279,11 +303,18 @@ function validateInputFrame(data) {
   }
   if (
     !isOptionalFinite(data, "x", -1000, 1000) ||
+    !isOptionalFinite(data, "y", -40, 160) ||
     !isOptionalFinite(data, "z", -1000, 1000) ||
     !isOptionalFinite(data, "dt", 0, 0.12) ||
+    !isOptionalFinite(data, "heading", -20, 20) ||
+    !isOptionalFinite(data, "shield", 0, 1) ||
+    !isOptionalFinite(data, "health", 0, 500) ||
+    !isOptionalFinite(data, "ammo", 0, 50) ||
     !isOptionalFinite(data, "throttle", -1, 1) ||
     !isOptionalFinite(data, "steer", -1, 1) ||
-    !isOptionalString(data, "mode", 32)
+    !isOptionalString(data, "mode", 32) ||
+    !isOptionalString(data, "trick", 32) ||
+    !isOptionalString(data, "team", 16)
   ) {
     return "invalid_protocol";
   }
@@ -296,7 +327,38 @@ function validateInputFrame(data) {
   if (hasOwn(data, "seq") && !isIntegerInRange(data.seq, 0, 1e9)) {
     return "invalid_protocol";
   }
-  for (const key of ["drift", "jump"]) {
+  if (hasOwn(data, "team") && !/^(blue|red|neutral)$/i.test(data.team)) {
+    return "invalid_protocol";
+  }
+  if (
+    hasOwn(data, "trick") &&
+    data.trick &&
+    !SAFE_ID_PATTERN.test(data.trick)
+  ) {
+    return "invalid_protocol";
+  }
+  if (hasOwn(data, "cosmetics")) {
+    if (!isPlainObject(data.cosmetics)) return "invalid_protocol";
+    const cosmeticKeys = new Set([
+      "bodyId",
+      "wheelId",
+      "styleId",
+      "powerId",
+      "paintId",
+      "accentId",
+      "tintId",
+      "spoilerId",
+      "glowId",
+      "classId",
+    ]);
+    if (!onlyKeys(data.cosmetics, cosmeticKeys)) return "invalid_protocol";
+    for (const value of Object.values(data.cosmetics)) {
+      if (typeof value !== "string" || !SAFE_ID_PATTERN.test(value)) {
+        return "invalid_protocol";
+      }
+    }
+  }
+  for (const key of ["drift", "jump", "airborne", "backflip", "barrelRoll"]) {
     if (hasOwn(data, key) && typeof data[key] !== "boolean") {
       return "invalid_protocol";
     }

@@ -308,6 +308,7 @@ function normalizeDbShape(data) {
       ? db.leaderboard
       : DEFAULT_LEADERBOARD;
   seedSystemAccounts(db);
+  ensureAllAccountLeaderboardRows(db);
   return db;
 }
 
@@ -355,6 +356,14 @@ function makeCode() {
 
 function compareLeaderboard(a, b) {
   return getLeaderboardXp(b) - getLeaderboardXp(a);
+}
+
+function isLeaderboardEligibleUser(user) {
+  return Boolean(
+    user?.id &&
+    user?.username &&
+    (user.authProvider === "password" || user.account === true),
+  );
 }
 
 function getLeaderboardXp(row) {
@@ -421,26 +430,48 @@ function buildFounderFriendSavePayload(payload = {}, user = {}) {
 }
 
 function upsertXpLeaderboard(data, user, totalXp) {
+  if (!isLeaderboardEligibleUser(user)) return null;
+  const xp = Math.max(0, Math.floor(Number(totalXp) || 0));
+  const row = {
+    id: `xp-${user.id}`,
+    userId: user.id,
+    username: user.username,
+    badge: user.badge || "",
+    moderator: Boolean(user.moderator || user.role === "moderator"),
+    xp,
+    totalXp: xp,
+    score: xp,
+    rating: xp,
+    playlist: "all modes",
+    scope: "Total XP",
+    source: "server",
+    updatedAt: nowIso(),
+  };
   data.leaderboard = [
-    {
-      id: `xp-${user.id}`,
-      userId: user.id,
-      username: user.username,
-      badge: user.badge || "",
-      moderator: Boolean(user.moderator || user.role === "moderator"),
-      xp: totalXp,
-      totalXp,
-      score: totalXp,
-      rating: totalXp,
-      playlist: "all modes",
-      scope: "Total XP",
-      source: "server",
-      updatedAt: nowIso(),
-    },
+    row,
     ...data.leaderboard.filter(
       (row) => row.id !== `xp-${user.id}` && row.userId !== user.id,
     ),
   ].sort(compareLeaderboard);
+  return row;
+}
+
+function ensureUserLeaderboardRow(data, user) {
+  if (!isLeaderboardEligibleUser(user)) return null;
+  const saved = data.saves?.[user.id]?.payload ?? {};
+  const totalXp = Math.max(
+    extractSaveXp(saved),
+    Math.max(0, Number(user.xp) || 0),
+  );
+  user.xp = totalXp;
+  user.rating = Math.max(Number(user.rating) || 0, totalXp);
+  return upsertXpLeaderboard(data, user, totalXp);
+}
+
+function ensureAllAccountLeaderboardRows(data) {
+  for (const user of Object.values(data.users ?? {})) {
+    ensureUserLeaderboardRow(data, user);
+  }
 }
 
 function usableSecret(value) {
@@ -459,51 +490,85 @@ function hasResendConfig(options = {}) {
         options.feedbackEmailTo ??
         process.env.FEEDBACK_TO ??
         process.env.FEEDBACK_EMAIL_TO,
+    ) &&
+    usableFeedbackSender(
+      options.feedbackFrom ??
+        options.feedbackEmailFrom ??
+        process.env.FEEDBACK_FROM ??
+        process.env.FEEDBACK_EMAIL_FROM,
     ),
   );
+}
+
+function parseFeedbackRecipients(value) {
+  return usableSecret(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function usableFeedbackSender(value) {
+  const sender = usableSecret(value);
+  const email = sender.match(/<([^>]+)>/)?.[1] ?? sender;
+  if (!EMAIL_PATTERN.test(email)) return "";
+  if (email.toLowerCase().endsWith(".local")) return "";
+  return sender;
 }
 
 async function deliverFeedback(row, options) {
   const apiKey = usableSecret(
     options.resendApiKey ?? process.env.RESEND_API_KEY,
   );
-  const to = usableSecret(
+  const to = parseFeedbackRecipients(
     options.feedbackTo ??
       options.feedbackEmailTo ??
       process.env.FEEDBACK_TO ??
       process.env.FEEDBACK_EMAIL_TO,
   );
-  if (!apiKey || !to || typeof fetch !== "function") return "stored";
-  const from =
-    usableSecret(
-      options.feedbackFrom ??
-        options.feedbackEmailFrom ??
-        process.env.FEEDBACK_FROM ??
-        process.env.FEEDBACK_EMAIL_FROM,
-    ) || "InfernoDrift4 <feedback@infernodrift.local>";
-  const response = await fetch("https://api.resend.com/emails", {
+  const from = usableFeedbackSender(
+    options.feedbackFrom ??
+      options.feedbackEmailFrom ??
+      process.env.FEEDBACK_FROM ??
+      process.env.FEEDBACK_EMAIL_FROM,
+  );
+  const transport = options.feedbackFetch ?? fetch;
+  if (!apiKey || !to.length || !from || typeof transport !== "function") {
+    return { delivery: "stored_email_not_configured", emailConfigured: false };
+  }
+  const text = [
+    `Feedback ID: ${row.id}`,
+    `From: ${row.username} (${row.userId})`,
+    `Reply: ${row.replyEmail || "none"}`,
+    `Type: ${row.feedbackType}`,
+    `At: ${row.createdAt}`,
+    "",
+    row.message,
+    "",
+    `Diagnostics: ${JSON.stringify(row.diagnostics ?? {})}`,
+  ].join("\n");
+  const response = await transport("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       authorization: `Bearer ${apiKey}`,
       "content-type": "application/json",
+      "idempotency-key": `feedback-${row.id}`,
     },
     body: JSON.stringify({
       from,
       to,
       subject: `InfernoDrift4 feedback: ${row.feedbackType}`,
-      text: [
-        `Feedback ID: ${row.id}`,
-        `From: ${row.username} (${row.userId})`,
-        `Reply: ${row.replyEmail || "none"}`,
-        `Type: ${row.feedbackType}`,
-        "",
-        row.message,
-        "",
-        `Diagnostics: ${JSON.stringify(row.diagnostics ?? {})}`,
-      ].join("\n"),
+      text,
+      html: `<pre>${text.replace(/[&<>]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[char])}</pre>`,
     }),
   });
-  return response.ok ? "delivered" : "stored";
+  if (response.ok) return { delivery: "delivered", emailConfigured: true };
+  const body = await response.json().catch(() => ({}));
+  return {
+    delivery: "stored_email_failed",
+    emailConfigured: true,
+    emailError: body?.message || body?.error || `resend_${response.status}`,
+  };
 }
 
 function normalizeFeedbackType(value) {
@@ -662,8 +727,7 @@ export function createInfernoServer(options = {}) {
         writeJson(res, req, 200, {
           ok: true,
           feedbackId: result.row.id,
-          delivery,
-          emailConfigured: delivery === "delivered",
+          ...delivery,
         });
       } catch (error) {
         writeJson(res, req, error?.message === "body_too_large" ? 413 : 400, {
@@ -793,11 +857,12 @@ export function createInfernoServer(options = {}) {
     return true;
   }
 
-  function leaderboardSnapshot(playlist = "") {
+  function leaderboardSnapshot(playlist = "", viewerUser = null) {
+    if (viewerUser) ensureUserLeaderboardRow(db.data, viewerUser);
     const rows = Array.isArray(db.data.leaderboard)
       ? db.data.leaderboard
       : DEFAULT_LEADERBOARD;
-    const rankedRows = (rows.length ? rows : DEFAULT_LEADERBOARD)
+    const mappedRows = (rows.length ? rows : DEFAULT_LEADERBOARD)
       .map((row) => {
         const user = row.userId ? db.data.users[row.userId] : null;
         const xp = getLeaderboardXp(row);
@@ -817,9 +882,22 @@ export function createInfernoServer(options = {}) {
           source: "server",
         };
       })
-      .sort(compareLeaderboard)
-      .slice(0, 10);
-    return rankedRows;
+      .sort(compareLeaderboard);
+    const playerRow =
+      viewerUser?.id && mappedRows.find((row) => row.userId === viewerUser.id);
+    return {
+      rows: mappedRows.slice(0, 10),
+      playerRow: playerRow || null,
+    };
+  }
+
+  function sendLeaderboardSnapshot(client, playlist = "casual") {
+    const snapshot = leaderboardSnapshot(playlist, client?.user);
+    send(client.ws, {
+      type: "leaderboard.snapshot",
+      leaderboard: snapshot.rows,
+      playerRow: snapshot.playerRow,
+    });
   }
 
   function buildBotPlayers(room) {
@@ -833,6 +911,62 @@ export function createInfernoServer(options = {}) {
         bot: true,
       }),
     );
+  }
+
+  function makeUniqueRoomCode() {
+    const activeCodes = new Set(
+      [...rooms.values()].map((room) => String(room.code || "").toUpperCase()),
+    );
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const code = makeCode().toUpperCase();
+      if (!activeCodes.has(code)) return code;
+    }
+    return `${makeCode().slice(0, 4)}${String(rooms.size % 99).padStart(2, "0")}`.toUpperCase();
+  }
+
+  function clampNumber(value, min, max, fallback = 0) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    return Math.min(max, Math.max(min, numeric));
+  }
+
+  function sanitizeLiveInput(msg) {
+    const client =
+      msg.client && typeof msg.client === "object" ? msg.client : {};
+    const cosmetics =
+      msg.cosmetics && typeof msg.cosmetics === "object"
+        ? Object.fromEntries(
+            Object.entries(msg.cosmetics)
+              .filter(([, value]) => typeof value === "string")
+              .slice(0, 12),
+          )
+        : {};
+    return {
+      tick: Math.floor(clampNumber(msg.tick ?? msg.seq, 0, 1e9, 0)),
+      x: clampNumber(msg.x ?? client.x, -1000, 1000),
+      y: clampNumber(msg.y ?? client.y, -40, 160),
+      z: clampNumber(msg.z ?? client.z, -1000, 1000),
+      heading: clampNumber(msg.heading ?? client.heading, -20, 20),
+      speed: clampNumber(msg.speed ?? client.speed, -420, 420),
+      throttle: clampNumber(msg.throttle, -1, 1),
+      steer: clampNumber(msg.steer, -1, 1),
+      drift: Boolean(msg.drift),
+      boost: Boolean(msg.boost),
+      jump: Boolean(msg.jump),
+      airborne: Boolean(msg.airborne ?? client.airborne),
+      backflip: Boolean(msg.backflip),
+      barrelRoll: Boolean(msg.barrelRoll),
+      trick: String(msg.trick || "").slice(0, 32),
+      shield: clampNumber(msg.shield, 0, 1),
+      health: clampNumber(msg.health, 0, 500),
+      ammo: clampNumber(msg.ammo, 0, 50),
+      team: ["blue", "red", "neutral"].includes(msg.team)
+        ? msg.team
+        : "neutral",
+      mode: String(msg.mode || "").slice(0, 32),
+      cosmetics,
+      at: Date.now(),
+    };
   }
 
   function ensureFriendState(userId) {
@@ -939,10 +1073,7 @@ export function createInfernoServer(options = {}) {
       payload: reward.payload,
       serverUpdatedAt: nowIso(),
     });
-    send(targetClient.ws, {
-      type: "leaderboard.snapshot",
-      leaderboard: leaderboardSnapshot("casual"),
-    });
+    sendLeaderboardSnapshot(targetClient);
     send(targetClient.ws, profileSnapshot(targetClient));
   }
 
@@ -1055,12 +1186,13 @@ export function createInfernoServer(options = {}) {
         teamSize: room.teamSize,
         ranked: room.ranked,
         botFill: room.botFill,
+        sharedBy: [...(room.sharedBy ?? new Set())],
         players: [...room.players]
           .map((id) => publicUser(clients.get(id)?.user))
           .filter(Boolean),
         bots: bots.length,
         botPlayers: bots,
-        leaderboard: leaderboardSnapshot(room.playlist),
+        leaderboard: leaderboardSnapshot(room.playlist).rows,
       },
     };
   }
@@ -1079,7 +1211,7 @@ export function createInfernoServer(options = {}) {
   function makeRoom(options, source = "private") {
     return {
       id: randomUUID(),
-      code: makeCode(),
+      code: makeUniqueRoomCode(),
       source,
       mode: options.mode,
       playlist: options.playlist,
@@ -1088,6 +1220,7 @@ export function createInfernoServer(options = {}) {
       ranked: options.ranked,
       botFill: options.botFill,
       players: new Set(),
+      sharedBy: new Set(),
     };
   }
 
@@ -1151,6 +1284,7 @@ export function createInfernoServer(options = {}) {
       founderFriendXpClaimed: Boolean(existing.founderFriendXpClaimed),
     };
     db.data.users[userId] = user;
+    ensureUserLeaderboardRow(db.data, user);
     db.data.sessions[sessionToken] = {
       token: sessionToken,
       userId,
@@ -1248,6 +1382,7 @@ export function createInfernoServer(options = {}) {
     const sessionToken = randomUUID();
     db.data.users[user.id] = user;
     db.data.usernameClaims[key] = user.id;
+    ensureUserLeaderboardRow(db.data, user);
     db.data.sessions[sessionToken] = {
       token: sessionToken,
       userId: user.id,
@@ -1287,6 +1422,7 @@ export function createInfernoServer(options = {}) {
     client.user.updatedAt = nowIso();
     db.data.users[client.user.id] = client.user;
     db.data.usernameClaims[key] = client.user.id;
+    ensureUserLeaderboardRow(db.data, client.user);
     db.save();
     return { ok: true, username };
   }
@@ -1459,10 +1595,7 @@ export function createInfernoServer(options = {}) {
       payload: row.payload,
       serverUpdatedAt: row.serverUpdatedAt,
     });
-    send(client.ws, {
-      type: "leaderboard.snapshot",
-      leaderboard: leaderboardSnapshot("casual"),
-    });
+    sendLeaderboardSnapshot(client);
     send(client.ws, profileSnapshot(client));
   }
 
@@ -1549,16 +1682,20 @@ export function createInfernoServer(options = {}) {
       return send(client.ws, { type: "error", error: result.error });
     db.data.feedback.push(result.row);
     db.save();
-    let delivery = "stored";
+    let delivery = {
+      delivery: "stored_email_failed",
+      emailConfigured: hasResendConfig(options),
+      emailError: "delivery_exception",
+    };
     try {
       delivery = await deliverFeedback(result.row, options);
-    } catch {
-      delivery = "stored";
+    } catch (error) {
+      delivery.emailError = error?.message || "delivery_exception";
     }
     send(client.ws, {
       type: "feedback.received",
       feedbackId: result.row.id,
-      delivery,
+      ...delivery,
     });
   }
 
@@ -1626,6 +1763,7 @@ export function createInfernoServer(options = {}) {
           send(ws, profileSnapshot(client));
           send(ws, friendsSnapshot(client));
           send(ws, chatHistoryPayload(client));
+          sendLeaderboardSnapshot(client);
           if (msg.roomCode) {
             const room = [...rooms.values()].find(
               (candidate) =>
@@ -1654,6 +1792,7 @@ export function createInfernoServer(options = {}) {
           send(ws, profileSnapshot(client));
           send(ws, friendsSnapshot(client));
           send(ws, chatHistoryPayload(client));
+          sendLeaderboardSnapshot(client);
           return;
         }
 
@@ -1667,10 +1806,7 @@ export function createInfernoServer(options = {}) {
             user: publicUser(client.user),
           });
           send(ws, profileSnapshot(client));
-          send(ws, {
-            type: "leaderboard.snapshot",
-            leaderboard: leaderboardSnapshot("casual"),
-          });
+          sendLeaderboardSnapshot(client);
           return;
         }
 
@@ -1736,6 +1872,16 @@ export function createInfernoServer(options = {}) {
           const room = rooms.get(client.roomId);
           if (!room?.code)
             return send(ws, { type: "error", error: "no_room_code" });
+          room.sharedBy ??= new Set();
+          if (room.sharedBy.has(client.user.id)) {
+            send(ws, {
+              type: "room.shared",
+              code: room.code,
+              status: "already_shared",
+            });
+            return;
+          }
+          room.sharedBy.add(client.user.id);
           const payload = {
             type: "chat.message",
             from: client.user.username,
@@ -1761,7 +1907,8 @@ export function createInfernoServer(options = {}) {
           });
           db.save();
           broadcastAll(payload, client.user.id);
-          send(ws, payload);
+          send(ws, { type: "room.shared", code: room.code, status: "shared" });
+          broadcast(room, roomSnapshot(room));
           return;
         }
 
@@ -1812,19 +1959,16 @@ export function createInfernoServer(options = {}) {
         }
 
         if (msg.type === "input.frame") {
-          const input = {
-            tick: Number(msg.tick ?? msg.seq ?? 0),
-            x: Number(msg.x ?? msg.client?.x ?? 0),
-            z: Number(msg.z ?? msg.client?.z ?? 0),
-            speed: Number(msg.speed ?? msg.client?.speed ?? 0),
-            at: Date.now(),
-          };
+          const input = sanitizeLiveInput(msg);
           client.latestInput = input;
           send(ws, { type: "input.accepted", tick: input.tick });
           const room = rooms.get(client.roomId);
           if (room) {
             broadcast(room, {
               type: "match.snapshot",
+              roomCode: room.code || "",
+              mode: room.mode || "",
+              tick: Date.now(),
               players: [...room.players].map((playerId) => ({
                 id: clients.get(playerId)?.user.id,
                 username: clients.get(playerId)?.user.username,
@@ -1838,10 +1982,7 @@ export function createInfernoServer(options = {}) {
         }
 
         if (msg.type === "leaderboard.get") {
-          send(ws, {
-            type: "leaderboard.snapshot",
-            leaderboard: leaderboardSnapshot(msg.playlist),
-          });
+          sendLeaderboardSnapshot(client, msg.playlist);
           return;
         }
 
