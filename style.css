@@ -325,6 +325,83 @@ body.playing .hud {
   transform: translate(-50%, 0) scale(1);
 }
 
+.daily-gift {
+  position: absolute;
+  right: 24px;
+  top: calc(var(--hud-top) + 88px);
+  z-index: 8;
+  min-width: 178px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 224, 132, 0.5);
+  border-radius: 18px;
+  background:
+    radial-gradient(
+      circle at 20% 18%,
+      rgba(255, 244, 183, 0.34),
+      transparent 38%
+    ),
+    linear-gradient(135deg, rgba(26, 17, 8, 0.9), rgba(112, 37, 12, 0.82));
+  color: #fff5cf;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.28),
+    0 0 28px rgba(255, 153, 48, 0.24);
+  transform: translateY(0) scale(1);
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.daily-gift[hidden] {
+  display: none;
+}
+
+.daily-gift::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+}
+
+.daily-gift:hover,
+.daily-gift:focus-visible {
+  border-color: rgba(255, 239, 160, 0.9);
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.32),
+    0 0 36px rgba(255, 181, 61, 0.38);
+  transform: translateY(-2px) scale(1.01);
+  outline: none;
+}
+
+.daily-gift-kicker {
+  display: block;
+  color: rgba(255, 235, 166, 0.82);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.daily-gift strong {
+  display: block;
+  margin-top: 2px;
+  color: #ffffff;
+  font-size: 1.15rem;
+  line-height: 1.05;
+}
+
+.daily-gift span:last-child {
+  display: block;
+  margin-top: 3px;
+  color: rgba(255, 241, 203, 0.82);
+  font-size: 0.72rem;
+}
+
 .match-panel {
   position: absolute;
   right: 24px;
@@ -2296,6 +2373,23 @@ body.device-phone .effect-toast {
   max-width: 50vw;
   padding: 6px 10px;
   font-size: 0.72rem;
+}
+
+body.device-phone .daily-gift {
+  right: 10px;
+  top: calc(var(--hud-top) + 72px);
+  min-width: 138px;
+  max-width: 42vw;
+  padding: 8px 10px;
+  border-radius: 14px;
+}
+
+body.device-phone .daily-gift strong {
+  font-size: 0.98rem;
+}
+
+body.device-phone .daily-gift span:last-child {
+  font-size: 0.66rem;
 }
 
 body.device-phone .minimap-wrap {

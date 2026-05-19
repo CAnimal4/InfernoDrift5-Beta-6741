@@ -25,6 +25,8 @@ const boostBar = document.getElementById("boost-bar");
 const shieldBar = document.getElementById("shield-bar");
 const statusLabelNodes = document.querySelectorAll(".status .pill .label");
 const effectToast = document.getElementById("effect-toast");
+const dailyGiftNotice = document.getElementById("daily-gift");
+const dailyGiftAmount = document.getElementById("daily-gift-amount");
 const debugHud = document.getElementById("debug-hud");
 const matchPanel = document.getElementById("match-panel");
 const matchPanelScore = document.getElementById("match-panel-score");
@@ -2040,9 +2042,74 @@ function makeWeeklySeed(date = new Date()) {
   return `${date.getUTCFullYear()}-W${Math.floor(day / 7) + 1}`;
 }
 
+function makeDailyGiftSalt() {
+  return `gift-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+}
+
+function normalizeDailyGiftSalt(value) {
+  const text = String(value ?? "").replace(/[^a-z0-9_-]/gi, "");
+  return text.length >= 8 ? text.slice(0, 48) : makeDailyGiftSalt();
+}
+
+function hashStringToUnit(value) {
+  let hash = 2166136261;
+  const text = String(value ?? "");
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967295;
+}
+
+function pickSteppedReward(min, max, step, unit) {
+  const steps = Math.max(0, Math.floor((max - min) / step));
+  return (
+    min + Math.round(THREE.MathUtils.clamp(unit, 0, 0.999999) * steps) * step
+  );
+}
+
+function rollDailyGiftAmount(seed, salt) {
+  const rarity = hashStringToUnit(`${seed}:${salt}:rarity`);
+  const amountRoll = hashStringToUnit(`${seed}:${salt}:amount`);
+  if (rarity < 0.65) return pickSteppedReward(100, 300, 25, amountRoll);
+  if (rarity < 0.9) return pickSteppedReward(325, 650, 25, amountRoll);
+  if (rarity < 0.98) return pickSteppedReward(700, 1100, 50, amountRoll);
+  return pickSteppedReward(1200, 1500, 50, amountRoll);
+}
+
+function createDailyGift(seed = makeDailySeed(), salt = makeDailyGiftSalt()) {
+  return {
+    seed,
+    amount: rollDailyGiftAmount(seed, salt),
+    claimed: false,
+    claimedAt: "",
+  };
+}
+
+function normalizeDailyGift(value = {}, salt = makeDailyGiftSalt()) {
+  const today = makeDailySeed();
+  const source = value && typeof value === "object" ? value : {};
+  const rolled = createDailyGift(today, salt);
+  if (source.seed !== today) return rolled;
+  const amount = THREE.MathUtils.clamp(
+    Math.round(Number(source.amount) || rolled.amount),
+    100,
+    1500,
+  );
+  return {
+    ...rolled,
+    amount,
+    claimed: Boolean(source.claimed),
+    claimedAt: String(source.claimedAt ?? ""),
+  };
+}
+
 function createProgressionV2() {
   const dailySeed = makeDailySeed();
   const weeklySeed = makeWeeklySeed();
+  const dailyGiftSalt = makeDailyGiftSalt();
   return {
     schemaVersion: 2,
     xp: 0,
@@ -2053,6 +2120,8 @@ function createProgressionV2() {
     ghostSamples: {},
     unlockedRewards: ["starter-loadout"],
     rewardLog: [],
+    dailyGiftSalt,
+    dailyGift: createDailyGift(dailySeed, dailyGiftSalt),
     daily: {
       seed: dailySeed,
       label: "Daily Heat",
@@ -2080,6 +2149,9 @@ function normalizeProgressionV2(value = {}) {
     source.daily && typeof source.daily === "object" ? source.daily : {};
   const weekly =
     source.weekly && typeof source.weekly === "object" ? source.weekly : {};
+  const dailyGiftSalt = normalizeDailyGiftSalt(
+    source.dailyGiftSalt ?? base.dailyGiftSalt,
+  );
   const next = {
     ...base,
     ...source,
@@ -2105,6 +2177,8 @@ function normalizeProgressionV2(value = {}) {
     rewardLog: Array.isArray(source.rewardLog)
       ? source.rewardLog.slice(-12)
       : base.rewardLog,
+    dailyGiftSalt,
+    dailyGift: normalizeDailyGift(source.dailyGift, dailyGiftSalt),
     daily: { ...base.daily, ...daily },
     weekly: { ...base.weekly, ...weekly },
   };
@@ -3201,6 +3275,90 @@ function getProgressionLevel(progress = state.progressionV2) {
   return 1 + Math.floor(getProgressionTotalXp(progress) / 500);
 }
 
+function ensureDailyGiftState(progress = state.progressionV2) {
+  if (!progress || typeof progress !== "object") return createDailyGift();
+  progress.dailyGiftSalt = normalizeDailyGiftSalt(progress.dailyGiftSalt);
+  progress.dailyGift = normalizeDailyGift(
+    progress.dailyGift,
+    progress.dailyGiftSalt,
+  );
+  return progress.dailyGift;
+}
+
+function getDailyGiftSnapshot(progress = state.progressionV2) {
+  const gift = ensureDailyGiftState(progress);
+  return {
+    seed: gift.seed,
+    amount: gift.amount,
+    claimed: Boolean(gift.claimed),
+    claimedAt: gift.claimedAt || "",
+    available: !gift.claimed,
+  };
+}
+
+function renderDailyGiftNotice() {
+  const gift = getDailyGiftSnapshot();
+  if (!dailyGiftNotice) return gift;
+  dailyGiftNotice.hidden = !gift.available;
+  dailyGiftNotice.classList.toggle("show", gift.available);
+  dailyGiftNotice.setAttribute(
+    "aria-label",
+    gift.available
+      ? `Redeem daily gift for ${gift.amount} XP`
+      : "Daily gift claimed",
+  );
+  if (dailyGiftAmount) dailyGiftAmount.textContent = `+${gift.amount} XP`;
+  return gift;
+}
+
+function redeemDailyGift() {
+  const gift = getDailyGiftSnapshot();
+  if (!gift.available) {
+    renderDailyGiftNotice();
+    return {
+      ok: false,
+      reason: "daily_gift_already_claimed",
+      dailyGift: gift,
+      progression: structuredClone(state.progressionV2),
+    };
+  }
+  const amount = THREE.MathUtils.clamp(Math.round(gift.amount), 100, 1500);
+  const progression = state.progressionV2;
+  const totalXp = getProgressionTotalXp(progression) + amount;
+  progression.xp = totalXp;
+  progression.totalXp = totalXp;
+  progression.level = getProgressionLevel(progression);
+  progression.dailyGift = {
+    ...progression.dailyGift,
+    claimed: true,
+    claimedAt: new Date().toISOString(),
+  };
+  progression.rewardLog = [
+    {
+      modeId: "daily-gift",
+      label: "Daily Gift",
+      medal: "Gift",
+      xp: amount,
+      reward: `Daily Gift +${amount} XP`,
+      at: progression.dailyGift.claimedAt,
+    },
+    ...progression.rewardLog,
+  ].slice(0, 12);
+  setEffectToast(`Daily Gift +${amount} XP`, { pulse: 0.34 });
+  renderDailyGiftNotice();
+  renderProgressPanel();
+  refreshGamesUi();
+  updateOnlineUi();
+  savePersistentState();
+  syncProgressionToBackend();
+  return {
+    ok: true,
+    amount,
+    dailyGift: getDailyGiftSnapshot(),
+    progression: structuredClone(progression),
+  };
+}
+
 function addMatchEvent(type, payload = {}) {
   if (!maxMode.stats) maxMode.stats = createEmptyMatchStats();
   maxMode.stats.events.unshift({
@@ -3224,6 +3382,7 @@ function savePersistentState() {
 }
 
 function buildPersistentSavePayload() {
+  ensureDailyGiftState(state.progressionV2);
   state.progressionV2.xp = getProgressionTotalXp();
   state.progressionV2.totalXp = state.progressionV2.xp;
   state.progressionV2.level = getProgressionLevel();
@@ -3300,6 +3459,7 @@ function applyServerSave(serverSave) {
     const remoteProgress = normalizeProgressionV2(payload.progressionV2);
     if (getProgressionTotalXp(remoteProgress) >= getProgressionTotalXp()) {
       state.progressionV2 = remoteProgress;
+      renderDailyGiftNotice();
       renderProgressPanel();
       refreshGamesUi();
     }
@@ -5364,6 +5524,7 @@ function renderProgressPanel() {
   const world = getWorld();
   const level = getLevel();
   const progression = state.progressionV2;
+  const dailyGift = getDailyGiftSnapshot(progression);
   const clearedWorlds = state.worldIndex;
   const clearedLevels = state.levelIndex;
   const totalLevels = worldData.reduce(
@@ -5394,6 +5555,7 @@ function renderProgressPanel() {
     bests.length === 0 ? "Campaign Survival" : MODE_BY_ID[GAME_MODE_RACE].label;
   progressPanel.innerHTML = `
     <div class="progress-card progress-card-wide"><span>Total XP</span><strong>Level ${getProgressionLevel(progression)}</strong><span>${xpIntoLevel}/500 XP to next level • ${totalXp} XP across every game and minigame</span></div>
+    <div class="progress-card"><span>Daily Gift</span><strong>+${dailyGift.amount} XP</strong><span>${dailyGift.available ? "Ready to redeem from the glowing gift." : "Claimed today. Come back tomorrow."}</span></div>
     <div class="progress-card"><span>Current Zone</span><strong>${world.name}</strong><span>${level.name}</span></div>
     <div class="progress-card"><span>Campaign Map</span><strong>${percent}%</strong><span>${clearedWorlds + 1} zones reached, ${clearedLevels + 1} current heat</span></div>
     <div class="progress-card"><span>Medals</span><strong>${medals.length}</strong><span>${medals.slice(-4).join(" / ") || "Earn your first medal."}</span></div>
@@ -12034,6 +12196,7 @@ function awardModeProgression({ won = true, reason = "" } = {}) {
     ? `${medal} medal, +${xpGained} XP, ${mode.reward}`
     : `${reason || "Objective failed"}, +${xpGained} XP`;
   savePersistentState();
+  renderDailyGiftNotice();
   syncProgressionToBackend();
   return { medal, xpGained };
 }
@@ -15192,6 +15355,7 @@ bindPressAction(menuBtn, () => {
 bindPressAction(menuFeedback, () => {
   openFeedbackModal();
 });
+bindPressAction(dailyGiftNotice, () => redeemDailyGift());
 bindPressAction(menuResume, () => {
   setMenuOpen(false);
 });
@@ -16048,6 +16212,10 @@ window.render_game_to_text = () => {
       personalBests: state.progressionV2.personalBests,
       daily: state.progressionV2.daily,
       weekly: state.progressionV2.weekly,
+      dailyGift: getDailyGiftSnapshot(),
+      dailyGiftNoticeVisible: Boolean(
+        dailyGiftNotice && !dailyGiftNotice.hidden,
+      ),
       rewardLog: state.progressionV2.rewardLog.slice(-6),
     },
     online: {
@@ -16352,9 +16520,12 @@ window.__infernodriftTestApi = {
     };
   },
   getProgressionSnapshot: () => structuredClone(state.progressionV2),
+  getDailyGiftState: () => getDailyGiftSnapshot(),
+  redeemDailyGift: () => redeemDailyGift(),
   resetLocalProgressionForTest: () => {
     state.progressionV2 = createProgressionV2();
     savePersistentState();
+    renderDailyGiftNotice();
     renderProgressPanel();
     refreshGamesUi();
     return structuredClone(state.progressionV2);
@@ -16406,6 +16577,7 @@ window.__infernodriftTestApi = {
 
 loadOnlineConfig();
 loadPersistentState();
+ensureDailyGiftState(state.progressionV2);
 if (!MAX_DIFFICULTY_PROFILES[settings.maxDifficulty])
   settings.maxDifficulty = MAX_DIFFICULTY_CLASSIC;
 createFxPool();
@@ -16425,6 +16597,7 @@ applyDeviceProfile();
 refreshDevModeUi();
 refreshGamesUi();
 renderControlsUi();
+renderDailyGiftNotice();
 renderProgressPanel();
 updateOnlineUi();
 applyPlayerCustomization({ progress: getProgressSnapshot() });

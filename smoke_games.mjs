@@ -554,6 +554,27 @@ const phase3Progress = await page.evaluate(() =>
 );
 assert.ok(phase3Progress.xp > 0);
 assert.equal(phase3Progress.totalXp, phase3Progress.xp);
+const dailyGiftProgress = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetLocalProgressionForTest();
+  const before = window.__infernodriftTestApi.getDailyGiftState();
+  const first = window.__infernodriftTestApi.redeemDailyGift();
+  const second = window.__infernodriftTestApi.redeemDailyGift();
+  const textState = JSON.parse(window.render_game_to_text()).progression;
+  return { before, first, second, textState };
+});
+assert.equal(dailyGiftProgress.before.available, true);
+assert.ok(dailyGiftProgress.before.amount >= 100);
+assert.ok(dailyGiftProgress.before.amount <= 1500);
+assert.equal(dailyGiftProgress.first.ok, true);
+assert.equal(dailyGiftProgress.first.amount, dailyGiftProgress.before.amount);
+assert.equal(
+  dailyGiftProgress.first.progression.xp,
+  dailyGiftProgress.before.amount,
+);
+assert.equal(dailyGiftProgress.second.ok, false);
+assert.equal(dailyGiftProgress.textState.dailyGift.claimed, true);
+assert.equal(dailyGiftProgress.textState.dailyGift.available, false);
+assert.equal(dailyGiftProgress.textState.dailyGiftNoticeVisible, false);
 const sharedXpProgress = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.startMode("campaign-survival");
