@@ -640,6 +640,68 @@ body:has(#overlay.show) .remote-name-layer {
   pointer-events: none;
 }
 
+body:has(#school-gate.show) .hud,
+body:has(#school-gate.show) .progress,
+body:has(#school-gate.show) .minimap-wrap,
+body:has(#school-gate.show) .match-panel,
+body:has(#school-gate.show) .remote-name-layer,
+body:has(#school-gate.show) #overlay {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.school-gate {
+  z-index: 40;
+  background:
+    radial-gradient(
+      circle at 50% 10%,
+      rgba(255, 191, 92, 0.18),
+      transparent 42%
+    ),
+    linear-gradient(180deg, rgba(8, 12, 20, 0.96), rgba(4, 7, 13, 0.98));
+}
+
+.school-gate-panel {
+  width: min(92vw, 620px);
+  border-color: rgba(255, 205, 121, 0.35);
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.74),
+    0 0 42px rgba(255, 128, 47, 0.12);
+}
+
+.school-gate-panel h2 {
+  margin: 0 auto 14px;
+  max-width: 520px;
+  font-size: clamp(1.55rem, 4vw, 2.6rem);
+  line-height: 1.02;
+}
+
+.school-gate-actions {
+  margin-top: 22px;
+}
+
+.school-leave-btn {
+  min-width: min(100%, 260px);
+  min-height: 56px;
+  font-size: 1.1rem;
+}
+
+.text-link {
+  border: 0;
+  background: transparent;
+  color: rgba(218, 234, 255, 0.82);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 5px;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.text-link:hover {
+  color: #ffffff;
+}
+
 .overlay .panel {
   transform: scale(var(--overlay-panel-scale));
   transform-origin: center;

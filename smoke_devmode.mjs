@@ -18,6 +18,12 @@ const smokeUrl = process.env.SMOKE_URL || "http://127.0.0.1:4173/index.html";
 await page.goto(smokeUrl, { waitUntil: "commit", timeout: 45000 });
 await waitForGameHook(page);
 await page.waitForTimeout(1200);
+await page.evaluate(() => {
+  const state = JSON.parse(window.render_game_to_text());
+  if (state.ui?.schoolGate?.visible) {
+    window.__infernodriftTestApi.dismissSchoolGateForTest();
+  }
+});
 await page.locator("#start-btn").click({ force: true });
 await page.waitForTimeout(600);
 await page.locator("#menu-btn").click({ force: true });

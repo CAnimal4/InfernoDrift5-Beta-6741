@@ -27,6 +27,10 @@ await page.goto(smokeUrl, { waitUntil: "commit", timeout: 45000 });
 await waitForGameHook(page);
 await page.waitForTimeout(1200);
 await page.evaluate(() => {
+  const state = JSON.parse(window.render_game_to_text());
+  if (state.ui?.schoolGate?.visible) {
+    window.__infernodriftTestApi.dismissSchoolGateForTest();
+  }
   window.__infernodriftTestApi?.setDeviceMode?.("phone");
 });
 await page.locator("#start-btn").click({ force: true });

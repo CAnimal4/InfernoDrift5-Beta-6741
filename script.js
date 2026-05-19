@@ -2,6 +2,10 @@ import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
+const schoolGate = document.getElementById("school-gate");
+const schoolGateDetail = document.getElementById("school-gate-detail");
+const schoolLeave = document.getElementById("school-leave");
+const schoolContinue = document.getElementById("school-continue");
 const message = document.getElementById("message");
 const messageTitle = document.getElementById("message-title");
 const messageBody = document.getElementById("message-body");
@@ -323,6 +327,73 @@ const QUICK_CHAT_MESSAGES = [
   "One more run",
   "Good save",
 ];
+const SCHOOL_CLASS_SCHEDULE = {
+  monday: [
+    ["0 Period", "7:35", "8:35"],
+    ["Period 1", "8:40", "9:31"],
+    ["Period 2", "9:36", "10:27"],
+    ["Period 3", "10:52", "11:43"],
+    ["Period 4", "11:48", "12:39"],
+    ["Period 5", "1:18", "2:09", "pm"],
+    ["Period 6", "2:14", "3:05", "pm"],
+  ],
+  block: [
+    ["0 Period", "7:35", "8:35"],
+    ["Period 1/2", "8:40", "10:17"],
+    ["Period 3/4", "10:41", "12:18"],
+    ["Advisement/Tutorial", "12:53", "1:23", "pm"],
+    ["Period 5/6", "1:28", "3:05", "pm"],
+  ],
+  friday: [
+    ["Period 2", "9:10", "10:47"],
+    ["Period 4", "11:12", "12:49"],
+    ["Period 6", "1:28", "3:05", "pm"],
+  ],
+};
+
+function schoolTimeToMinutes(value, meridiem = "") {
+  const [hourPart, minutePart] = String(value).split(":");
+  let hour = Number(hourPart);
+  const minute = Number(minutePart);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return 0;
+  if (String(meridiem).toLowerCase() === "pm" && hour < 12) hour += 12;
+  return hour * 60 + minute;
+}
+
+function getSchoolScheduleForDate(date = new Date()) {
+  const day = date.getDay();
+  if (day === 0 || day === 6) return { dayType: "weekend", blocks: [] };
+  if (day === 1)
+    return {
+      dayType: "monday",
+      blocks: SCHOOL_CLASS_SCHEDULE.monday,
+    };
+  if (day >= 2 && day <= 4)
+    return {
+      dayType: "block",
+      blocks: SCHOOL_CLASS_SCHEDULE.block,
+    };
+  return {
+    dayType: "friday",
+    blocks: SCHOOL_CLASS_SCHEDULE.friday,
+  };
+}
+
+function getSchoolGateStatus(date = new Date()) {
+  const { dayType, blocks } = getSchoolScheduleForDate(date);
+  const minutes = date.getHours() * 60 + date.getMinutes();
+  const classBlock = blocks.find(([label, start, end, meridiem]) => {
+    const startMinutes = schoolTimeToMinutes(start, meridiem);
+    const endMinutes = schoolTimeToMinutes(end, meridiem);
+    return minutes >= startMinutes && minutes < endMinutes;
+  });
+  return {
+    active: Boolean(classBlock),
+    dayType,
+    block: classBlock?.[0] ?? "",
+    nowMinutes: minutes,
+  };
+}
 const SEEDED_LEADERBOARD_ROWS = [
   {
     id: "seed-clark",
@@ -2388,6 +2459,12 @@ const state = {
   remapStatus: "",
   modeHelpOpen: false,
   modeHelpWasRunning: false,
+  schoolGate: {
+    active: false,
+    dismissed: false,
+    block: "",
+    dayType: "",
+  },
   progressionV2: createProgressionV2(),
   modeRun: createModeRunState(),
   campaignRisk: {
@@ -9113,6 +9190,7 @@ function isFeedbackOpen() {
 }
 
 function getUiScreen() {
+  if (schoolGate?.classList.contains("show")) return "school-gate";
   if (overlay.classList.contains("show")) return "title";
   if (message.classList.contains("show")) return "results";
   if (isMenuOpen() || isFeedbackOpen() || state.modeHelpOpen) return "paused";
@@ -15309,7 +15387,51 @@ function hasMovementInput() {
   );
 }
 
+function setSchoolGateVisible(visible, status = state.schoolGate) {
+  state.schoolGate.active = Boolean(visible);
+  state.schoolGate.block = status.block || "";
+  state.schoolGate.dayType = status.dayType || "";
+  if (schoolGateDetail) {
+    schoolGateDetail.textContent = status.block
+      ? `${status.block} may be in session right now.`
+      : "InfernoDrift4 is paused while class may be in session.";
+  }
+  schoolGate?.classList.toggle("show", Boolean(visible));
+  document.body.classList.toggle("school-gate-open", Boolean(visible));
+  if (visible) {
+    state.running = false;
+    setMenuOpen(false);
+    message.classList.remove("show");
+    schoolLeave?.focus({ preventScroll: true });
+  }
+}
+
+function evaluateSchoolGate(date = new Date()) {
+  const status = getSchoolGateStatus(date);
+  if (status.active && !state.schoolGate.dismissed) {
+    setSchoolGateVisible(true, status);
+  } else {
+    setSchoolGateVisible(false, status);
+  }
+  return { ...status, dismissed: Boolean(state.schoolGate.dismissed) };
+}
+
+function continuePastSchoolGate() {
+  state.schoolGate.dismissed = true;
+  setSchoolGateVisible(false, state.schoolGate);
+  overlay?.classList.add("show");
+  startBtn?.focus({ preventScroll: true });
+}
+
+function leaveFromSchoolGate() {
+  window.close();
+  window.setTimeout(() => {
+    if (!document.hidden) window.location.replace("about:blank");
+  }, 120);
+}
+
 function startRun(resetLives = false) {
+  if (state.schoolGate.active && !state.schoolGate.dismissed) return;
   overlay.classList.remove("show");
   message.classList.remove("show");
   document.body.classList.add("playing");
@@ -15529,6 +15651,11 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (isTextEditingTarget(event.target)) return;
+  if (state.schoolGate.active && !state.schoolGate.dismissed) {
+    if (event.code === "Escape") leaveFromSchoolGate();
+    event.preventDefault();
+    return;
+  }
   if (event.code === EXIT_LINK_KEY_CODE && !event.repeat) {
     event.preventDefault();
     openExitLink();
@@ -15839,6 +15966,8 @@ function initTouchControls() {
 
 bindPressAction(startBtn, () => startGuestProfile());
 bindPressAction(startAccountSubmit, () => submitStartAccount());
+bindPressAction(schoolLeave, () => leaveFromSchoolGate());
+bindPressAction(schoolContinue, () => continuePastSchoolGate());
 bindPressAction(tutorialBtn, () => {
   tips.style.display = tips.style.display === "none" ? "grid" : "none";
 });
@@ -16508,6 +16637,13 @@ window.render_game_to_text = () => {
       paused: isMenuOpen() || isFeedbackOpen() || state.modeHelpOpen,
       resultsVisible: message.classList.contains("show"),
       product: "InfernoDrift4",
+      schoolGate: {
+        visible: Boolean(schoolGate?.classList.contains("show")),
+        active: Boolean(state.schoolGate.active),
+        dismissed: Boolean(state.schoolGate.dismissed),
+        block: state.schoolGate.block,
+        dayType: state.schoolGate.dayType,
+      },
     },
     modeHelp: {
       visible: Boolean(state.modeHelpOpen),
@@ -17143,6 +17279,13 @@ window.__infernodriftTestApi = {
     return settings.exitLinkUrl;
   },
   getExitLinkUrl: () => settings.exitLinkUrl,
+  getSchoolGateStatus: (iso = "") =>
+    getSchoolGateStatus(iso ? new Date(iso) : new Date()),
+  forceSchoolGateAt: (iso = "") => evaluateSchoolGate(new Date(iso)),
+  dismissSchoolGateForTest: () => {
+    continuePastSchoolGate();
+    return { ...state.schoolGate };
+  },
   forceOnlineProgressSync: () => forceOnlineProgressSync({ force: true }),
   sampleDailyGiftRolls: (count = 1000) =>
     Array.from(
@@ -17201,4 +17344,5 @@ updateOnlineUi();
 applyPlayerCustomization({ progress: getProgressSnapshot() });
 resetLevel();
 updateHud();
+evaluateSchoolGate();
 requestAnimationFrame(animate);

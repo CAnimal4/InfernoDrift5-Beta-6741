@@ -185,3 +185,11 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Fixed the remote-car fallback visual config that browser smoke caught, so remote players without cosmetic payloads still render complete car geometry.
 - Validation after this repair: `node --check script.js`, `node --check apps/server/src/index.js`, `node --check apps/worker/src/index.js`, `node --check apps/worker/src/protocol.js`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run format`, `npm run worker:check`, and `npm run worker:types` passed. Headless browser runs still emit expected WebGL `ReadPixels` performance warnings only.
 - Cloudflare read-only secret inspection confirmed `RESEND_API_KEY` exists, but no verified `FEEDBACK_FROM` secret is configured; checked-in `FEEDBACK_FROM` is now explicit `not-configured` so hosted feedback stores safely until a verified Resend sender is added.
+
+2026-05-19 School-time gate pass:
+
+- Added a weekday bell-schedule gate for InfernoDrift4 that appears only during class/tutorial blocks, not before school, after school, weekends, Break/Breakfast, or Lunch.
+- The gate text says "It looks like you may be in school, are you sure you want to continue?" with a primary Leave button and a smaller "I know the risks, continue" text link.
+- Leave attempts to close the tab and falls back to `about:blank` when browser security blocks `window.close()`.
+- Continue dismisses the gate for the current page session and returns to the normal InfernoDrift4 title/start surface.
+- Exposed school-gate state in `render_game_to_text()` and added smoke helpers/tests for Monday class, Monday break/lunch, Friday before-school, weekend, forced gate display, and dismissal.

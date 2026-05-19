@@ -33,6 +33,38 @@ await page.evaluate((username) => {
 }, smokeUsername);
 await page.waitForTimeout(1200);
 
+const schoolGateProbe = await page.evaluate(() => {
+  const api = window.__infernodriftTestApi;
+  const mondayClass = api.getSchoolGateStatus("2026-05-18T09:00:00");
+  const mondayBreak = api.getSchoolGateStatus("2026-05-18T10:35:00");
+  const mondayLunch = api.getSchoolGateStatus("2026-05-18T12:50:00");
+  const fridayBefore = api.getSchoolGateStatus("2026-05-22T08:45:00");
+  const weekend = api.getSchoolGateStatus("2026-05-23T09:00:00");
+  const forced = api.forceSchoolGateAt("2026-05-18T09:00:00");
+  const forcedState = JSON.parse(window.render_game_to_text()).ui;
+  const dismissed = api.dismissSchoolGateForTest();
+  return {
+    mondayClass,
+    mondayBreak,
+    mondayLunch,
+    fridayBefore,
+    weekend,
+    forced,
+    forcedState,
+    dismissed,
+  };
+});
+assert.equal(schoolGateProbe.mondayClass.active, true);
+assert.equal(schoolGateProbe.mondayClass.block, "Period 1");
+assert.equal(schoolGateProbe.mondayBreak.active, false);
+assert.equal(schoolGateProbe.mondayLunch.active, false);
+assert.equal(schoolGateProbe.fridayBefore.active, false);
+assert.equal(schoolGateProbe.weekend.active, false);
+assert.equal(schoolGateProbe.forced.active, true);
+assert.equal(schoolGateProbe.forcedState.screen, "school-gate");
+assert.equal(schoolGateProbe.forcedState.schoolGate.visible, true);
+assert.equal(schoolGateProbe.dismissed.dismissed, true);
+
 await page.locator("#start-btn").click({ force: true });
 await page.waitForTimeout(800);
 
