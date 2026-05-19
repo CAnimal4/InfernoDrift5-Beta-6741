@@ -1158,6 +1158,19 @@ test("websocket backend persists sessions, claims, saves, friends, reports, feed
   );
   assert.equal(saved.payload.xp, 450);
 
+  b.ws.send(
+    JSON.stringify({
+      type: "save.sync",
+      schemaVersion: 1,
+      payload: { xp: 275, medals: { "boost-bowling": "silver" } },
+    }),
+  );
+  const savedB = await waitForMessage(
+    b.messages,
+    (msg) => msg.type === "save.synced",
+  );
+  assert.equal(savedB.payload.xp, 275);
+
   b.ws.send(JSON.stringify({ type: "friend.request", username: "RacerOne" }));
   const request = await waitForMessage(
     b.messages,
@@ -1242,6 +1255,12 @@ test("websocket backend persists sessions, claims, saves, friends, reports, feed
           row.xp === 450 &&
           row.score === 450 &&
           row.scope === "Total XP",
+      ) &&
+      msg.leaderboard.some(
+        (row) =>
+          row.username === "BravoPrime" &&
+          row.xp === 275 &&
+          row.scope === "Total XP",
       ),
   );
   assert.ok(leaderboard.leaderboard.every((row) => row.source === "server"));
@@ -1256,6 +1275,15 @@ test("websocket backend persists sessions, claims, saves, friends, reports, feed
         row.scope === "Total XP",
     ),
     "synced account save should enter the global XP leaderboard",
+  );
+  assert.ok(
+    leaderboard.leaderboard.some(
+      (row) =>
+        row.username === "BravoPrime" &&
+        row.xp === 275 &&
+        row.scope === "Total XP",
+    ),
+    "second normal account should enter the same persistent XP leaderboard",
   );
   assert.equal(
     leaderboard.leaderboard.some((row) => row.rating === 9000),

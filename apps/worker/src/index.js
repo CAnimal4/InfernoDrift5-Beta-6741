@@ -166,6 +166,9 @@ const CHAT_HISTORY_WINDOW_MS = 30 * 60 * 1000;
 const CHAT_HISTORY_LIMIT = 100;
 const FOUNDER_USERNAME = "Clark";
 const FOUNDER_FRIEND_XP_REWARD = 1000;
+const DAILY_GIFT_MIN_XP = 100;
+const DAILY_GIFT_MAX_XP = 1000;
+const DAILY_GIFT_STEP_XP = 25;
 const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const PLACEHOLDER_SECRET_VALUES = new Set([
@@ -348,6 +351,96 @@ function isLeaderboardEligibleUser(user) {
 
 function progressionLevelForXp(totalXp) {
   return Math.max(1, Math.floor(Math.max(0, Number(totalXp) || 0) / 500) + 1);
+}
+
+function makeDailySeed(date = new Date()) {
+  return date.toISOString().slice(0, 10);
+}
+
+function randomUnit() {
+  const bytes = new Uint32Array(1);
+  crypto.getRandomValues(bytes);
+  return bytes[0] / 4294967296;
+}
+
+function pickSteppedReward(min, max, step, unit) {
+  const steps = Math.max(0, Math.floor((max - min) / step));
+  return min + Math.round(Math.min(0.999999, Math.max(0, unit)) * steps) * step;
+}
+
+function rollDailyGiftAmount() {
+  const rarity = randomUnit();
+  const amountRoll = randomUnit();
+  if (rarity < 0.7)
+    return pickSteppedReward(100, 350, DAILY_GIFT_STEP_XP, amountRoll);
+  if (rarity < 0.92)
+    return pickSteppedReward(375, 650, DAILY_GIFT_STEP_XP, amountRoll);
+  if (rarity < 0.99)
+    return pickSteppedReward(675, 900, DAILY_GIFT_STEP_XP, amountRoll);
+  return pickSteppedReward(925, 1000, DAILY_GIFT_STEP_XP, amountRoll);
+}
+
+function normalizeServerDailyGiftPayload(
+  incomingPayload = {},
+  previousPayload = {},
+) {
+  const payload = structuredClone(
+    incomingPayload && typeof incomingPayload === "object"
+      ? incomingPayload
+      : {},
+  );
+  const previous =
+    previousPayload && typeof previousPayload === "object"
+      ? previousPayload
+      : {};
+  const today = makeDailySeed();
+  const incomingProgress =
+    payload.progressionV2 && typeof payload.progressionV2 === "object"
+      ? payload.progressionV2
+      : {};
+  const previousProgress =
+    previous.progressionV2 && typeof previous.progressionV2 === "object"
+      ? previous.progressionV2
+      : {};
+  const incomingGift =
+    incomingProgress.dailyGift && typeof incomingProgress.dailyGift === "object"
+      ? incomingProgress.dailyGift
+      : {};
+  const previousGift =
+    previousProgress.dailyGift && typeof previousProgress.dailyGift === "object"
+      ? previousProgress.dailyGift
+      : {};
+  const hasStoredGift = previousGift.seed === today;
+  const hasIncomingGift = incomingGift.seed === today;
+  const baseAmount = hasStoredGift
+    ? previousGift.amount
+    : hasIncomingGift
+      ? incomingGift.amount
+      : rollDailyGiftAmount();
+  const amount = Math.min(
+    DAILY_GIFT_MAX_XP,
+    Math.max(
+      DAILY_GIFT_MIN_XP,
+      Math.round(Number(baseAmount) || rollDailyGiftAmount()),
+    ),
+  );
+  const claimed = Boolean(previousGift.claimed || incomingGift.claimed);
+  const claimedAt =
+    (claimed &&
+      String(incomingGift.claimedAt || previousGift.claimedAt || "")) ||
+    "";
+  payload.progressionV2 = {
+    ...incomingProgress,
+    dailyGift: {
+      seed: today,
+      amount,
+      claimed,
+      claimedAt,
+      randomSource: "server",
+      serverOwned: true,
+    },
+  };
+  return payload;
 }
 
 function isFounderUsername(username) {
@@ -670,6 +763,9 @@ async function writeSaveAndLeaderboardToD1(env, user, row, totalXp) {
   if (!env.INFERNO_DB?.prepare) return false;
   const now = row.serverUpdatedAt || nowIso();
   await env.INFERNO_DB.batch([
+    env.INFERNO_DB.prepare("DELETE FROM leaderboards WHERE user_id = ?").bind(
+      user.id,
+    ),
     env.INFERNO_DB.prepare(
       `INSERT OR REPLACE INTO cloud_saves (user_id, schema_version, payload_json, server_updated_at)
        VALUES (?, ?, ?, ?)`,
@@ -713,6 +809,9 @@ async function writeLeaderboardUserToD1(env, user, totalXp = 0) {
   const now = user.updatedAt || nowIso();
   const xp = Math.max(0, Math.floor(Number(totalXp) || 0));
   await env.INFERNO_DB.batch([
+    env.INFERNO_DB.prepare("DELETE FROM leaderboards WHERE user_id = ?").bind(
+      user.id,
+    ),
     env.INFERNO_DB.prepare(
       `INSERT OR REPLACE INTO stats (user_id, xp, level, runs, wins, updated_at)
        VALUES (?, ?, ?, COALESCE((SELECT runs FROM stats WHERE user_id = ?), 0), COALESCE((SELECT wins FROM stats WHERE user_id = ?), 0), ?)`,
@@ -2139,7 +2238,11 @@ export class InfernoRoom {
   async handleSaveSync(session, msg) {
     if (!this.checkRate(session, "save", 12, 60_000))
       return send(session.ws, { type: "error", error: "rate_limited" });
-    const saveXp = extractSaveXp(msg.payload);
+    const payload = normalizeServerDailyGiftPayload(
+      msg.payload,
+      this.data.saves[session.user.id]?.payload ?? {},
+    );
+    const saveXp = extractSaveXp(payload);
     const totalXp = Math.max(saveXp, Number(session.user.xp) || 0);
     session.user.xp = totalXp;
     session.user.rating = totalXp;
@@ -2149,7 +2252,7 @@ export class InfernoRoom {
     const row = {
       userId: session.user.id,
       schemaVersion: Number(msg.schemaVersion),
-      payload: msg.payload,
+      payload,
       serverUpdatedAt: nowIso(),
     };
     this.data.saves[session.user.id] = row;
@@ -2497,6 +2600,7 @@ export class InfernoRoom {
   }
 
   leaderboardSnapshot(playlist = "", viewerUser = null) {
+    ensureAllAccountLeaderboardRows(this.data);
     if (viewerUser) ensureUserLeaderboardRow(this.data, viewerUser);
     const rows = Array.isArray(this.data.leaderboard)
       ? this.data.leaderboard

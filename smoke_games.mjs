@@ -572,7 +572,7 @@ const dailyGiftProgress = await page.evaluate(() => {
 });
 assert.equal(dailyGiftProgress.before.available, true);
 assert.ok(dailyGiftProgress.before.amount >= 100);
-assert.ok(dailyGiftProgress.before.amount <= 1500);
+assert.ok(dailyGiftProgress.before.amount <= 1000);
 assert.equal(dailyGiftProgress.first.ok, true);
 assert.equal(dailyGiftProgress.first.amount, dailyGiftProgress.before.amount);
 assert.equal(
@@ -583,6 +583,26 @@ assert.equal(dailyGiftProgress.second.ok, false);
 assert.equal(dailyGiftProgress.textState.dailyGift.claimed, true);
 assert.equal(dailyGiftProgress.textState.dailyGift.available, false);
 assert.equal(dailyGiftProgress.textState.dailyGiftNoticeVisible, false);
+const dailyGiftDistribution = await page.evaluate(() =>
+  window.__infernodriftTestApi.sampleDailyGiftRolls(1200),
+);
+assert.ok(
+  dailyGiftDistribution.every((amount) => amount >= 100 && amount <= 1000),
+);
+assert.ok(
+  dailyGiftDistribution.filter((amount) => amount <= 350).length >
+    dailyGiftDistribution.filter((amount) => amount >= 675).length,
+);
+const exitLinkState = await page.evaluate(() => {
+  window.__infernodriftTestApi.setExitLinkUrl("https://example.com/class");
+  return {
+    url: window.__infernodriftTestApi.getExitLinkUrl(),
+    controls: JSON.parse(window.render_game_to_text()).controls,
+  };
+});
+assert.equal(exitLinkState.url, "https://example.com/class");
+assert.equal(exitLinkState.controls.exitLinkKey, "Q");
+assert.equal(exitLinkState.controls.exitLinkUrl, "https://example.com/class");
 const sharedXpProgress = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.startMode("campaign-survival");

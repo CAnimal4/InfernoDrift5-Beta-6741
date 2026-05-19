@@ -2186,6 +2186,31 @@ button:hover {
   border-color: rgba(255, 184, 96, 0.34);
 }
 
+.exit-link-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.62fr) minmax(180px, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--stroke);
+  color: var(--muted);
+}
+
+.exit-link-row strong {
+  display: block;
+  color: var(--ink);
+}
+
+.exit-link-row span {
+  display: block;
+  font-size: 0.78rem;
+}
+
+.exit-link-row input {
+  width: 100%;
+  min-width: 0;
+}
+
 .touch-stick-wrap {
   pointer-events: auto;
   transform: translate(
@@ -2444,12 +2469,29 @@ body.device-phone .mode-card {
 body.device-phone .chat-popout {
   right: 14px;
   bottom: 14px;
+  width: min(350px, calc(100vw - 28px));
+  max-height: min(76vh, 520px);
 }
 
 body.device-phone .chat-notice {
   right: 10px;
   bottom: 10px;
   width: min(310px, calc(100vw - 20px));
+}
+
+body.device-phone .menu-panel,
+body.device-phone #feedback-modal .feedback-panel {
+  max-height: calc(100dvh - 28px);
+  overflow-y: auto;
+}
+
+body.device-phone .online-panel,
+body.device-phone .profile-card {
+  padding: 12px;
+}
+
+body.device-phone .exit-link-row {
+  grid-template-columns: 1fr;
 }
 
 body.device-tablet .menu-panel {

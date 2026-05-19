@@ -102,12 +102,13 @@
             <div id="touch-steer-knob" class="touch-steer-knob"></div>
           </div>
         </div>
-        <div class="touch-buttons">
-          <button id="touch-jump" class="ghost">Jump</button>
-          <button id="touch-drift">Drift</button>
-          <button id="touch-boost" class="primary">Boost</button>
-          <button id="touch-backflip" class="ghost" hidden>Trick</button>
-        </div>
+          <div class="touch-buttons">
+            <button id="touch-jump" class="ghost">Jump</button>
+            <button id="touch-drift">Drift</button>
+            <button id="touch-boost" class="primary">Boost</button>
+            <button id="touch-laser" class="ghost" hidden>Laser</button>
+            <button id="touch-backflip" class="ghost" hidden>Trick</button>
+          </div>
       </div>
 
       <div class="minimap-wrap">
@@ -580,6 +581,13 @@
                 <div>
                   <div class="custom-section-title">Keyboard Map</div>
                   <div class="remap-grid" id="controls-remap"></div>
+                  <div class="exit-link-row">
+                    <div>
+                      <strong>Q Exit Link</strong>
+                      <span>Fixed key. Edit only the destination.</span>
+                    </div>
+                    <input id="exit-link-url" type="url" inputmode="url" autocomplete="url" spellcheck="false" />
+                  </div>
                 </div>
                 <div>
                   <div class="custom-section-title">Touch Layout</div>

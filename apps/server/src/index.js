@@ -115,6 +115,9 @@ const CHAT_HISTORY_WINDOW_MS = 30 * 60 * 1000;
 const CHAT_HISTORY_LIMIT = 100;
 const FOUNDER_USERNAME = "Clark";
 const FOUNDER_FRIEND_XP_REWARD = 1000;
+const DAILY_GIFT_MIN_XP = 100;
+const DAILY_GIFT_MAX_XP = 1000;
+const DAILY_GIFT_STEP_XP = 25;
 const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const PLACEHOLDER_SECRET_VALUES = new Set([
@@ -377,6 +380,96 @@ function getLeaderboardXp(row) {
 
 function progressionLevelForXp(totalXp) {
   return Math.max(1, Math.floor(Math.max(0, Number(totalXp) || 0) / 500) + 1);
+}
+
+function makeDailySeed(date = new Date()) {
+  return date.toISOString().slice(0, 10);
+}
+
+function randomUnit() {
+  const bytes = new Uint32Array(1);
+  cryptoRuntime.getRandomValues(bytes);
+  return bytes[0] / 4294967296;
+}
+
+function pickSteppedReward(min, max, step, unit) {
+  const steps = Math.max(0, Math.floor((max - min) / step));
+  return min + Math.round(Math.min(0.999999, Math.max(0, unit)) * steps) * step;
+}
+
+function rollDailyGiftAmount() {
+  const rarity = randomUnit();
+  const amountRoll = randomUnit();
+  if (rarity < 0.7)
+    return pickSteppedReward(100, 350, DAILY_GIFT_STEP_XP, amountRoll);
+  if (rarity < 0.92)
+    return pickSteppedReward(375, 650, DAILY_GIFT_STEP_XP, amountRoll);
+  if (rarity < 0.99)
+    return pickSteppedReward(675, 900, DAILY_GIFT_STEP_XP, amountRoll);
+  return pickSteppedReward(925, 1000, DAILY_GIFT_STEP_XP, amountRoll);
+}
+
+function normalizeServerDailyGiftPayload(
+  incomingPayload = {},
+  previousPayload = {},
+) {
+  const payload = structuredClone(
+    incomingPayload && typeof incomingPayload === "object"
+      ? incomingPayload
+      : {},
+  );
+  const previous =
+    previousPayload && typeof previousPayload === "object"
+      ? previousPayload
+      : {};
+  const today = makeDailySeed();
+  const incomingProgress =
+    payload.progressionV2 && typeof payload.progressionV2 === "object"
+      ? payload.progressionV2
+      : {};
+  const previousProgress =
+    previous.progressionV2 && typeof previous.progressionV2 === "object"
+      ? previous.progressionV2
+      : {};
+  const incomingGift =
+    incomingProgress.dailyGift && typeof incomingProgress.dailyGift === "object"
+      ? incomingProgress.dailyGift
+      : {};
+  const previousGift =
+    previousProgress.dailyGift && typeof previousProgress.dailyGift === "object"
+      ? previousProgress.dailyGift
+      : {};
+  const hasStoredGift = previousGift.seed === today;
+  const hasIncomingGift = incomingGift.seed === today;
+  const baseAmount = hasStoredGift
+    ? previousGift.amount
+    : hasIncomingGift
+      ? incomingGift.amount
+      : rollDailyGiftAmount();
+  const amount = Math.min(
+    DAILY_GIFT_MAX_XP,
+    Math.max(
+      DAILY_GIFT_MIN_XP,
+      Math.round(Number(baseAmount) || rollDailyGiftAmount()),
+    ),
+  );
+  const claimed = Boolean(previousGift.claimed || incomingGift.claimed);
+  const claimedAt =
+    (claimed &&
+      String(incomingGift.claimedAt || previousGift.claimedAt || "")) ||
+    "";
+  payload.progressionV2 = {
+    ...incomingProgress,
+    dailyGift: {
+      seed: today,
+      amount,
+      claimed,
+      claimedAt,
+      randomSource: "server",
+      serverOwned: true,
+    },
+  };
+  return payload;
 }
 
 function isFounderUsername(username) {
@@ -858,6 +951,7 @@ export function createInfernoServer(options = {}) {
   }
 
   function leaderboardSnapshot(playlist = "", viewerUser = null) {
+    ensureAllAccountLeaderboardRows(db.data);
     if (viewerUser) ensureUserLeaderboardRow(db.data, viewerUser);
     const rows = Array.isArray(db.data.leaderboard)
       ? db.data.leaderboard
@@ -1573,7 +1667,11 @@ export function createInfernoServer(options = {}) {
   function handleSaveSync(client, msg) {
     if (!checkRate(client, "save", 12, 60_000))
       return send(client.ws, { type: "error", error: "rate_limited" });
-    const saveXp = extractSaveXp(msg.payload);
+    const payload = normalizeServerDailyGiftPayload(
+      msg.payload,
+      db.data.saves[client.user.id]?.payload ?? {},
+    );
+    const saveXp = extractSaveXp(payload);
     const totalXp = Math.max(saveXp, Number(client.user.xp) || 0);
     client.user.xp = totalXp;
     client.user.rating = totalXp;
@@ -1583,7 +1681,7 @@ export function createInfernoServer(options = {}) {
     const row = {
       userId: client.user.id,
       schemaVersion: Number(msg.schemaVersion),
-      payload: msg.payload,
+      payload,
       clientUpdatedAt: msg.clientUpdatedAt ?? null,
       serverUpdatedAt: nowIso(),
     };

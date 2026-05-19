@@ -52,6 +52,7 @@ const hudLivesPill = hudLives?.closest(".pill");
 const touchJump = document.getElementById("touch-jump");
 const touchDrift = document.getElementById("touch-drift");
 const touchBoost = document.getElementById("touch-boost");
+const touchLaser = document.getElementById("touch-laser");
 const touchBackflip = document.getElementById("touch-backflip");
 const minimapCanvas = document.getElementById("minimap");
 const minimapCtx = minimapCanvas ? minimapCanvas.getContext("2d") : null;
@@ -132,6 +133,7 @@ const customStats = document.getElementById("custom-stats");
 const customHint = document.getElementById("custom-hint");
 const touchLayoutSelect = document.getElementById("touch-layout-select");
 const touchScaleSelect = document.getElementById("touch-scale-select");
+const exitLinkUrlInput = document.getElementById("exit-link-url");
 const touchControlsRoot = document.getElementById("touch-controls");
 const touchSteerPad = document.getElementById("touch-steer-pad");
 const touchSteerKnob = document.getElementById("touch-steer-knob");
@@ -299,6 +301,12 @@ const ACCOUNT_SAVE_STORAGE_PREFIX = "infernoDrift4.accountSave.v1:";
 const LEGACY_SAVE_STORAGE_KEYS = ["infernoDrift3.save.v1"];
 const ONLINE_STORAGE_KEY = "infernoDrift4.online.v1";
 const FEEDBACK_STORAGE_KEY = "infernoDrift4.feedback.v1";
+const EXIT_LINK_DEFAULT_URL = "https://lbusd.instructure.com/?login_success=1";
+const EXIT_LINK_KEY_CODE = "KeyQ";
+const ONLINE_PROGRESS_SYNC_INTERVAL_MS = 30_000;
+const DAILY_GIFT_MIN_XP = 100;
+const DAILY_GIFT_MAX_XP = 1000;
+const DAILY_GIFT_STEP_XP = 25;
 const ONLINE_PROTOCOL_VERSION = 1;
 const LEGACY_PRODUCTION_BACKEND_URLS = new Set([
   "wss://infernodrift4-online.clarkbythebay.workers.dev/ws",
@@ -1930,6 +1938,7 @@ const settings = {
   touchScale: 1,
   devMode: false,
   activeGameMode: GAME_MODE_ID33,
+  exitLinkUrl: EXIT_LINK_DEFAULT_URL,
 };
 
 const customization = {
@@ -2010,6 +2019,8 @@ const onlineState = {
   leaderboardPlayerRow: null,
   leaderboardSyncStatus: "local",
   leaderboardSyncedAt: 0,
+  lastProgressSyncAt: 0,
+  nextProgressSyncAt: 0,
   saveSyncedAt: 0,
   profileSnapshot: null,
   profileActionStatus: "",
@@ -2080,21 +2091,39 @@ function pickSteppedReward(min, max, step, unit) {
   );
 }
 
-function rollDailyGiftAmount(seed, salt) {
-  const rarity = hashStringToUnit(`${seed}:${salt}:rarity`);
-  const amountRoll = hashStringToUnit(`${seed}:${salt}:amount`);
-  if (rarity < 0.65) return pickSteppedReward(100, 300, 25, amountRoll);
-  if (rarity < 0.9) return pickSteppedReward(325, 650, 25, amountRoll);
-  if (rarity < 0.98) return pickSteppedReward(700, 1100, 50, amountRoll);
-  return pickSteppedReward(1200, 1500, 50, amountRoll);
+function randomUnit() {
+  if (window.crypto?.getRandomValues) {
+    const bytes = new Uint32Array(1);
+    window.crypto.getRandomValues(bytes);
+    return bytes[0] / 4294967296;
+  }
+  return Math.random();
 }
 
-function createDailyGift(seed = makeDailySeed(), salt = makeDailyGiftSalt()) {
+function rollDailyGiftAmount() {
+  const rarity = randomUnit();
+  const amountRoll = randomUnit();
+  if (rarity < 0.7)
+    return pickSteppedReward(100, 350, DAILY_GIFT_STEP_XP, amountRoll);
+  if (rarity < 0.92)
+    return pickSteppedReward(375, 650, DAILY_GIFT_STEP_XP, amountRoll);
+  if (rarity < 0.99)
+    return pickSteppedReward(675, 900, DAILY_GIFT_STEP_XP, amountRoll);
+  return pickSteppedReward(925, 1000, DAILY_GIFT_STEP_XP, amountRoll);
+}
+
+function createDailyGift(
+  seed = makeDailySeed(),
+  salt = makeDailyGiftSalt(),
+  { source = "client", serverOwned = false } = {},
+) {
   return {
     seed,
-    amount: rollDailyGiftAmount(seed, salt),
+    amount: rollDailyGiftAmount(),
     claimed: false,
     claimedAt: "",
+    randomSource: source,
+    serverOwned: Boolean(serverOwned),
   };
 }
 
@@ -2106,13 +2135,17 @@ function normalizeDailyGift(value = {}, salt = makeDailyGiftSalt()) {
   const amount = THREE.MathUtils.clamp(
     Math.round(Number(source.amount) || rolled.amount),
     100,
-    1500,
+    1000,
   );
   return {
     ...rolled,
     amount,
     claimed: Boolean(source.claimed),
     claimedAt: String(source.claimedAt ?? ""),
+    randomSource: String(
+      source.randomSource || rolled.randomSource || "client",
+    ),
+    serverOwned: Boolean(source.serverOwned),
   };
 }
 
@@ -2352,6 +2385,7 @@ const state = {
   deviceProfile: { mode: "auto", ...DEVICE_PROFILES.desktop },
   steppingExternally: false,
   awaitingRemapAction: "",
+  remapStatus: "",
   modeHelpOpen: false,
   modeHelpWasRunning: false,
   progressionV2: createProgressionV2(),
@@ -2940,8 +2974,33 @@ function isTextEditingTarget(target) {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
 
+function normalizeExitLinkUrl(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return EXIT_LINK_DEFAULT_URL;
+  try {
+    const url = new URL(raw);
+    return /^https?:$/i.test(url.protocol)
+      ? url.toString()
+      : EXIT_LINK_DEFAULT_URL;
+  } catch {
+    return EXIT_LINK_DEFAULT_URL;
+  }
+}
+
+function openExitLink() {
+  const url = normalizeExitLinkUrl(settings.exitLinkUrl);
+  settings.exitLinkUrl = url;
+  savePersistentState();
+  window.location.assign(url);
+}
+
 function setPrimaryBinding(actionId, code) {
   if (!controlBindings[actionId]) return false;
+  if (code === EXIT_LINK_KEY_CODE) {
+    state.remapStatus = "Q is reserved for the Exit Link.";
+    renderControlsUi();
+    return false;
+  }
   const duplicate = Object.entries(controlBindings).find(
     ([otherAction, codes]) =>
       otherAction !== actionId && codes[0] === code && code !== "Escape",
@@ -3303,6 +3362,8 @@ function getDailyGiftSnapshot(progress = state.progressionV2) {
     claimed: Boolean(gift.claimed),
     claimedAt: gift.claimedAt || "",
     available: !gift.claimed,
+    randomSource: gift.randomSource || "client",
+    serverOwned: Boolean(gift.serverOwned),
   };
 }
 
@@ -3332,7 +3393,11 @@ function redeemDailyGift() {
       progression: structuredClone(state.progressionV2),
     };
   }
-  const amount = THREE.MathUtils.clamp(Math.round(gift.amount), 100, 1500);
+  const amount = THREE.MathUtils.clamp(
+    Math.round(gift.amount),
+    DAILY_GIFT_MIN_XP,
+    DAILY_GIFT_MAX_XP,
+  );
   const progression = state.progressionV2;
   const totalXp = getProgressionTotalXp(progression) + amount;
   progression.xp = totalXp;
@@ -3438,6 +3503,7 @@ function buildPersistentSavePayload() {
       touchScale: settings.touchScale,
       devMode: settings.devMode,
       activeGameMode: settings.activeGameMode,
+      exitLinkUrl: settings.exitLinkUrl,
     },
     devTuning: {
       playerSpeedMult: devTuning.playerSpeedMult,
@@ -3488,6 +3554,7 @@ function buildFreshAccountSavePayload() {
       touchScale: 1,
       devMode: false,
       activeGameMode: GAME_MODE_ID33,
+      exitLinkUrl: EXIT_LINK_DEFAULT_URL,
     },
     devTuning: { ...DEFAULT_DEV_TUNING },
     customization: { ...DEFAULT_CUSTOMIZATION },
@@ -3515,18 +3582,41 @@ function syncProgressionToBackend() {
     onlineState.profileMode !== "account" ||
     onlineState.guestTemporary
   ) {
-    return;
+    return false;
   }
+  const now = performance.now();
+  onlineState.lastProgressSyncAt = now;
+  onlineState.nextProgressSyncAt = now + ONLINE_PROGRESS_SYNC_INTERVAL_MS;
   onlineState.leaderboardSyncStatus = "syncing";
   onlineState.leaderboardPlayerRow = {
     ...getCurrentPlayerXpLeaderboardRow(),
     source: "pending",
   };
-  sendOnlineMessage({
+  return sendOnlineMessage({
     type: "save.sync",
     schemaVersion: 2,
     payload: buildPersistentSavePayload(),
   });
+}
+
+function forceOnlineProgressSync({ force = false } = {}) {
+  if (
+    !isOnlineSocketOpen() ||
+    onlineState.profileMode !== "account" ||
+    onlineState.guestTemporary ||
+    !onlineState.user
+  ) {
+    return false;
+  }
+  const now = performance.now();
+  if (!force && now < onlineState.nextProgressSyncAt) return false;
+  const sent = syncProgressionToBackend();
+  requestOnlineProfile();
+  requestOnlineLeaderboard({ force: true });
+  if (!sent) {
+    onlineState.nextProgressSyncAt = now + ONLINE_PROGRESS_SYNC_INTERVAL_MS;
+  }
+  return sent;
 }
 
 function applyServerSave(
@@ -3593,6 +3683,8 @@ function applyPersistentSavePayload(data, { forceProgression = true } = {}) {
         settings.activeGameMode = normalizeGameModeId(
           data.settings.activeGameMode,
         );
+      if (typeof data.settings.exitLinkUrl === "string")
+        settings.exitLinkUrl = normalizeExitLinkUrl(data.settings.exitLinkUrl);
     }
     if (data.progressionV2 && typeof data.progressionV2 === "object") {
       const nextProgression = normalizeProgressionV2(data.progressionV2);
@@ -4322,6 +4414,8 @@ function handleOnlineMessage(raw) {
       "authenticated",
       `Online as ${onlineState.user?.username || onlineState.username}`,
     );
+    onlineState.nextProgressSyncAt =
+      performance.now() + ONLINE_PROGRESS_SYNC_INTERVAL_MS;
     requestOnlineLeaderboard({ force: true });
     requestOnlineProfile();
     if (onlineState.pendingStartAfterAuth) {
@@ -5258,6 +5352,9 @@ function refreshDevModeUi() {
   if (touchBackflip) {
     touchBackflip.hidden = !input.touchEnabled;
   }
+  if (touchLaser) {
+    touchLaser.hidden = !(input.touchEnabled && isBattleMode());
+  }
   if (devTools) {
     devTools.hidden = !settings.devMode;
   }
@@ -5830,6 +5927,10 @@ function refreshModeCopy() {
     touchBackflip.textContent = "Trick";
     touchBackflip.hidden = !input.touchEnabled;
   }
+  if (touchLaser) {
+    touchLaser.textContent = "Laser";
+    touchLaser.hidden = !(input.touchEnabled && isBattleMode());
+  }
 }
 
 function renderProgressPanel() {
@@ -5936,6 +6037,9 @@ function renderControlsUi() {
   }
   if (touchLayoutSelect) touchLayoutSelect.value = settings.touchLayout;
   if (touchScaleSelect) touchScaleSelect.value = String(settings.touchScale);
+  if (exitLinkUrlInput && document.activeElement !== exitLinkUrlInput) {
+    exitLinkUrlInput.value = settings.exitLinkUrl;
+  }
   if (controllerStatus) {
     controllerStatus.textContent = gamepadState.connected
       ? `Controller: ${gamepadState.id || "connected"}`
@@ -15374,6 +15478,7 @@ function animate(now) {
   const dt = Math.min(0.033, (now - lastTime) / 1000);
   lastTime = now;
   stepGame(dt);
+  forceOnlineProgressSync();
   requestAnimationFrame(animate);
 }
 
@@ -15424,6 +15529,11 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (isTextEditingTarget(event.target)) return;
+  if (event.code === EXIT_LINK_KEY_CODE && !event.repeat) {
+    event.preventDefault();
+    openExitLink();
+    return;
+  }
   if (
     isActionCode(event.code, "drift") ||
     isActionCode(event.code, "targetLunge") ||
@@ -15711,6 +15821,20 @@ function initTouchControls() {
     touchBackflip.addEventListener("pointercancel", clearBackflip);
     touchBackflip.addEventListener("pointerleave", clearBackflip);
   }
+  if (touchLaser) {
+    touchLaser.addEventListener("pointerdown", () => {
+      if (!input.touchEnabled) return;
+      updateAutoInputMode("touch");
+      input.laser = true;
+      fireBattleLaser(player);
+    });
+    const clearLaser = () => {
+      input.laser = false;
+    };
+    touchLaser.addEventListener("pointerup", clearLaser);
+    touchLaser.addEventListener("pointercancel", clearLaser);
+    touchLaser.addEventListener("pointerleave", clearLaser);
+  }
 }
 
 bindPressAction(startBtn, () => startGuestProfile());
@@ -15882,6 +16006,12 @@ touchScaleSelect?.addEventListener("change", (event) => {
     1.14,
   );
   applyDeviceProfile();
+  savePersistentState();
+});
+
+exitLinkUrlInput?.addEventListener("change", (event) => {
+  settings.exitLinkUrl = normalizeExitLinkUrl(event.target.value);
+  exitLinkUrlInput.value = settings.exitLinkUrl;
   savePersistentState();
 });
 
@@ -16433,6 +16563,8 @@ window.render_game_to_text = () => {
         controlBindings.altTrick[0] ?? "KeyB",
       ),
       reservedChatKey: formatCodeLabel(controlBindings.chat[0] ?? "KeyC"),
+      exitLinkKey: "Q",
+      exitLinkUrl: settings.exitLinkUrl,
       bindings: serializeControlBindings(),
       touchLayout: settings.touchLayout,
       touchScale: Number(settings.touchScale),
@@ -16570,6 +16702,14 @@ window.render_game_to_text = () => {
       scope: Boolean(state.cameraTelemetry.scope),
       battleCockpitEnabled: Boolean(settings.battleCockpitCamera),
     },
+    device: {
+      profile: state.deviceProfile.type,
+      mode: state.deviceProfile.mode,
+      touchEnabled: Boolean(input.touchEnabled),
+      touchAvailable: Boolean(state.deviceProfile.touchAvailable),
+      layoutClass: TOUCH_LAYOUT_OPTIONS[settings.touchLayout]?.className ?? "",
+      compactHud: Boolean(state.deviceProfile.compactHud),
+    },
     ball: maxMode.ball
       ? {
           x: Number(maxMode.ball.position.x.toFixed(2)),
@@ -16659,6 +16799,11 @@ window.render_game_to_text = () => {
         actionStatus: onlineState.profileActionStatus,
         deleteStatus: onlineState.profileDeleteStatus,
         saveSyncedAt: onlineState.saveSyncedAt,
+        lastProgressSyncAt: onlineState.lastProgressSyncAt,
+        nextProgressSyncInMs: Math.max(
+          0,
+          Math.round(onlineState.nextProgressSyncAt - performance.now()),
+        ),
         leaderboardSyncedAt: onlineState.leaderboardSyncedAt,
         restrictedUntil: onlineState.onlineRestrictedUntil,
       },
@@ -16714,6 +16859,7 @@ window.render_game_to_text = () => {
       leaderboardState: {
         playerRow: onlineState.leaderboardPlayerRow,
         currentPlayerPresent: currentPlayerPresentOnLeaderboard,
+        allXpAccountsLoaded: onlineState.leaderboardSyncStatus === "server",
         syncStatus: onlineState.leaderboardSyncStatus,
         rowSource:
           onlineState.leaderboardPlayerRow?.source ||
@@ -16990,6 +17136,19 @@ window.__infernodriftTestApi = {
       age: onlineState.age,
     };
   },
+  setExitLinkUrl: (url = EXIT_LINK_DEFAULT_URL) => {
+    settings.exitLinkUrl = normalizeExitLinkUrl(url);
+    if (exitLinkUrlInput) exitLinkUrlInput.value = settings.exitLinkUrl;
+    savePersistentState();
+    return settings.exitLinkUrl;
+  },
+  getExitLinkUrl: () => settings.exitLinkUrl,
+  forceOnlineProgressSync: () => forceOnlineProgressSync({ force: true }),
+  sampleDailyGiftRolls: (count = 1000) =>
+    Array.from(
+      { length: Math.max(0, Math.min(5000, Number(count) || 0)) },
+      () => rollDailyGiftAmount(),
+    ),
   getOnlineState: () => ({
     status: onlineState.status,
     configured: Boolean(onlineState.backendUrl),
@@ -17031,6 +17190,7 @@ if (rampDensitySelect) rampDensitySelect.value = settings.rampDensity;
 if (devModeToggle) devModeToggle.checked = settings.devMode;
 if (touchLayoutSelect) touchLayoutSelect.value = settings.touchLayout;
 if (touchScaleSelect) touchScaleSelect.value = String(settings.touchScale);
+if (exitLinkUrlInput) exitLinkUrlInput.value = settings.exitLinkUrl;
 applyDeviceProfile();
 refreshDevModeUi();
 refreshGamesUi();
