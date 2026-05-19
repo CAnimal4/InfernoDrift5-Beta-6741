@@ -295,6 +295,7 @@ const DEV_MODE_PASSWORDS = ["ibelikesheesh", "pandamo2011"];
 const BACKFLIP_DURATION = 0.78;
 const BACKFLIP_RECOVERY_DURATION = 0.3;
 const SAVE_STORAGE_KEY = "infernoDrift4.save.v1";
+const ACCOUNT_SAVE_STORAGE_PREFIX = "infernoDrift4.accountSave.v1:";
 const LEGACY_SAVE_STORAGE_KEYS = ["infernoDrift3.save.v1"];
 const ONLINE_STORAGE_KEY = "infernoDrift4.online.v1";
 const FEEDBACK_STORAGE_KEY = "infernoDrift4.feedback.v1";
@@ -3381,12 +3382,38 @@ function addMatchEvent(type, payload = {}) {
 function savePersistentState() {
   const payload = buildPersistentSavePayload();
   try {
-    const targetStorage = onlineState.guestTemporary
-      ? sessionStorage
-      : localStorage;
-    targetStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(payload));
+    const target = getPersistentSaveTarget();
+    target.storage.setItem(target.key, JSON.stringify(payload));
   } catch (error) {
     debugLog("menu", "save_failed", error?.message || error);
+  }
+}
+
+function getAccountSaveStorageKey(user = onlineState.user) {
+  const id = String(user?.id || onlineState.user?.id || "").replace(
+    /[^a-z0-9_-]/gi,
+    "",
+  );
+  return id ? `${ACCOUNT_SAVE_STORAGE_PREFIX}${id}` : "";
+}
+
+function getPersistentSaveTarget() {
+  if (onlineState.guestTemporary) {
+    return { storage: sessionStorage, key: SAVE_STORAGE_KEY };
+  }
+  const accountKey =
+    onlineState.profileMode === "account" ? getAccountSaveStorageKey() : "";
+  return { storage: localStorage, key: accountKey || SAVE_STORAGE_KEY };
+}
+
+function readAccountSavePayload(user = onlineState.user) {
+  const key = getAccountSaveStorageKey(user);
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
   }
 }
 
@@ -3444,6 +3471,44 @@ function buildPersistentSavePayload() {
   };
 }
 
+function buildFreshAccountSavePayload() {
+  return {
+    worldIndex: 0,
+    levelIndex: 0,
+    settings: {
+      difficulty: "classic",
+      campaignAiMode: CAMPAIGN_AI_ADAPTIVE,
+      maxDifficulty: "classic",
+      invertSteer: true,
+      cameraFocus: false,
+      battleCockpitCamera: false,
+      rampDensity: "normal",
+      deviceMode: "auto",
+      touchLayout: "classic",
+      touchScale: 1,
+      devMode: false,
+      activeGameMode: GAME_MODE_ID33,
+    },
+    devTuning: { ...DEFAULT_DEV_TUNING },
+    customization: { ...DEFAULT_CUSTOMIZATION },
+    garage: {
+      activeLoadoutId: GARAGE_LOADOUT_IDS[0],
+      loadouts: GARAGE_LOADOUT_IDS.map((_, index) => makeGarageLoadout(index)),
+    },
+    progressionV2: createProgressionV2(),
+    controlBindings: Object.fromEntries(
+      Object.entries(DEFAULT_CONTROL_BINDINGS).map(([actionId, bindings]) => [
+        actionId,
+        [...bindings],
+      ]),
+    ),
+    maxTeamCustomization: {
+      blue: { ...DEFAULT_MAX_TEAM_CUSTOMIZATION.blue },
+      red: { ...DEFAULT_MAX_TEAM_CUSTOMIZATION.red },
+    },
+  };
+}
+
 function syncProgressionToBackend() {
   if (
     !isOnlineSocketOpen() ||
@@ -3460,39 +3525,38 @@ function syncProgressionToBackend() {
   sendOnlineMessage({
     type: "save.sync",
     schemaVersion: 2,
-    payload: {
-      progressionV2: structuredClone(state.progressionV2),
-    },
+    payload: buildPersistentSavePayload(),
   });
 }
 
-function applyServerSave(serverSave) {
+function applyServerSave(
+  serverSave,
+  { force = false, resetIfMissing = false, preferAccountLocal = false } = {},
+) {
   const payload = serverSave?.payload;
-  if (!payload || typeof payload !== "object") return false;
-  if (payload.progressionV2 && typeof payload.progressionV2 === "object") {
-    const remoteProgress = normalizeProgressionV2(payload.progressionV2);
-    if (getProgressionTotalXp(remoteProgress) >= getProgressionTotalXp()) {
-      state.progressionV2 = remoteProgress;
-      renderDailyGiftNotice();
-      renderProgressPanel();
-      refreshGamesUi();
-    }
+  let nextPayload = payload && typeof payload === "object" ? payload : null;
+  if (!nextPayload && preferAccountLocal) {
+    nextPayload = readAccountSavePayload();
   }
+  if (!nextPayload && resetIfMissing) {
+    nextPayload = buildFreshAccountSavePayload();
+  }
+  if (!nextPayload) return false;
+  const applied = applyPersistentSavePayload(nextPayload, {
+    forceProgression: force || resetIfMissing || preferAccountLocal,
+  });
+  if (!applied) return false;
+  renderDailyGiftNotice();
+  renderProgressPanel();
+  refreshGamesUi();
   onlineState.saveSyncedAt = Date.now();
+  savePersistentState();
   return true;
 }
 
-function loadPersistentState() {
+function applyPersistentSavePayload(data, { forceProgression = true } = {}) {
+  if (!data || typeof data !== "object") return false;
   try {
-    const raw =
-      sessionStorage.getItem(SAVE_STORAGE_KEY) ??
-      localStorage.getItem(SAVE_STORAGE_KEY) ??
-      LEGACY_SAVE_STORAGE_KEYS.map((key) => localStorage.getItem(key)).find(
-        Boolean,
-      );
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    if (!data || typeof data !== "object") return;
     if (data.settings && typeof data.settings === "object") {
       if (typeof data.settings.difficulty === "string")
         settings.difficulty = data.settings.difficulty;
@@ -3531,7 +3595,13 @@ function loadPersistentState() {
         );
     }
     if (data.progressionV2 && typeof data.progressionV2 === "object") {
-      state.progressionV2 = normalizeProgressionV2(data.progressionV2);
+      const nextProgression = normalizeProgressionV2(data.progressionV2);
+      if (
+        forceProgression ||
+        getProgressionTotalXp(nextProgression) >= getProgressionTotalXp()
+      ) {
+        state.progressionV2 = nextProgression;
+      }
     }
     if (data.devTuning && typeof data.devTuning === "object") {
       if (Number.isFinite(data.devTuning.playerSpeedMult))
@@ -3629,8 +3699,26 @@ function loadPersistentState() {
     syncActiveLoadoutFromCustomization();
     if (settings.activeGameMode === GAME_MODE_RISK)
       settings.activeGameMode = GAME_MODE_MAX1;
+    return true;
   } catch (error) {
     debugLog("menu", "load_failed", error?.message || error);
+    return false;
+  }
+}
+
+function loadPersistentState() {
+  try {
+    const raw =
+      sessionStorage.getItem(SAVE_STORAGE_KEY) ??
+      localStorage.getItem(SAVE_STORAGE_KEY) ??
+      LEGACY_SAVE_STORAGE_KEYS.map((key) => localStorage.getItem(key)).find(
+        Boolean,
+      );
+    if (!raw) return false;
+    return applyPersistentSavePayload(JSON.parse(raw));
+  } catch (error) {
+    debugLog("menu", "load_failed", error?.message || error);
+    return false;
   }
 }
 
@@ -4211,7 +4299,11 @@ function handleOnlineMessage(raw) {
     onlineState.sessionToken = message.sessionToken || onlineState.sessionToken;
     if (onlineState.user?.username)
       onlineState.username = onlineState.user.username;
-    applyServerSave(message.save);
+    applyServerSave(message.save, {
+      force: true,
+      resetIfMissing: message.user?.account,
+      preferAccountLocal: message.user?.account,
+    });
     saveOnlineConfig();
     onlineState.authRequired = false;
     onlineState.profileActionStatus = "";
@@ -4239,16 +4331,20 @@ function handleOnlineMessage(raw) {
   } else if (message.type === "profile.snapshot") {
     onlineState.profileSnapshot = message;
     if (message.user) onlineState.user = message.user;
-    applyServerSave(message.save);
+    applyServerSave(message.save, {
+      force: Boolean(message.save),
+      preferAccountLocal: Boolean(message.user?.account),
+    });
     updateProfileUi();
   } else if (message.type === "save.synced") {
-    applyServerSave({ payload: message.payload });
+    applyServerSave({ payload: message.payload }, { force: true });
     onlineState.saveSyncedAt = performance.now();
     onlineState.profileActionStatus = "Progress synced to your account.";
     requestOnlineLeaderboard({ force: true });
     updateProfileUi();
   } else if (message.type === "progression.reward") {
-    if (message.payload) applyServerSave({ payload: message.payload });
+    if (message.payload)
+      applyServerSave({ payload: message.payload }, { force: true });
     const xp = Math.max(0, Number(message.xp) || 0);
     const label = sanitizeBadgeLabel(message.label || "Online Reward");
     onlineState.profileActionStatus = `${label}: +${xp} XP`;
@@ -4289,10 +4385,13 @@ function handleOnlineMessage(raw) {
       onlineState.roomShared = false;
     }
     if (onlineState.room?.mode && MODE_BY_ID[onlineState.room.mode]) {
-      settings.activeGameMode = onlineState.room.mode;
-      if (onlineRoomMode && document.activeElement !== onlineRoomMode) {
-        onlineRoomMode.value = onlineState.room.mode;
-      }
+      const joinedNewRoom = Boolean(
+        onlineState.room.code && onlineState.room.code !== previousCode,
+      );
+      const roomModeChanged = onlineState.room.mode !== settings.activeGameMode;
+      enterOnlineRoomMode(onlineState.room.mode, {
+        start: joinedNewRoom || roomModeChanged,
+      });
     }
     if (
       onlineRoomCode &&
@@ -5528,6 +5627,23 @@ function setActiveGameMode(mode, { save = true, reset = false } = {}) {
   if (save) savePersistentState();
   if (reset) startRun(true);
   else if (state.running) resetLevel();
+}
+
+function enterOnlineRoomMode(mode, { start = false } = {}) {
+  const nextMode = normalizeGameModeId(mode);
+  if (!MODE_BY_ID[nextMode]) return false;
+  const previousMode = settings.activeGameMode;
+  setActiveGameMode(nextMode, { save: true, reset: start });
+  if (onlineRoomMode && document.activeElement !== onlineRoomMode) {
+    onlineRoomMode.value = nextMode;
+  }
+  if (start || previousMode !== nextMode) {
+    setEffectToast(`${getModeDefinition(nextMode).label} Room`, {
+      pulse: 0.28,
+    });
+  }
+  updateOnlineUi();
+  return previousMode !== nextMode || start;
 }
 
 function getModeHelp(mode = getModeDefinition()) {
