@@ -206,3 +206,10 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Reproduced the recurring `System · Quick: invalid protocol` message by joining a Battle Arena room, sharing the room code, resuming play, and capturing WebSocket payloads. The share message was valid; the repeated invalid packets were `input.frame` messages carrying `trick: ""`.
 - Fixed the client to omit empty optional payload fields before sending live room input frames and DM packets, so optional strings no longer violate the Worker protocol schema.
 - Re-ran the same reproduction and confirmed `invalidCount: 0`; chat showed only the intended room invite. Validation passed: `node --check script.js`, `npm test`, `npm run typecheck`, `npm run build`, `npm run smoke:online-local`, `npm run worker:check`, `npm run worker:types`, `npm run format`, and `npm run smoke`.
+
+2026-05-20 account message-size fix:
+
+- Investigated the school-computer `account error: message too large` report. Found the protocol allowed `save.sync` payloads up to 20 KB via `validateSafePayload()`, but rejected the entire WebSocket message above 4 KB first, so accumulated account progress could hit the transport cap before the save validator ran.
+- Raised the shared Worker/local protocol transport cap to 24 KB while keeping `save.sync` payload validation at 20 KB.
+- Added regression coverage proving a 4.5 KB progress/save sync now passes, an over-20 KB save still fails as `invalid_protocol`, and a huge account password reports `invalid_protocol` instead of the confusing transport-size error.
+- Validation so far: `node --check apps/worker/src/protocol.js`, `node --test tests/server.test.mjs`, `npm run worker:check`, `npm run typecheck`, `npm test`, `npm run worker:types`, `npm run build`, `npm run smoke:online-local`, and `npx prettier --check apps/worker/src/protocol.js tests/server.test.mjs` passed. Broad `npm run format` still fails on pre-existing `apps/server/src/index.js`, `script.js`, and untracked `INFERNODRIFT4_CHAT_HANDOFF.md`.

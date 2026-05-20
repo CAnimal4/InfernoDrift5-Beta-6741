@@ -242,6 +242,45 @@ test("protocol accepts known messages and rejects unknown messages", () => {
   assert.equal(
     validateClientMessage(
       JSON.stringify({
+        type: "save.sync",
+        schemaVersion: 2,
+        payload: {
+          progressionV2: {
+            totalXp: 9200,
+            medals: { race: "gold", "battle-arena": "silver" },
+          },
+          garage: { activeLoadoutId: "loadout-a" },
+          localProgressBlob: "x".repeat(4500),
+        },
+      }),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    validateClientMessage(
+      JSON.stringify({
+        type: "save.sync",
+        schemaVersion: 2,
+        payload: { localProgressBlob: "x".repeat(20100) },
+      }),
+    ).error,
+    "invalid_protocol",
+  );
+  assert.equal(
+    validateClientMessage(
+      JSON.stringify({
+        type: "auth.account",
+        mode: "auto",
+        username: "Drifter",
+        password: "x".repeat(5000),
+        age: 13,
+      }),
+    ).error,
+    "invalid_protocol",
+  );
+  assert.equal(
+    validateClientMessage(
+      JSON.stringify({
         type: "feedback.submit",
         feedbackType: "bug",
         message: "The jump replay clipped through the arena wall.",

@@ -1,5 +1,7 @@
 export const PROTOCOL_VERSION = 1;
-export const MESSAGE_LIMIT_BYTES = 4096;
+// Save syncs can legitimately carry progression, garage, and control state.
+// Keep the transport cap aligned above validateSafePayload's 20 KB limit.
+export const MESSAGE_LIMIT_BYTES = 24576;
 
 export const QUICK_CHAT = new Set([
   "Nice drift!",
