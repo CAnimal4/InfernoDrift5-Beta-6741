@@ -294,6 +294,7 @@ const icon16 = encodePng(resize(cleaned, 16));
 fs.writeFileSync("icon-512.png", icon512);
 fs.writeFileSync("icon-192.png", icon192);
 fs.writeFileSync("icon-64.png", icon64);
+fs.writeFileSync("icon-48.png", icon48);
 writeIco([
   { size: 16, bytes: icon16 },
   { size: 32, bytes: icon32 },

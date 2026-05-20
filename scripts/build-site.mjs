@@ -14,9 +14,12 @@ for (const file of [
   "manifest.webmanifest",
   "icon.svg",
   "favicon.ico",
+  "icon-48.png",
   "icon-192.png",
   "icon-512.png",
   "icon-64.png",
+  "robots.txt",
+  "sitemap.xml",
   "sw.js",
 ]) {
   const source = path.join(root, file);
