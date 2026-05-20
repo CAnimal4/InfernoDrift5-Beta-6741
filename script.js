@@ -2120,6 +2120,7 @@ const onlineState = {
   recentPlayers: [],
   remoteSnapshots: [],
   roomShared: false,
+  roomSharePending: false,
   lastModerationStatus: "",
   moderationAction: null,
   pending: [],
@@ -4960,8 +4961,10 @@ function handleOnlineMessage(raw) {
     onlineState.roomShared = Boolean(
       onlineState.room?.sharedBy?.includes?.(onlineState.user?.id),
     );
+    if (onlineState.roomShared) onlineState.roomSharePending = false;
     if (previousCode && onlineState.room?.code !== previousCode) {
       onlineState.roomShared = false;
+      onlineState.roomSharePending = false;
     }
     if (onlineState.room?.mode && MODE_BY_ID[onlineState.room.mode]) {
       const joinedNewRoom = Boolean(
@@ -4989,6 +4992,7 @@ function handleOnlineMessage(raw) {
     onlineState.room = null;
     onlineState.queue = null;
     onlineState.roomShared = false;
+    onlineState.roomSharePending = false;
     onlineState.remoteSnapshots = [];
     setRemoteHumanPlayers([]);
   } else if (message.type === "chat.message") {
@@ -5052,6 +5056,7 @@ function handleOnlineMessage(raw) {
       quick: true,
     });
   } else if (message.type === "room.shared") {
+    onlineState.roomSharePending = false;
     onlineState.roomShared =
       message.status === "shared" || message.status === "already_shared";
     updateOnlineUi();
@@ -5069,6 +5074,7 @@ function handleOnlineMessage(raw) {
     updateRemoteSnapshotsFromMatch();
   } else if (message.type === "error") {
     const error = message.error || "online_error";
+    if (onlineState.roomSharePending) onlineState.roomSharePending = false;
     if (error === "account_banned") {
       onlineState.onlineRestrictedUntil = message.until || "active";
     }
@@ -5723,10 +5729,14 @@ function updateOnlineUi() {
   }
   if (onlineShareRoom) {
     onlineShareRoom.disabled =
-      !onlineState.room?.code || onlineState.roomShared;
+      !onlineState.room?.code ||
+      onlineState.roomShared ||
+      onlineState.roomSharePending;
     onlineShareRoom.textContent = onlineState.roomShared
       ? "Shared"
-      : "Share Code";
+      : onlineState.roomSharePending
+        ? "Sharing..."
+        : "Share Code";
   }
   if (onlineRoomState) {
     const room = onlineState.room;
@@ -16985,7 +16995,17 @@ bindPressAction(onlineShareRoom, () => {
     updateOnlineUi();
     return;
   }
-  sendOnlineMessage({ type: "room.share" }, { queue: false });
+  if (onlineState.roomShared || onlineState.roomSharePending) return;
+  onlineState.roomSharePending = true;
+  updateOnlineUi();
+  const sent = sendOnlineMessage(
+    { type: "room.share", code: onlineState.room.code },
+    { queue: false },
+  );
+  if (!sent) {
+    onlineState.roomSharePending = false;
+    updateOnlineUi();
+  }
 });
 bindPressAction(onlinePopoutChat, () => setChatPopoutOpen(true));
 bindPressAction(chatPopoutClose, () => setChatPopoutOpen(false));
@@ -17958,6 +17978,7 @@ window.render_game_to_text = () => {
             playlist: onlineState.room.playlist,
             host: onlineState.room.host || onlineState.room.hostUserId || "",
             shared: Boolean(onlineState.roomShared),
+            sharePending: Boolean(onlineState.roomSharePending),
             sharedBy: onlineState.room.sharedBy || [],
             routingId: onlineState.room.routingId || onlineState.room.id,
             size: onlineState.room.size,

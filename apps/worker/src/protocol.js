@@ -561,7 +561,12 @@ export function validateClientMessage(raw) {
     }
   }
   if (data.type === "room.share") {
-    if (!onlyKeys(data, new Set(["type"]))) {
+    const keys = new Set(["type", "code", "roomCode"]);
+    if (
+      !onlyKeys(data, keys) ||
+      (hasOwn(data, "code") && !PRIVATE_CODE_PATTERN.test(data.code)) ||
+      (hasOwn(data, "roomCode") && !PRIVATE_CODE_PATTERN.test(data.roomCode))
+    ) {
       error = "invalid_protocol";
     }
   }

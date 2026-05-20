@@ -56,9 +56,9 @@ try {
   assert.equal(secondRoom.room.mode, "boost-bowling");
   assert.notEqual(secondRoom.room.code, code);
 
-  host.send({ type: "room.share" });
+  host.send({ type: "room.share", code });
   await host.waitFor("room.shared", (message) => message.status === "shared");
-  host.send({ type: "room.share" });
+  host.send({ type: "room.share", code });
   await host.waitFor(
     "room.shared",
     (message) => message.status === "already_shared",

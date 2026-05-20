@@ -209,7 +209,11 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("room.join"),
     code: z.string().min(4).max(10),
   }),
-  z.object({ type: z.literal("room.share") }),
+  z.object({
+    type: z.literal("room.share"),
+    code: z.string().min(4).max(10).optional(),
+    roomCode: z.string().min(4).max(10).optional(),
+  }),
   z.object({ type: z.literal("room.leave") }),
   z.object({
     type: z.literal("queue.join"),

@@ -131,6 +131,12 @@ test("protocol accepts known messages and rejects unknown messages", () => {
   );
   assert.equal(
     validateClientMessage(
+      JSON.stringify({ type: "room.share", code: "ABCD12" }),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    validateClientMessage(
       JSON.stringify({ type: "quick.send", text: "custom taunt" }),
     ).error,
     "invalid_quick_chat",
