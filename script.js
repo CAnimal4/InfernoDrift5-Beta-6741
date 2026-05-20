@@ -5754,7 +5754,9 @@ function openChatCommand(mode) {
 }
 
 function openDirectMessageThread(player = {}) {
-  const username = sanitizeRemoteUsername(player.username || player.name || "");
+  const username = sanitizeOptionalRemoteUsername(
+    player.username || player.name || "",
+  );
   if (!username) return;
   onlineState.chatMode = "dm";
   onlineState.chatOpen = true;
@@ -5765,7 +5767,7 @@ function openDirectMessageThread(player = {}) {
 }
 
 function submitReportCommand(username, reason) {
-  const cleanUsername = sanitizeRemoteUsername(username || "");
+  const cleanUsername = sanitizeOptionalRemoteUsername(username || "");
   const cleanReason = String(reason || "Chat command report")
     .trim()
     .slice(0, 180);
@@ -5811,7 +5813,7 @@ function sendFreeChat(text) {
   if (!clean) return;
   const command = clean.toLowerCase();
   if (command === "/dm" || command.startsWith("/dm ")) {
-    const username = sanitizeRemoteUsername(clean.slice(3).trim());
+    const username = sanitizeOptionalRemoteUsername(clean.slice(3).trim());
     if (username) openDirectMessageThread({ username });
     else openChatCommand("dm");
     if (onlineChatInput) onlineChatInput.value = "";
@@ -5819,7 +5821,7 @@ function sendFreeChat(text) {
     return;
   }
   if (command === "/report" || command.startsWith("/report ")) {
-    const username = sanitizeRemoteUsername(clean.slice(7).trim());
+    const username = sanitizeOptionalRemoteUsername(clean.slice(7).trim());
     onlineState.reportUsername = username;
     onlineState.reportReason = "";
     openChatCommand("report");
@@ -8129,6 +8131,15 @@ function sanitizeRemoteUsername(value) {
       .replace(/[^a-z0-9 _.-]/gi, "")
       .slice(0, 18) || "Player"
   );
+}
+
+function sanitizeOptionalRemoteUsername(value) {
+  return String(value ?? "")
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[^a-z0-9 _.-]/gi, "")
+    .slice(0, 18);
 }
 
 function sanitizeBadgeLabel(value) {
@@ -17756,7 +17767,9 @@ chatNotice?.addEventListener("click", (event) => {
 bindPressAction(onlineChatSend, () => sendFreeChat(onlineChatInput?.value));
 bindPressAction(chatPopoutSend, () => sendFreeChat(chatPopoutInput?.value));
 bindPressAction(onlineAddFriend, () => {
-  const username = sanitizeRemoteUsername(onlineFriendName?.value || "");
+  const username = sanitizeOptionalRemoteUsername(
+    onlineFriendName?.value || "",
+  );
   if (!username) return;
   sendOnlineMessage({ type: "friend.request", username });
   if (onlineFriendName) onlineFriendName.value = "";
