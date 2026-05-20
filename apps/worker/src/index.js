@@ -1913,9 +1913,8 @@ export class InfernoRoom {
     );
   }
 
-  chatChannelForSession(session) {
-    const room = this.roomForSession(session);
-    return session?.inRoom && room ? `room:${room.code}` : "lobby";
+  chatChannelForSession() {
+    return "lobby";
   }
 
   directChatChannel(userA = "", userB = "") {
@@ -2643,11 +2642,7 @@ export class InfernoRoom {
       send(session.ws, payload);
       if (direct.targetSession) send(direct.targetSession.ws, payload);
     } else {
-      this.broadcast(payload, "", session.user.id, {
-        roomOnly: session.inRoom,
-        channel,
-        roomCode: session.roomCode,
-      });
+      this.broadcast(payload, "", session.user.id, { channel });
     }
   }
 
@@ -2703,11 +2698,7 @@ export class InfernoRoom {
       send(session.ws, payload);
       if (direct.targetSession) send(direct.targetSession.ws, payload);
     } else {
-      this.broadcast(payload, "", session.user.id, {
-        roomOnly: session.inRoom,
-        channel,
-        roomCode: session.roomCode,
-      });
+      this.broadcast(payload, "", session.user.id, { channel });
     }
     return { ok: true, message: payload };
   }

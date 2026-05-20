@@ -221,3 +221,10 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Removed noisy per-frame `input.accepted` acknowledgements that could queue ahead of `room.shared`, and made room-share chat/ack broadcast before D1/persistence work so the code appears immediately.
 - Added regression coverage that creates a room, sends 70 valid live input frames, shares the room code, receives `room.shared`, and does not receive per-frame `input.accepted` spam.
 - Validation so far: `node --check apps/server/src/index.js`, `node --check apps/worker/src/index.js`, `node --check smoke_online_local.mjs`, `node --test tests/server.test.mjs`, `npm run typecheck`, `npm test`, `npm run smoke:online-local`, and `npm run worker:check` passed.
+
+2026-05-20 global main-chat history fix:
+
+- Investigated the report that main-chat messages from 8:40-8:45 were not visible to a user logging in at 8:50. Root cause: when a player was inside a private room, non-DM chat was stored as a room-specific channel (`room:CODE`) and only that room's history saw it.
+- Changed non-DM chat in both local Node and Cloudflare Worker backends to always use the global `lobby` channel and broadcast globally, regardless of private-room membership. DMs remain private/direct.
+- Added regression coverage proving a user can chat while inside a private room, then a later user can sign in without joining the room and receive that message in `chat.history` within the 30-minute window.
+- Validation so far: `node --check apps/server/src/index.js`, `node --check apps/worker/src/index.js`, `node --test tests/server.test.mjs`, `npm run typecheck`, `npm test`, `npm run smoke:online-local`, and `npm run worker:check` passed.

@@ -1900,6 +1900,13 @@ test("online stress covers leaderboard, rooms, friends, chat, reports, feedback,
   );
   const lateJoin = await makeWsClient(port);
   await signIn(lateJoin, "StressLate", "stress-late-pass");
+  await waitForMessage(
+    lateJoin.messages,
+    (msg) =>
+      msg.type === "chat.history" &&
+      msg.channel === "lobby" &&
+      msg.messages?.some((message) => message.text === "hello room"),
+  );
   lateJoin.ws.send(
     JSON.stringify({ type: "room.join", code: alphaRoom.room.code }),
   );

@@ -1655,9 +1655,8 @@ export function createInfernoServer(options = {}) {
     });
   }
 
-  function chatChannelForClient(client) {
-    const room = client?.roomId ? rooms.get(client.roomId) : null;
-    return room ? `room:${room.code || room.id}` : "lobby";
+  function chatChannelForClient() {
+    return "lobby";
   }
 
   function directChatChannel(userA = "", userB = "") {
@@ -2848,12 +2847,9 @@ export function createInfernoServer(options = {}) {
           const direct = resolveDirectChatTarget(client, msg);
           if (!direct.ok)
             return send(ws, { type: "error", error: direct.error });
-          const room = rooms.get(client.roomId);
           const channel = direct.direct
             ? direct.channel
-            : room
-              ? `room:${room.code || room.id}`
-              : "lobby";
+            : chatChannelForClient(client);
           const payload = {
             type: "chat.message",
             from: client.user.username,
@@ -2887,8 +2883,7 @@ export function createInfernoServer(options = {}) {
           if (direct.direct) {
             send(ws, payload);
             if (direct.targetClient) send(direct.targetClient.ws, payload);
-          } else if (room) broadcast(room, payload, client.user.id);
-          else broadcastAll(payload, client.user.id);
+          } else broadcastAll(payload, client.user.id);
           return;
         }
 
