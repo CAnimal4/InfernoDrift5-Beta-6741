@@ -200,3 +200,9 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Added client `/dm` and `/report` command handling in the existing chat popout. `/dm` opens friend/non-friend direct-message selection, direct messages show as filtered private threads, incoming DMs raise a click-to-open notice, and `/report` opens a report form that submits to backend moderation.
 - Local Node backend and Cloudflare Worker now allow DMs to non-friend usernames unless blocked, preserve direct-message metadata in live chat state, and include recent chat from the reported player, including DM channels, in report emails to `aidan.dwight@lbusd.org` and `clark.alden@lbusd.org`.
 - Focused validation so far: `node --check script.js`, `node --check apps/server/src/index.js`, `node --check apps/worker/src/index.js`, and `npm test` passed.
+
+2026-05-19 invalid-protocol chat spam fix:
+
+- Reproduced the recurring `System · Quick: invalid protocol` message by joining a Battle Arena room, sharing the room code, resuming play, and capturing WebSocket payloads. The share message was valid; the repeated invalid packets were `input.frame` messages carrying `trick: ""`.
+- Fixed the client to omit empty optional payload fields before sending live room input frames and DM packets, so optional strings no longer violate the Worker protocol schema.
+- Re-ran the same reproduction and confirmed `invalidCount: 0`; chat showed only the intended room invite. Validation passed: `node --check script.js`, `npm test`, `npm run typecheck`, `npm run build`, `npm run smoke:online-local`, `npm run worker:check`, `npm run worker:types`, `npm run format`, and `npm run smoke`.

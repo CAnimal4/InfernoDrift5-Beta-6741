@@ -5516,13 +5516,23 @@ function updateRemoteSnapshotsFromMatch() {
   );
 }
 
+function removeEmptyPayloadFields(payload) {
+  Object.keys(payload).forEach((key) => {
+    if (payload[key] === "") delete payload[key];
+  });
+  return payload;
+}
+
 function sendOnlineInputFrame(dt = 1 / 60) {
   if (!isOnlineSocketOpen() || !onlineState.room || !state.running) return;
   onlineState.inputSeq += 1;
   if (onlineState.inputSeq % 4 !== 0) return;
   const battle = state.modeRun?.battle || {};
+  const trickId = state.modeRun?.stunt?.trick
+    ? state.modeRun.stunt.trick.toLowerCase().replace(/[^a-z0-9-]+/g, "-")
+    : "";
   sendOnlineMessage(
-    {
+    removeEmptyPayloadFields({
       type: "input.frame",
       seq: onlineState.inputSeq,
       dt: Number(Math.min(0.12, Math.max(0, dt)).toFixed(3)),
@@ -5540,9 +5550,7 @@ function sendOnlineInputFrame(dt = 1 / 60) {
       airborne: isCarAirborne(player),
       backflip: Boolean(player.backflipActive),
       barrelRoll: Boolean(player.barrelRollActive),
-      trick: state.modeRun?.stunt?.trick
-        ? state.modeRun.stunt.trick.toLowerCase().replace(/[^a-z0-9-]+/g, "-")
-        : "",
+      trick: trickId,
       shield: Number(
         Math.max(state.shield || 0, (battle.shield || 0) / 5).toFixed(2),
       ),
@@ -5569,7 +5577,7 @@ function sendOnlineInputFrame(dt = 1 / 60) {
         airborne: isCarAirborne(player),
         speed: Math.round(Math.abs(player.speed) * SPEED_TO_MPH_MULT),
       },
-    },
+    }),
     { queue: false },
   );
 }
@@ -5834,11 +5842,11 @@ function sendFreeChat(text) {
   }
   const directTarget =
     onlineState.chatMode === "dm" && onlineState.activeDmUsername
-      ? {
+      ? removeEmptyPayloadFields({
           channel: "friend",
           username: onlineState.activeDmUsername,
           userId: onlineState.activeDmUserId,
-        }
+        })
       : { channel: "lobby" };
   const sent = sendOnlineMessage(
     {
@@ -5887,11 +5895,11 @@ async function sendHttpChat(text) {
           text,
           age: onlineState.age,
           ...(onlineState.chatMode === "dm" && onlineState.activeDmUsername
-            ? {
+            ? removeEmptyPayloadFields({
                 channel: "friend",
                 username: onlineState.activeDmUsername,
                 userId: onlineState.activeDmUserId,
-              }
+              })
             : {}),
         }),
       },
