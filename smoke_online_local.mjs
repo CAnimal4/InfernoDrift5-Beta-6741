@@ -128,8 +128,6 @@ try {
     cosmetics: { paintId: "red-hot", glowId: "cyan" },
     client: { x: 4, y: 2, z: -9, speed: 82, heading: 0.8 },
   });
-  const inputAccepted = await host.waitFor("input.accepted");
-  assert.equal(inputAccepted.tick, 1);
   const snapshot = await guest.waitFor("match.snapshot");
   assert.ok(
     snapshot.players.some(

@@ -2630,7 +2630,10 @@ export function createInfernoServer(options = {}) {
         if (!client) return;
         const msg = parsed.data;
 
-        if (!checkRate(client, "protocol", 60, 10_000)) {
+        if (
+          msg.type !== "input.frame" &&
+          !checkRate(client, "protocol", 60, 10_000)
+        ) {
           return send(ws, { type: "error", error: "rate_limited" });
         }
 
@@ -2808,7 +2811,7 @@ export function createInfernoServer(options = {}) {
             },
           };
           pruneChatMessages();
-          db.data.chatMessages.push({
+          const chatRow = {
             id: randomUUID(),
             channel: "lobby",
             from: payload.from,
@@ -2818,11 +2821,12 @@ export function createInfernoServer(options = {}) {
             text: payload.text,
             quick: true,
             createdAt: payload.at,
-          });
-          db.save();
+          };
+          db.data.chatMessages.push(chatRow);
           broadcastAll(payload, client.user.id);
           send(ws, { type: "room.shared", code: room.code, status: "shared" });
           broadcast(room, roomSnapshot(room));
+          db.save();
           return;
         }
 
@@ -2891,7 +2895,6 @@ export function createInfernoServer(options = {}) {
         if (msg.type === "input.frame") {
           const input = sanitizeLiveInput(msg);
           client.latestInput = input;
-          send(ws, { type: "input.accepted", tick: input.tick });
           const room = rooms.get(client.roomId);
           if (room) {
             broadcast(room, {

@@ -2316,7 +2316,10 @@ export class InfernoRoom {
     if (!parsed.ok)
       return send(session.ws, { type: "error", error: parsed.error });
     const msg = parsed.data;
-    if (!this.checkRate(session, "protocol", 60, 10_000)) {
+    if (
+      msg.type !== "input.frame" &&
+      !this.checkRate(session, "protocol", 60, 10_000)
+    ) {
       return send(session.ws, { type: "error", error: "rate_limited" });
     }
     if (msg.type === "ping") {
@@ -2527,10 +2530,6 @@ export class InfernoRoom {
     }
     if (msg.type === "input.frame") {
       session.latestInput = sanitizeLiveInput(msg);
-      send(session.ws, {
-        type: "input.accepted",
-        tick: session.latestInput.tick,
-      });
       const room = this.roomForSession(session);
       if (room)
         this.broadcast(this.matchSnapshot(room), id, "", {
@@ -2764,8 +2763,6 @@ export class InfernoRoom {
       createdAt: payload.at,
     };
     this.data.chatMessages.push(chatRow);
-    await writeChatMessageToD1(this.env, chatRow).catch(() => false);
-    await this.persist();
     this.broadcast(payload, "", session.user.id, { channel: "lobby" });
     send(session.ws, {
       type: "room.shared",
@@ -2773,6 +2770,10 @@ export class InfernoRoom {
       status: "shared",
     });
     this.broadcast(this.roomSnapshot(room), "", "", { roomCode: room.code });
+    Promise.all([
+      writeChatMessageToD1(this.env, chatRow).catch(() => false),
+      this.persist(),
+    ]).catch(() => {});
   }
 
   async handleSaveSync(session, msg) {

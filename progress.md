@@ -213,3 +213,11 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Raised the shared Worker/local protocol transport cap to 24 KB while keeping `save.sync` payload validation at 20 KB.
 - Added regression coverage proving a 4.5 KB progress/save sync now passes, an over-20 KB save still fails as `invalid_protocol`, and a huge account password reports `invalid_protocol` instead of the confusing transport-size error.
 - Validation so far: `node --check apps/worker/src/protocol.js`, `node --test tests/server.test.mjs`, `npm run worker:check`, `npm run typecheck`, `npm test`, `npm run worker:types`, `npm run build`, `npm run smoke:online-local`, and `npx prettier --check apps/worker/src/protocol.js tests/server.test.mjs` passed. Broad `npm run format` still fails on pre-existing `apps/server/src/index.js`, `script.js`, and untracked `INFERNODRIFT4_CHAT_HANDOFF.md`.
+
+2026-05-20 room share rate-limit fix:
+
+- Investigated the private-room Share Code button returning `rate_limited`. The backend was counting every `input.frame` live gameplay packet against the same generic `"protocol"` bucket as command messages, so normal room gameplay could exhaust the 60-per-10s command budget before `room.share` arrived.
+- Updated both the local Node backend and Cloudflare Worker to exempt validated `input.frame` messages from the generic command protocol bucket while preserving the dedicated `room-share`, chat, social, save, moderation, report, and feedback limits.
+- Removed noisy per-frame `input.accepted` acknowledgements that could queue ahead of `room.shared`, and made room-share chat/ack broadcast before D1/persistence work so the code appears immediately.
+- Added regression coverage that creates a room, sends 70 valid live input frames, shares the room code, receives `room.shared`, and does not receive per-frame `input.accepted` spam.
+- Validation so far: `node --check apps/server/src/index.js`, `node --check apps/worker/src/index.js`, `node --check smoke_online_local.mjs`, `node --test tests/server.test.mjs`, `npm run typecheck`, `npm test`, `npm run smoke:online-local`, and `npm run worker:check` passed.

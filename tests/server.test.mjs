@@ -659,10 +659,42 @@ test("websocket backend supports two clients, chat filtering, and private join",
   a.ws.send(JSON.stringify({ type: "room.create", mode: "casual", size: 2 }));
   await new Promise((resolve) => setTimeout(resolve, 120));
   const code = a.messages.find((msg) => msg.type === "room.snapshot").room.code;
+  for (let seq = 0; seq < 70; seq += 1) {
+    a.ws.send(
+      JSON.stringify({
+        type: "input.frame",
+        seq,
+        dt: 0.016,
+        x: seq * 0.1,
+        y: 0,
+        z: seq * 0.1,
+        speed: 42,
+        heading: 0,
+        airborne: false,
+        throttle: 1,
+        steer: 0,
+        drift: false,
+        boost: false,
+        jump: false,
+        client: {
+          x: seq * 0.1,
+          y: 0,
+          z: seq * 0.1,
+          speed: 42,
+          heading: 0,
+          airborne: false,
+        },
+      }),
+    );
+  }
   a.ws.send(JSON.stringify({ type: "room.share" }));
   await waitForMessage(
     a.messages,
     (msg) => msg.type === "room.shared" && msg.status === "shared",
+  );
+  assert.equal(
+    a.messages.some((msg) => msg.type === "input.accepted"),
+    false,
   );
   a.ws.send(JSON.stringify({ type: "room.share" }));
   await waitForMessage(
