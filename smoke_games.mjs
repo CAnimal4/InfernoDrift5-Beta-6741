@@ -173,7 +173,7 @@ let onlineUiState = JSON.parse(
 assert.equal(onlineUiState.ui.tab, "online");
 assert.equal(onlineUiState.online.username, smokeUsername);
 assert.equal(onlineUiState.online.ageGate.under13QuickChatOnly, true);
-assert.equal(await page.locator("#online-chat-input").isDisabled(), true);
+assert.equal(await page.locator("#online-chat-input").isDisabled(), false);
 await page.locator("#online-friend-name").fill("");
 await page.locator("#online-friend-name").focus();
 await page.keyboard.type("cfh");
@@ -209,6 +209,22 @@ onlineUiState = JSON.parse(
 );
 assert.equal(onlineUiState.online.chat.popoutOpen, true);
 assert.equal(await page.locator("#chat-popout").isVisible(), true);
+await page.locator("#chat-popout-input").fill("/dm");
+await page.locator("#chat-popout-send").click({ force: true });
+await page.waitForTimeout(120);
+onlineUiState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
+assert.equal(onlineUiState.online.chat.mode, "dm");
+assert.equal(await page.locator("#chat-command-panel").isVisible(), true);
+await page.locator("#chat-popout-input").fill("/report");
+await page.locator("#chat-popout-send").click({ force: true });
+await page.waitForTimeout(120);
+onlineUiState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
+assert.equal(onlineUiState.online.chat.mode, "report");
+assert.equal(await page.locator("#chat-command-panel").isVisible(), true);
 await page.locator("#menu-feedback").click({ force: true });
 await page.waitForTimeout(150);
 assert.equal(

@@ -6437,9 +6437,19 @@ function updateOnlineUi() {
   }
   [onlineChatInput, chatPopoutInput, onlineChatSend, chatPopoutSend].forEach(
     (node) => {
-      if (node) node.disabled = !chatAllowed;
+      if (node) node.disabled = false;
     },
   );
+  if (onlineChatInput) {
+    onlineChatInput.placeholder = chatAllowed
+      ? "13+ free chat, /dm, /report"
+      : "Quick chat only, /report";
+  }
+  if (chatPopoutInput) {
+    chatPopoutInput.placeholder = chatAllowed
+      ? "13+ free chat, /dm, /report"
+      : "Quick chat only, /report";
+  }
   if (onlineConnect) onlineConnect.disabled = connected;
   if (onlineDisconnect) onlineDisconnect.disabled = !onlineState.socket;
   if (onlineClaim) onlineClaim.disabled = false;
