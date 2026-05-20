@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://canimal4.github.io/InfernoDrift4/sitemap.xml
+Sitemap: https://canimal4.github.io/InfernoDrift/sitemap.xml

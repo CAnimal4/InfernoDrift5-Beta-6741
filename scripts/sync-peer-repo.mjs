@@ -40,19 +40,19 @@ function isBinary(buffer) {
 function transformTextForTarget(text, targetRepo) {
   if (targetRepo === "InfernoDrift") {
     return text
-      .replaceAll("https://canimal4.github.io/InfernoDrift4/", "https://canimal4.github.io/InfernoDrift/")
+      .replaceAll("https://canimal4.github.io/InfernoDrift/", "https://canimal4.github.io/InfernoDrift/")
       .replace(/https:\/\/canimal4\.github\.io\/InfernoDrift4(?![0-9A-Za-z_-])/g, "https://canimal4.github.io/InfernoDrift")
-      .replaceAll("/InfernoDrift4/", "/InfernoDrift/")
+      .replaceAll("/InfernoDrift/", "/InfernoDrift/")
       .replace(/github\.com\/CAnimal4\/InfernoDrift4(?![0-9A-Za-z_-])/g, "github.com/CAnimal4/InfernoDrift")
       .replace(/CAnimal4\/InfernoDrift4(?![0-9A-Za-z_-])/g, "CAnimal4/InfernoDrift");
   }
   if (targetRepo === "InfernoDrift4") {
     return text
-      .replaceAll("https://canimal4.github.io/InfernoDrift/", "https://canimal4.github.io/InfernoDrift4/")
-      .replace(/https:\/\/canimal4\.github\.io\/InfernoDrift(?![0-9A-Za-z_-])/g, "https://canimal4.github.io/InfernoDrift4")
-      .replaceAll("/InfernoDrift/", "/InfernoDrift4/")
-      .replace(/github\.com\/CAnimal4\/InfernoDrift(?![0-9A-Za-z_-])/g, "github.com/CAnimal4/InfernoDrift4")
-      .replace(/CAnimal4\/InfernoDrift(?![0-9A-Za-z_-])/g, "CAnimal4/InfernoDrift4");
+      .replaceAll("https://canimal4.github.io/InfernoDrift/", "https://canimal4.github.io/InfernoDrift/")
+      .replace(/https:\/\/canimal4\.github\.io\/InfernoDrift(?![0-9A-Za-z_-])/g, "https://canimal4.github.io/InfernoDrift")
+      .replaceAll("/InfernoDrift/", "/InfernoDrift/")
+      .replace(/github\.com\/CAnimal4\/InfernoDrift(?![0-9A-Za-z_-])/g, "github.com/CAnimal4/InfernoDrift")
+      .replace(/CAnimal4\/InfernoDrift(?![0-9A-Za-z_-])/g, "CAnimal4/InfernoDrift");
   }
   throw new Error(`Unsupported target repository: ${targetRepo}`);
 }

@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   root: "client",
-  base: "/InfernoDrift4/",
+  base: "/InfernoDrift/",
   plugins: [react()],
   build: {
     outDir: "../dist",

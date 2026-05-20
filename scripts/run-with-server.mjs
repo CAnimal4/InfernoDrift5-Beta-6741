@@ -82,7 +82,7 @@ const server = http.createServer((request, response) => {
     response.end(data);
   });
 });
-const url = `http://127.0.0.1:${port}/InfernoDrift4/`;
+const url = `http://127.0.0.1:${port}/InfernoDrift/`;
 
 try {
   server.listen(port, "127.0.0.1");
