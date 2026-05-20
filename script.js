@@ -2131,6 +2131,8 @@ const onlineState = {
   lastFeedbackDelivery: "not_configured",
   feedbackEmailConfigured: false,
   chatNoticeTimer: 0,
+  lastSystemMessageText: "",
+  lastSystemMessageAt: 0,
 };
 
 const maxTeamCustomization = {
@@ -5261,6 +5263,17 @@ function pushOnlineChatMessage(message, { notify = true } = {}) {
     quick: Boolean(message.quick),
     at: Number.isFinite(Number(message.at)) ? Number(message.at) : Date.now(),
   };
+  if (clean.from === "System") {
+    const now = Date.now();
+    if (
+      clean.text === onlineState.lastSystemMessageText &&
+      now - onlineState.lastSystemMessageAt < 5000
+    ) {
+      return;
+    }
+    onlineState.lastSystemMessageText = clean.text;
+    onlineState.lastSystemMessageAt = now;
+  }
   onlineState.chatMessages.push(clean);
   onlineState.chatMessages = onlineState.chatMessages.slice(-80);
   const ownUserId = onlineState.user?.id || "";
@@ -16998,10 +17011,7 @@ bindPressAction(onlineShareRoom, () => {
   if (onlineState.roomShared || onlineState.roomSharePending) return;
   onlineState.roomSharePending = true;
   updateOnlineUi();
-  const sent = sendOnlineMessage(
-    { type: "room.share", code: onlineState.room.code },
-    { queue: false },
-  );
+  const sent = sendOnlineMessage({ type: "room.share" }, { queue: false });
   if (!sent) {
     onlineState.roomSharePending = false;
     updateOnlineUi();
