@@ -1246,6 +1246,29 @@ body:has(#school-gate.show) #overlay {
   overflow-wrap: anywhere;
 }
 
+.chat-room-invite {
+  justify-self: start;
+  border: 1px solid rgba(74, 255, 166, 0.34);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(35, 220, 142, 0.14);
+  color: #d7ffe9;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.chat-room-invite:hover:not(:disabled) {
+  background: rgba(35, 220, 142, 0.24);
+}
+
+.chat-room-invite:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
 .online-list {
   display: grid;
   gap: 6px;

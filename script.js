@@ -5320,6 +5320,9 @@ function handleOnlineMessage(raw) {
       moderator: Boolean(message.moderator),
       text: message.text || "",
       quick: Boolean(message.quick),
+      roomCode: message.roomCode || message.roomInvite?.code || "",
+      roomMode: message.roomMode || message.roomInvite?.mode || "",
+      roomInvite: message.roomInvite || null,
       at: message.at ? Date.parse(message.at) || Date.now() : Date.now(),
     });
   } else if (message.type === "chat.history") {
@@ -5333,6 +5336,9 @@ function handleOnlineMessage(raw) {
           moderator: Boolean(entry.moderator),
           text: entry.text || "",
           quick: Boolean(entry.quick),
+          roomCode: entry.roomCode || entry.roomInvite?.code || "",
+          roomMode: entry.roomMode || entry.roomInvite?.mode || "",
+          roomInvite: entry.roomInvite || null,
           at: entry.at ? Date.parse(entry.at) || Date.now() : Date.now(),
         },
         { notify: false },
@@ -5567,6 +5573,7 @@ function showChatNotice(message) {
 }
 
 function pushOnlineChatMessage(message, { notify = true } = {}) {
+  const roomInvite = normalizeRoomInvite(message);
   const clean = {
     from: sanitizeRemoteUsername(message.from || "System"),
     userId: String(message.userId || ""),
@@ -5576,6 +5583,7 @@ function pushOnlineChatMessage(message, { notify = true } = {}) {
       .replace(/[<>]/g, "")
       .slice(0, 180),
     quick: Boolean(message.quick),
+    roomInvite,
     at: Number.isFinite(Number(message.at)) ? Number(message.at) : Date.now(),
   };
   if (clean.from === "System") {
@@ -5601,6 +5609,63 @@ function pushOnlineChatMessage(message, { notify = true } = {}) {
   ) {
     showChatNotice(clean);
   }
+}
+
+function normalizeRoomInvite(message = {}) {
+  const source =
+    message.roomInvite && typeof message.roomInvite === "object"
+      ? message.roomInvite
+      : message;
+  const textMatch = String(message.text || "").match(
+    /\bRoom code\s+([A-Z0-9]{4,10})\b/i,
+  );
+  const code = String(source.code || source.roomCode || textMatch?.[1] || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 10);
+  if (!code) return null;
+  const mode = source.mode || source.roomMode || "";
+  return {
+    code,
+    mode,
+    modeLabel: mode ? getModeDefinition(mode).label : "Private Room",
+    playlist: source.playlist || "",
+    teamSize: Number(source.teamSize) || 0,
+    size: Number(source.size) || 0,
+  };
+}
+
+function joinRoomByCode(code, { source = "manual" } = {}) {
+  const cleanCode = String(code || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 10);
+  if (!cleanCode) return false;
+  if (onlineRoomCode) onlineRoomCode.value = cleanCode;
+  if (onlineState.transport === "http-fallback" || !isOnlineSocketOpen()) {
+    pushOnlineChatMessage({
+      from: "System",
+      text: "Rooms need a live connection. Reconnect online first.",
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
+  const sent = sendOnlineMessage(
+    { type: "room.join", code: cleanCode },
+    { queue: false },
+  );
+  if (sent && source === "invite") {
+    pushOnlineChatMessage({
+      from: "System",
+      text: `Joining room ${cleanCode}...`,
+      quick: true,
+    });
+  }
+  updateOnlineUi();
+  return sent;
 }
 
 function sendQuickChat(text) {
@@ -5721,6 +5786,22 @@ function renderChatLog(target) {
     const text = document.createElement("span");
     text.textContent = message.text;
     row.append(from, text);
+    if (message.roomInvite?.code) {
+      const invite = document.createElement("button");
+      invite.className = "chat-room-invite";
+      invite.type = "button";
+      const currentRoomCode = onlineState.room?.code || "";
+      const isCurrentRoom = currentRoomCode === message.roomInvite.code;
+      invite.textContent = isCurrentRoom
+        ? `In ${message.roomInvite.code}`
+        : `Join ${message.roomInvite.code}`;
+      invite.disabled = isCurrentRoom;
+      invite.title = `Join ${message.roomInvite.modeLabel}`;
+      bindPressAction(invite, () =>
+        joinRoomByCode(message.roomInvite.code, { source: "invite" }),
+      );
+      row.appendChild(invite);
+    }
     target.appendChild(row);
   });
   target.scrollTop = target.scrollHeight;
@@ -17325,8 +17406,7 @@ bindPressAction(onlineJoinRoom, () => {
   const code = String(onlineRoomCode?.value || "")
     .trim()
     .toUpperCase();
-  if (!code) return;
-  sendOnlineMessage({ type: "room.join", code });
+  joinRoomByCode(code);
 });
 bindPressAction(onlineShareRoom, () => {
   if (!onlineState.room?.code) {
@@ -18690,6 +18770,21 @@ window.__infernodriftTestApi = {
     backendUrl: onlineState.backendUrl,
   }),
   runConnectionTest: () => runOnlineConnectionTest(),
+  injectOnlineChatForTest: (message = {}) => {
+    pushOnlineChatMessage({
+      from: message.from || "Tester",
+      userId: message.userId || "test-user",
+      badge: message.badge || "",
+      moderator: Boolean(message.moderator),
+      text: message.text || "",
+      quick: Boolean(message.quick),
+      roomCode: message.roomCode || "",
+      roomMode: message.roomMode || "",
+      roomInvite: message.roomInvite || null,
+    });
+    updateOnlineUi();
+    return onlineState.chatMessages.at(-1) ?? null;
+  },
   setBattleFlagCarrier: (team = "red", carrier = "player") => {
     const flag = getBattleFlag(team);
     const car =

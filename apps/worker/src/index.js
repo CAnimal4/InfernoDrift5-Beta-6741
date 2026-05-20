@@ -2605,6 +2605,15 @@ export class InfernoRoom {
       quick: true,
       at: nowIso(),
       channel: "lobby",
+      roomCode: room.code,
+      roomMode: room.mode,
+      roomInvite: {
+        code: room.code,
+        mode: room.mode,
+        playlist: room.playlist,
+        teamSize: room.teamSize,
+        size: room.size,
+      },
     };
     this.pruneChatMessages();
     const chatRow = {

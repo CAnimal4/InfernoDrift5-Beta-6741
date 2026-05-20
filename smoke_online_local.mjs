@@ -58,6 +58,14 @@ try {
 
   host.send({ type: "room.share" });
   await host.waitFor("room.shared", (message) => message.status === "shared");
+  const invite = await guest.waitFor(
+    "chat.message",
+    (message) =>
+      message.roomCode === code &&
+      message.roomInvite?.code === code &&
+      message.roomInvite?.mode === "battle-arena",
+  );
+  assert.equal(invite.text, `Room code ${code}`);
   host.send({ type: "room.share" });
   await host.waitFor(
     "room.shared",

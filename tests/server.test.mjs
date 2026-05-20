@@ -598,7 +598,11 @@ test("websocket backend supports two clients, chat filtering, and private join",
   );
   assert.ok(
     b.messages.some(
-      (msg) => msg.type === "chat.message" && msg.text === `Room code ${code}`,
+      (msg) =>
+        msg.type === "chat.message" &&
+        msg.text === `Room code ${code}` &&
+        msg.roomCode === code &&
+        msg.roomInvite?.code === code,
     ),
   );
   assert.equal(
@@ -1617,6 +1621,13 @@ test("online stress covers leaderboard, rooms, friends, chat, reports, feedback,
   await waitForMessage(
     alpha.messages,
     (msg) => msg.type === "room.shared" && msg.status === "shared",
+  );
+  await waitForMessage(
+    gamma.messages,
+    (msg) =>
+      msg.type === "chat.message" &&
+      msg.roomCode === alphaRoom.room.code &&
+      msg.roomInvite?.mode === "battle-arena",
   );
   alpha.ws.send(JSON.stringify({ type: "room.share" }));
   await waitForMessage(
