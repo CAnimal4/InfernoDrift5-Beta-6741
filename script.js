@@ -6303,11 +6303,12 @@ function compareLeaderboard(a, b) {
 }
 
 function getLeaderboardTier(row, index = 0) {
-  const xp = getLeaderboardXp(row);
-  if ((index === 0 && xp > 0) || xp >= 5000) return "Inferno";
-  if (xp >= 3000) return "Diamond";
-  if (xp >= 1500) return "Gold";
-  if (xp >= 500) return "Silver";
+  if (!row) return "Bronze";
+  const rank = Math.max(1, Math.floor(Number(index) || 0) + 1);
+  if (rank === 1) return "Inferno";
+  if (rank <= 3) return "Platinum";
+  if (rank <= 6) return "Gold";
+  if (rank <= 10) return "Silver";
   return "Bronze";
 }
 
@@ -18844,7 +18845,10 @@ window.render_game_to_text = () => {
             bots: onlineState.room.bots ?? 0,
           }
         : null,
-      leaderboard: displayLeaderboard.slice(0, 10),
+      leaderboard: displayLeaderboard.slice(0, 10).map((row, index) => ({
+        ...row,
+        tier: getLeaderboardTier(row, index),
+      })),
       leaderboardState: {
         playerRow: onlineState.leaderboardPlayerRow,
         currentPlayerPresent: currentPlayerPresentOnLeaderboard,

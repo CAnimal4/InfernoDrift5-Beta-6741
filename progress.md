@@ -228,3 +228,10 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Changed non-DM chat in both local Node and Cloudflare Worker backends to always use the global `lobby` channel and broadcast globally, regardless of private-room membership. DMs remain private/direct.
 - Added regression coverage proving a user can chat while inside a private room, then a later user can sign in without joining the room and receive that message in `chat.history` within the 30-minute window.
 - Validation so far: `node --check apps/server/src/index.js`, `node --check apps/worker/src/index.js`, `node --test tests/server.test.mjs`, `npm run typecheck`, `npm test`, `npm run smoke:online-local`, and `npm run worker:check` passed.
+
+2026-05-20 leaderboard rank-tier tuning:
+
+- Replaced XP-threshold leaderboard statuses with rank-based badges so only the current #1 row can be `Inferno`.
+- Set ranks #2-#3 to `Platinum`, #4-#6 to `Gold`, #7-#10 to `Silver`, and lower ranks to `Bronze`.
+- Added visual tier styling for Platinum, Silver, and Bronze, and exposed the computed `tier` in `render_game_to_text()` for smoke coverage.
+- Bumped the static `style.css` and `script.js` asset query strings in `index.html` so GitHub Pages clients pull the updated leaderboard code immediately.
