@@ -9,7 +9,7 @@ Play: https://canimal4.github.io/InfernoDrift4/
 - Static client: `index.html`, `script.js`, `style.css`
 - Build output: `npm run build:web` copies the static game and icons into `dist/`
 - React/Vite code in `client/` remains reference/scaffolding only until it passes a future parity gate
-- Local backend and Cloudflare Worker code exist, but hosted online is not live until a real Worker URL is verified
+- Local backend, Replit deployment code, and Cloudflare Worker fallback code exist; hosted Replit online is live only after the Replit URL passes health and WebSocket smoke checks
 
 ## Implemented In The Rescue Surface
 
@@ -68,7 +68,7 @@ npm run test:e2e
 npm run smoke:online-local
 ```
 
-Cloudflare backend checks, when working on online:
+Cloudflare fallback checks, when working on online:
 
 ```bash
 npm run worker:check
@@ -79,7 +79,15 @@ GitHub Pages deploys the `dist/` artifact produced by `npm run build:web`.
 
 ## Online Status
 
-GitHub Pages hosts only the static client. Cloudflare Workers + Durable Objects are the intended hosted backend, but hosted online remains blocked until:
+GitHub Pages hosts only the static client. The primary hosted backend is the Replit Node service at `https://infernodrift4-online.replit.app` / `wss://infernodrift4-online.replit.app/ws`; Cloudflare Workers + Durable Objects remain a fallback at `wss://infernodrift4-online.clarkbythebay.workers.dev/ws`.
+
+Replit online remains blocked until:
+
+- The `infernodrift4-online` Replit app is published from `https://github.com/CAnimal4/InfernoDrift4`.
+- Replit SQL/Postgres provides `DATABASE_URL` for persistent accounts, chat, leaderboard, saves, and social state.
+- `/health`, CORS from `https://canimal4.github.io`, and `INFERNO_ONLINE_SMOKE_URL=wss://infernodrift4-online.replit.app/ws node smoke_online_local.mjs` pass.
+
+Cloudflare fallback remains live only when:
 
 - GitHub secrets `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are configured.
 - The `infernodrift4` D1 database (`830d1cce-a09c-4112-8a28-24b421c4acda`) has remote migrations applied.

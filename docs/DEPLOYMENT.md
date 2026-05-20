@@ -13,7 +13,7 @@ The Pages workflow runs `npm ci`, `npm run typecheck`, `npm run test`, `npm run 
 
 ## Cloudflare Worker Backend
 
-The live online backend is separate from GitHub Pages. Worker source exists in `apps/worker` and is configured by `wrangler.jsonc`.
+The Cloudflare Worker backend is retained as a fallback. Worker source exists in `apps/worker` and is configured by `wrangler.jsonc`.
 
 Required GitHub secrets:
 
@@ -58,6 +58,34 @@ INFERNO_ONLINE_SMOKE_URL=wss://<verified-worker>/ws node smoke_online_local.mjs
 ```
 
 Then verify a two-client room flow from the deployed Pages game.
+
+## Replit Backend
+
+The primary online backend is the Replit Node deployment:
+
+- App name: `infernodrift4-online`
+- HTTP URL: `https://infernodrift4-online.replit.app`
+- WebSocket URL: `wss://infernodrift4-online.replit.app/ws`
+- Source repository: `https://github.com/CAnimal4/InfernoDrift4`
+
+Deployment checklist:
+
+1. Import/connect the GitHub repository in Replit.
+2. Ensure the run command is `npm run dev:server`.
+3. Add Replit SQL/Postgres and configure `DATABASE_URL` as a Replit environment variable or secret.
+4. Set `ALLOWED_ORIGINS` to `https://canimal4.github.io,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:4173,http://127.0.0.1:4173`.
+5. Publish the deployment as `infernodrift4-online`.
+6. Stop before any billing, paid plan, password, token, or security prompt that was not explicitly approved.
+
+Verification:
+
+```bash
+curl https://infernodrift4-online.replit.app/health
+curl -H 'Origin: https://canimal4.github.io' https://infernodrift4-online.replit.app/health
+INFERNO_ONLINE_SMOKE_URL=wss://infernodrift4-online.replit.app/ws node smoke_online_local.mjs
+```
+
+If Replit is blocked, down, or slow, the frontend keeps the Cloudflare Worker fallback and Guest Offline play path available.
 
 ## Manual UI Work
 

@@ -148,6 +148,7 @@ const onlineTestConnection = document.getElementById("online-test-connection");
 const onlineConnectionReport = document.getElementById(
   "online-connection-report",
 );
+const onlineDiagnostics = document.getElementById("online-diagnostics");
 const onlineStatus = document.getElementById("online-status");
 const onlineConnect = document.getElementById("online-connect");
 const onlineDisconnect = document.getElementById("online-disconnect");
@@ -319,21 +320,25 @@ const EXIT_LINK_KEY_CODE = "KeyQ";
 const ONLINE_PROGRESS_SYNC_INTERVAL_MS = 30_000;
 const ONLINE_HEALTH_TIMEOUT_MS = 6000;
 const ONLINE_CONNECT_TIMEOUT_MS = 8000;
-const ONLINE_AUTH_TIMEOUT_MS = 10000;
+const ONLINE_AUTH_TIMEOUT_MS = 8000;
 const ONLINE_WS_PROBE_TIMEOUT_MS = 4500;
 const FEEDBACK_MESSAGE_LIMIT = 2500;
 const DAILY_GIFT_MIN_XP = 100;
 const DAILY_GIFT_MAX_XP = 1000;
 const DAILY_GIFT_STEP_XP = 25;
 const ONLINE_PROTOCOL_VERSION = 1;
+const REPLIT_PRODUCTION_BACKEND_URL =
+  "wss://infernodrift4-online.replit.app/ws";
+const WORKER_FALLBACK_BACKEND_URL =
+  "wss://infernodrift4-online.clarkbythebay.workers.dev/ws";
 const LEGACY_PRODUCTION_BACKEND_URLS = new Set([
-  "wss://infernodrift4-online.clarkbythebay.workers.dev/ws",
+  WORKER_FALLBACK_BACKEND_URL,
   "wss://infernodrift4-online.clarkbythebay.workers.dev/ws?room=global-v2",
+  "wss://infernodrift4-online.clarkbythebay.workers.dev/ws?room=global-v3",
 ]);
-const DEFAULT_PRODUCTION_BACKEND_URL =
-  "wss://infernodrift4-online.clarkbythebay.workers.dev/ws?room=global-v3";
+const DEFAULT_PRODUCTION_BACKEND_URL = REPLIT_PRODUCTION_BACKEND_URL;
 const DEFAULT_LOCAL_BACKEND_URL = "ws://127.0.0.1:8787/ws";
-const DEFAULT_BACKUP_BACKEND_URLS = [];
+const DEFAULT_BACKUP_BACKEND_URLS = [WORKER_FALLBACK_BACKEND_URL];
 const QUICK_CHAT_MESSAGES = [
   "Nice drift!",
   "Defending",
@@ -4295,6 +4300,36 @@ function renderConnectionReport() {
   onlineConnectionReport.textContent = summary;
 }
 
+function renderOnlineDiagnostics() {
+  if (!onlineDiagnostics) return;
+  const baseUrl = deriveHttpBaseUrl(onlineState.backendUrl) || "not configured";
+  const health = onlineState.backendHealth?.ok
+    ? `ok ${onlineState.backendHealth.status || 200}`
+    : describeOnlineError(onlineState.backendHealth?.error || "health_failed");
+  const fallbackAttempted = onlineState.connectionReport.some(
+    (row, index) => index > 0 && (row.health || row.websocket || row.httpFallback),
+  );
+  const wsStatus = isOnlineSocketOpen()
+    ? "connected"
+    : onlineState.transport === "http-fallback"
+      ? "blocked; HTTP fallback"
+      : onlineState.status === "failed" || onlineState.status === "unavailable"
+        ? "unavailable"
+        : onlineState.connectionStage;
+  onlineDiagnostics.textContent = [
+    `Frontend ${window.location.origin || "local file"}`,
+    `ONLINE_BASE ${baseUrl}`,
+    `WS_URL ${onlineState.backendUrl || "not configured"}`,
+    `Health ${health}`,
+    `Auth ${onlineState.user ? onlineState.user.username : onlineState.accountStatus}`,
+    `WebSocket ${wsStatus}`,
+    `Chat ${onlineState.chatSendStatus || (onlineState.user ? "ready" : "offline")}`,
+    `Last error ${onlineState.lastError || onlineState.timeoutReason || "none"}`,
+    `Fallback attempted ${fallbackAttempted ? "yes" : "no"}`,
+    `Offline guest ${onlineState.profileMode === "guest" && !onlineState.user ? "yes" : "no"}`,
+  ].join(" · ");
+}
+
 async function runOnlineConnectionTest({ applyHealthy = true } = {}) {
   onlineState.backendUrl = normalizeOnlineBackendUrl(
     onlineBackendUrlInput?.value || onlineState.backendUrl,
@@ -4360,6 +4395,7 @@ async function runOnlineConnectionTest({ applyHealthy = true } = {}) {
     );
   }
   renderConnectionReport();
+  renderOnlineDiagnostics();
   updateOnlineUi();
   return {
     status: onlineState.connectionTestStatus,
@@ -4520,6 +4556,15 @@ function setStartAccountStatus(text, tone = "info") {
   }
 }
 
+function setOfflineGuestFallbackStatus() {
+  setStartAccountStatus(
+    "Online services are unavailable on this network. You can still play Guest Offline.",
+    "error",
+  );
+  if (startAccountSubmit) startAccountSubmit.textContent = "Retry Online";
+  if (startBtn) startBtn.textContent = "Continue Offline";
+}
+
 function syncStartAccountFields() {
   if (
     startAccountUsername &&
@@ -4578,6 +4623,8 @@ function buildAccountAuthPayload(mode = "auto") {
 }
 
 function submitStartAccount() {
+  if (startAccountSubmit) startAccountSubmit.textContent = "Create / Sign In";
+  if (startBtn) startBtn.textContent = "Play as Guest";
   onlineState.backendUrl = normalizeOnlineBackendUrl(
     onlineBackendUrlInput?.value || onlineState.backendUrl,
   );
@@ -4602,6 +4649,8 @@ function submitStartAccount() {
 }
 
 function startGuestProfile() {
+  if (startAccountSubmit) startAccountSubmit.textContent = "Create / Sign In";
+  if (startBtn) startBtn.textContent = "Play as Guest";
   onlineState.username = makeRandomGuestUsername();
   onlineState.profileMode = "guest";
   onlineState.guestTemporary = true;
@@ -4931,6 +4980,8 @@ async function handleHttpFallbackAuth(authPayload) {
       `Account error: ${describeOnlineError(error?.message || "auth_failed")}`,
       "error",
     );
+    if (startAccountSubmit) startAccountSubmit.textContent = "Retry Online";
+    if (startBtn) startBtn.textContent = "Continue Offline";
     setOnlineStatus(
       "failed",
       "Account connection failed",
@@ -4975,15 +5026,12 @@ async function connectOnline({ reconnect = false } = {}) {
       onlineState.timeoutReason = error;
       setOnlineStatus(
         "unavailable",
-        "Online services unavailable",
+        "Online services are unavailable on this network",
         describeOnlineError(error),
       );
       if (onlineState.pendingStartAfterAuth) {
         onlineState.pendingStartAfterAuth = false;
-        setStartAccountStatus(
-          "Online services are unavailable right now. You can still play as a local guest.",
-          "error",
-        );
+        setOfflineGuestFallbackStatus();
       }
       updateOnlineUi();
       return false;
@@ -5042,10 +5090,7 @@ async function connectOnline({ reconnect = false } = {}) {
         onlineState.authTimer = window.setTimeout(() => {
           onlineState.timeoutReason = "auth_timeout";
           onlineState.pendingStartAfterAuth = false;
-          setStartAccountStatus(
-            "Account sign-in timed out. Try again, or play as a local guest.",
-            "error",
-          );
+          setOfflineGuestFallbackStatus();
           setOnlineStatus(
             "failed",
             "Account connection timed out",
@@ -5424,6 +5469,8 @@ function handleOnlineMessage(raw) {
     updateRemoteSnapshotsFromMatch();
   } else if (message.type === "error") {
     const error = message.error || "online_error";
+    if (onlineState.authTimer) clearTimeout(onlineState.authTimer);
+    onlineState.authTimer = 0;
     if (onlineState.roomSharePending) onlineState.roomSharePending = false;
     if (error === "account_banned") {
       onlineState.onlineRestrictedUntil = message.until || "active";
@@ -5434,6 +5481,8 @@ function handleOnlineMessage(raw) {
         `Account error: ${describeOnlineError(error)}`,
         "error",
       );
+      if (startAccountSubmit) startAccountSubmit.textContent = "Retry Online";
+      if (startBtn) startBtn.textContent = "Continue Offline";
     }
     setOnlineStatus(
       "error",
@@ -6424,6 +6473,7 @@ function updateOnlineUi() {
         : "Test Connection";
   }
   renderConnectionReport();
+  renderOnlineDiagnostics();
   if (onlineUsernameInput && document.activeElement !== onlineUsernameInput) {
     onlineUsernameInput.value = onlineState.username;
   }

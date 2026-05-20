@@ -1958,7 +1958,7 @@ test("http fallback supports account auth, leaderboard, and chat without websock
   const app = createInfernoServer({
     port: 0,
     dataDir: path.join(os.tmpdir(), `id4-http-fallback-${Date.now()}`),
-    allowedOrigins: "http://127.0.0.1:5173",
+    allowedOrigins: "http://127.0.0.1:5173,https://canimal4.github.io",
   });
   const server = await app.listen();
   t.after(async () => {
@@ -1966,6 +1966,106 @@ test("http fallback supports account auth, leaderboard, and chat without websock
   });
   const port = server.address().port;
   const base = `http://127.0.0.1:${port}`;
+  const healthResponse = await fetch(`${base}/health`, {
+    headers: { origin: "https://canimal4.github.io" },
+  });
+  const health = await healthResponse.json();
+  assert.equal(healthResponse.status, 200);
+  assert.equal(health.service, "infernodrift4-online");
+  assert.match(
+    healthResponse.headers.get("access-control-allow-headers") || "",
+    /authorization/,
+  );
+
+  const rootResponse = await fetch(`${base}/`, {
+    headers: { origin: "https://canimal4.github.io" },
+  });
+  const root = await rootResponse.json();
+  assert.equal(rootResponse.status, 200);
+  assert.ok(root.endpoints.includes("/ws"));
+
+  const registerResponse = await fetch(`${base}/auth/register`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "http://127.0.0.1:5173",
+    },
+    body: JSON.stringify({
+      username: "AliasRacer",
+      password: "school-safe-pass",
+      age: 13,
+      deviceId: "http-alias-test",
+    }),
+  });
+  const registered = await registerResponse.json();
+  assert.equal(registerResponse.status, 200);
+  assert.equal(registered.ok, true);
+  assert.ok(registered.sessionToken);
+
+  const duplicateResponse = await fetch(`${base}/auth/register`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "http://127.0.0.1:5173",
+    },
+    body: JSON.stringify({
+      username: "AliasRacer",
+      password: "school-safe-pass",
+      age: 13,
+    }),
+  });
+  const duplicate = await duplicateResponse.json();
+  assert.equal(duplicateResponse.status, 400);
+  assert.equal(duplicate.error, "username_taken");
+
+  const badLoginResponse = await fetch(`${base}/auth/login`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "http://127.0.0.1:5173",
+    },
+    body: JSON.stringify({
+      username: "AliasRacer",
+      password: "wrong-pass",
+      age: 13,
+    }),
+  });
+  const badLogin = await badLoginResponse.json();
+  assert.equal(badLoginResponse.status, 400);
+  assert.equal(badLogin.error, "invalid_credentials");
+
+  const loginResponse = await fetch(`${base}/auth/login`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "http://127.0.0.1:5173",
+    },
+    body: JSON.stringify({
+      username: "AliasRacer",
+      password: "school-safe-pass",
+      age: 13,
+    }),
+  });
+  const login = await loginResponse.json();
+  assert.equal(loginResponse.status, 200);
+  assert.equal(login.user.username, "AliasRacer");
+
+  const leaderboardWriteResponse = await fetch(`${base}/leaderboard`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "http://127.0.0.1:5173",
+    },
+    body: JSON.stringify({
+      sessionToken: login.sessionToken,
+      totalXp: 1234,
+    }),
+  });
+  const leaderboardWrite = await leaderboardWriteResponse.json();
+  assert.equal(leaderboardWriteResponse.status, 200);
+  assert.equal(leaderboardWrite.playerRow.username, "AliasRacer");
+  assert.equal(leaderboardWrite.playerRow.totalXp, 1234);
+
   const authResponse = await fetch(`${base}/api/auth/account`, {
     method: "POST",
     headers: {
@@ -2003,6 +2103,21 @@ test("http fallback supports account auth, leaderboard, and chat without websock
   assert.equal(chat.ok, true);
   assert.equal(chat.message.text, "Hello over HTTPS fallback.");
 
+  const aliasChatResponse = await fetch(`${base}/chat/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "http://127.0.0.1:5173",
+    },
+    body: JSON.stringify({
+      sessionToken: auth.sessionToken,
+      text: "Hello through the public chat alias.",
+    }),
+  });
+  const aliasChat = await aliasChatResponse.json();
+  assert.equal(aliasChatResponse.status, 200);
+  assert.equal(aliasChat.message.text, "Hello through the public chat alias.");
+
   const historyResponse = await fetch(
     `${base}/api/chat/history?sessionToken=${encodeURIComponent(auth.sessionToken)}`,
     { headers: { origin: "http://127.0.0.1:5173" } },
@@ -2018,6 +2133,26 @@ test("http fallback supports account auth, leaderboard, and chat without websock
   const leaderboard = await leaderboardResponse.json();
   assert.equal(leaderboardResponse.status, 200);
   assert.equal(leaderboard.playerRow.username, "HttpFallbackRacer");
+
+  const friendsResponse = await fetch(
+    `${base}/friends?sessionToken=${encodeURIComponent(auth.sessionToken)}`,
+    { headers: { origin: "http://127.0.0.1:5173" } },
+  );
+  const friends = await friendsResponse.json();
+  assert.equal(friendsResponse.status, 200);
+  assert.equal(friends.type, "friends.snapshot");
+
+  const logoutResponse = await fetch(`${base}/auth/logout`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "http://127.0.0.1:5173",
+    },
+    body: JSON.stringify({ sessionToken: login.sessionToken }),
+  });
+  const logout = await logoutResponse.json();
+  assert.equal(logoutResponse.status, 200);
+  assert.equal(logout.ok, true);
 });
 
 test("http feedback endpoint sends through configured Resend transport truthfully", async (t) => {

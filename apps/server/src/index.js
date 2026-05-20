@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID, webcrypto } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import pg from "pg";
 import { WebSocketServer } from "ws";
 import {
   QUICK_CHAT,
@@ -132,6 +133,18 @@ const DAILY_GIFT_STEP_XP = 25;
 const FEEDBACK_MESSAGE_LIMIT = 2500;
 const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const SERVICE_NAME = "infernodrift4-online";
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://canimal4.github.io",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:4173",
+  "http://127.0.0.1:4173",
+];
+const POSTGRES_STATE_TABLE = "infernodrift4_state";
+const POSTGRES_STATE_ID = "default";
 const PLACEHOLDER_SECRET_VALUES = new Set([
   "",
   "not-configured",
@@ -342,7 +355,9 @@ function normalizeDbShape(data) {
   return db;
 }
 
-function loadDb(dataDir) {
+const { Pool } = pg;
+
+function loadJsonDb(dataDir) {
   fs.mkdirSync(dataDir, { recursive: true });
   const file = path.join(dataDir, "infernodrift4-db.json");
   if (!fs.existsSync(file)) {
@@ -350,13 +365,95 @@ function loadDb(dataDir) {
   }
   const db = {
     file,
+    persistence: "local-json",
+    ready: Promise.resolve(),
     data: normalizeDbShape(JSON.parse(fs.readFileSync(file, "utf8"))),
     save() {
       fs.writeFileSync(file, JSON.stringify(this.data, null, 2));
     },
+    close() {},
   };
   db.save();
   return db;
+}
+
+function shouldUsePostgresSsl(connectionString) {
+  if (/^true$/i.test(String(process.env.DATABASE_SSL || ""))) return true;
+  if (/sslmode=require/i.test(connectionString)) return true;
+  try {
+    const url = new URL(connectionString);
+    return /(?:neon\.tech|supabase\.co|render\.com|railway\.app)$/i.test(
+      url.hostname,
+    );
+  } catch {
+    return false;
+  }
+}
+
+function loadPostgresDb(connectionString) {
+  const pool = new Pool({
+    connectionString,
+    max: Math.max(1, Number(process.env.PG_POOL_MAX) || 2),
+    ...(shouldUsePostgresSsl(connectionString)
+      ? { ssl: { rejectUnauthorized: false } }
+      : {}),
+  });
+  const db = {
+    file: `postgres:${POSTGRES_STATE_TABLE}/${POSTGRES_STATE_ID}`,
+    persistence: "postgres-jsonb",
+    data: normalizeDbShape(emptyDb()),
+    savePromise: Promise.resolve(),
+    lastSaveError: "",
+    ready: null,
+    async saveNow() {
+      const serialized = JSON.stringify(this.data);
+      await pool.query(
+        `INSERT INTO ${POSTGRES_STATE_TABLE} (id, data, updated_at)
+         VALUES ($1, $2::jsonb, NOW())
+         ON CONFLICT (id)
+         DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+        [POSTGRES_STATE_ID, serialized],
+      );
+      this.lastSaveError = "";
+    },
+    save() {
+      const write = this.savePromise.then(() => this.saveNow());
+      this.savePromise = write.catch((error) => {
+        this.lastSaveError = error?.message || "postgres_save_failed";
+        console.error("[InfernoDrift4 backend] Postgres save failed", error);
+      });
+      return this.savePromise;
+    },
+    async close() {
+      await this.savePromise;
+      await pool.end();
+    },
+  };
+  db.ready = (async () => {
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS ${POSTGRES_STATE_TABLE} (
+        id TEXT PRIMARY KEY,
+        data JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+    );
+    const result = await pool.query(
+      `SELECT data FROM ${POSTGRES_STATE_TABLE} WHERE id = $1`,
+      [POSTGRES_STATE_ID],
+    );
+    if (result.rows[0]?.data) {
+      db.data = normalizeDbShape(result.rows[0].data);
+    } else {
+      db.data = normalizeDbShape(emptyDb());
+    }
+    await db.save();
+  })();
+  return db;
+}
+
+function loadDb({ dataDir, databaseUrl }) {
+  if (usableSecret(databaseUrl)) return loadPostgresDb(databaseUrl);
+  return loadJsonDb(dataDir);
 }
 
 function claimKey(username) {
@@ -984,9 +1081,12 @@ async function readJsonBody(req, maxBytes = 24_000) {
 
 export function createInfernoServer(options = {}) {
   const port = Number(options.port ?? process.env.PORT ?? 8787);
+  const host = String(options.host ?? process.env.HOST ?? "0.0.0.0");
   const dataDir = options.dataDir ?? process.env.DATA_DIR ?? "./data";
   const allowedOrigins = String(
-    options.allowedOrigins ?? process.env.ALLOWED_ORIGINS ?? "",
+    options.allowedOrigins ??
+      process.env.ALLOWED_ORIGINS ??
+      DEFAULT_ALLOWED_ORIGINS.join(","),
   )
     .split(",")
     .map((origin) => origin.trim())
@@ -994,7 +1094,10 @@ export function createInfernoServer(options = {}) {
   const clarkReservationToken = usableSecret(
     options.clarkReservationToken ?? process.env.CLARK_RESERVATION_TOKEN,
   );
-  const db = loadDb(dataDir);
+  const db = loadDb({
+    dataDir,
+    databaseUrl: options.databaseUrl ?? process.env.DATABASE_URL,
+  });
   const rooms = new Map();
   const clients = new Map();
   const httpRate = new Map();
@@ -1012,7 +1115,7 @@ export function createInfernoServer(options = {}) {
           ? origin
           : "*",
       "access-control-allow-methods": "GET,POST,OPTIONS",
-      "access-control-allow-headers": "content-type",
+      "access-control-allow-headers": "content-type, authorization",
       vary: "Origin",
     };
   }
@@ -1050,8 +1153,17 @@ export function createInfernoServer(options = {}) {
       sessionToken,
       roomId: null,
       rate: new Map(),
-      ws: { send() {} },
+      outbox: [],
+      ws: {
+        OPEN: 1,
+        readyState: 1,
+        send(data) {
+          this.outbox?.push(JSON.parse(data));
+        },
+      },
     };
+    client.ws.outbox = client.outbox;
+    return client;
   }
 
   function clientFromHttpSession(token) {
@@ -1128,6 +1240,207 @@ export function createInfernoServer(options = {}) {
     return { ok: true, message };
   }
 
+  function serviceSnapshot() {
+    return {
+      ok: true,
+      service: SERVICE_NAME,
+      server: "InfernoDrift4",
+      time: nowIso(),
+      rooms: rooms.size,
+      clients: clients.size,
+      persistence: db.persistence,
+      optionalBindings: {
+        postgres: db.persistence === "postgres-jsonb",
+        resend: hasResendConfig(options),
+      },
+      ...(db.lastSaveError ? { persistenceError: db.lastSaveError } : {}),
+    };
+  }
+
+  async function writeHttpAccountAuth(req, res, mode = "") {
+    if (!checkHttpRate(req, "auth-http", 8, 60_000)) {
+      writeJson(res, req, 429, { ok: false, error: "rate_limited" });
+      return;
+    }
+    try {
+      const payload = await readJsonBody(req);
+      const client = makeHttpClient();
+      const authPayload = {
+        ...payload,
+        type: "auth.account",
+        mode: mode || payload.mode || "auto",
+      };
+      const parsed = validateClientMessage(JSON.stringify(authPayload));
+      if (!parsed.ok) {
+        writeJson(res, req, 400, { ok: false, error: parsed.error });
+        return;
+      }
+      const auth = await handleAccountAuth(client, parsed.data);
+      if (!auth.ok) {
+        writeJson(res, req, 400, {
+          ok: false,
+          error: auth.error,
+          until: auth.until,
+        });
+        return;
+      }
+      const leaderboard = leaderboardSnapshot("casual", auth.user);
+      writeJson(res, req, 200, {
+        ok: true,
+        user: publicUser(auth.user),
+        sessionToken: auth.sessionToken,
+        restored: auth.restored,
+        save: db.data.saves[auth.user.id] ?? null,
+        profile: profileSnapshot(client),
+        friends: friendsSnapshot(client),
+        chat: chatHistoryPayload(client),
+        leaderboard: leaderboard.rows,
+        playerRow: leaderboard.playerRow,
+      });
+    } catch {
+      writeJson(res, req, 400, { ok: false, error: "invalid_auth" });
+    }
+  }
+
+  function writeHttpProfile(req, res, url) {
+    const client = clientFromHttpSession(httpSessionTokenFrom(req, url));
+    if (!client) {
+      writeJson(res, req, 401, { ok: false, error: "session_expired" });
+      return;
+    }
+    writeJson(res, req, 200, { ok: true, ...profileSnapshot(client) });
+  }
+
+  function writeHttpLeaderboard(req, res, url) {
+    const client = clientFromHttpSession(httpSessionTokenFrom(req, url));
+    if (!client) {
+      writeJson(res, req, 401, { ok: false, error: "session_expired" });
+      return;
+    }
+    const snapshot = leaderboardSnapshot(
+      url.searchParams.get("playlist") || "casual",
+      client.user,
+    );
+    writeJson(res, req, 200, {
+      ok: true,
+      leaderboard: snapshot.rows,
+      playerRow: snapshot.playerRow,
+    });
+  }
+
+  async function writeHttpLeaderboardUpdate(req, res, url) {
+    if (!checkHttpRate(req, "leaderboard-http", 10, 60_000)) {
+      writeJson(res, req, 429, { ok: false, error: "rate_limited" });
+      return;
+    }
+    try {
+      const payload = await readJsonBody(req);
+      const client = clientFromHttpSession(httpSessionTokenFrom(req, url, payload));
+      if (!client) {
+        writeJson(res, req, 401, { ok: false, error: "session_expired" });
+        return;
+      }
+      const xp = Math.floor(
+        Number(payload.totalXp ?? payload.xp ?? payload.score ?? payload.rating),
+      );
+      if (!Number.isFinite(xp) || xp < 0 || xp > 1_000_000) {
+        writeJson(res, req, 400, { ok: false, error: "invalid_score" });
+        return;
+      }
+      client.user.xp = Math.max(Number(client.user.xp) || 0, xp);
+      client.user.rating = client.user.xp;
+      client.user.updatedAt = nowIso();
+      db.data.users[client.user.id] = client.user;
+      upsertXpLeaderboard(db.data, client.user, client.user.xp);
+      db.save();
+      const snapshot = leaderboardSnapshot("casual", client.user);
+      writeJson(res, req, 200, {
+        ok: true,
+        leaderboard: snapshot.rows,
+        playerRow: snapshot.playerRow,
+      });
+    } catch {
+      writeJson(res, req, 400, { ok: false, error: "invalid_leaderboard" });
+    }
+  }
+
+  function writeHttpChatHistory(req, res, url) {
+    const client = clientFromHttpSession(httpSessionTokenFrom(req, url));
+    if (!client) {
+      writeJson(res, req, 401, { ok: false, error: "session_expired" });
+      return;
+    }
+    writeJson(res, req, 200, { ok: true, ...chatHistoryPayload(client) });
+  }
+
+  async function writeHttpChatSend(req, res, url) {
+    if (!checkHttpRate(req, "chat-http", 12, 60_000)) {
+      writeJson(res, req, 429, { ok: false, error: "rate_limited" });
+      return;
+    }
+    try {
+      const payload = await readJsonBody(req);
+      const client = clientFromHttpSession(httpSessionTokenFrom(req, url, payload));
+      if (!client) {
+        writeJson(res, req, 401, { ok: false, error: "session_expired" });
+        return;
+      }
+      const result = chatSendPayload(client, payload);
+      writeJson(res, req, result.ok ? 200 : 400, result);
+    } catch {
+      writeJson(res, req, 400, { ok: false, error: "invalid_chat" });
+    }
+  }
+
+  function writeHttpLogout(req, res, url, payload = {}) {
+    const sessionToken = httpSessionTokenFrom(req, url, payload);
+    const session = sessionToken ? db.data.sessions[sessionToken] : null;
+    const user = session ? db.data.users[session.userId] : null;
+    if (sessionToken) delete db.data.sessions[sessionToken];
+    if (user) {
+      user.online = false;
+      user.updatedAt = nowIso();
+      db.data.users[user.id] = user;
+    }
+    db.save();
+    writeJson(res, req, 200, { ok: true, type: "profile.loggedOut" });
+  }
+
+  function writeHttpFriends(req, res, url) {
+    const client = clientFromHttpSession(httpSessionTokenFrom(req, url));
+    if (!client) {
+      writeJson(res, req, 401, { ok: false, error: "session_expired" });
+      return;
+    }
+    writeJson(res, req, 200, { ok: true, ...friendsSnapshot(client) });
+  }
+
+  async function writeHttpFriendAction(req, res, url, action) {
+    try {
+      const payload = await readJsonBody(req);
+      const client = clientFromHttpSession(httpSessionTokenFrom(req, url, payload));
+      if (!client) {
+        writeJson(res, req, 401, { ok: false, error: "session_expired" });
+        return;
+      }
+      if (action === "request") handleFriendRequest(client, payload);
+      else if (action === "accept") handleFriendAccept(client, payload);
+      else {
+        writeJson(res, req, 404, { ok: false, error: "not_found" });
+        return;
+      }
+      const error = client.outbox.find((message) => message.type === "error");
+      writeJson(res, req, error ? 400 : 200, {
+        ok: !error,
+        error: error?.error,
+        messages: client.outbox,
+        ...friendsSnapshot(client),
+      });
+    } catch {
+      writeJson(res, req, 400, { ok: false, error: "invalid_friend_action" });
+    }
+  }
+
   const server = http.createServer(async (req, res) => {
     const url = new URL(
       req.url ?? "/",
@@ -1142,17 +1455,23 @@ export function createInfernoServer(options = {}) {
       writeJson(res, req, 403, { ok: false, error: "origin_not_allowed" });
       return;
     }
-    if (url.pathname === "/health") {
+    if (url.pathname === "/" && req.method === "GET") {
       writeJson(res, req, 200, {
-        ok: true,
-        server: "InfernoDrift4",
-        rooms: rooms.size,
-        clients: clients.size,
-        persistence: "local-json",
-        optionalBindings: {
-          resend: hasResendConfig(options),
-        },
+        ...serviceSnapshot(),
+        endpoints: [
+          "/health",
+          "/api/auth/account",
+          "/api/profile",
+          "/api/leaderboard",
+          "/api/chat/history",
+          "/api/chat/send",
+          "/ws",
+        ],
       });
+      return;
+    }
+    if (url.pathname === "/health" && req.method === "GET") {
+      writeJson(res, req, 200, serviceSnapshot());
       return;
     }
     if (url.pathname === "/api/feedback" && req.method === "POST") {
@@ -1187,97 +1506,68 @@ export function createInfernoServer(options = {}) {
       return;
     }
     if (url.pathname === "/api/auth/account" && req.method === "POST") {
-      if (!checkHttpRate(req, "auth-http", 8, 60_000)) {
-        writeJson(res, req, 429, { ok: false, error: "rate_limited" });
-        return;
-      }
-      try {
-        const payload = await readJsonBody(req);
-        const client = makeHttpClient();
-        const auth = await handleAccountAuth(client, {
-          ...payload,
-          type: "auth.account",
-        });
-        if (!auth.ok) {
-          writeJson(res, req, 400, {
-            ok: false,
-            error: auth.error,
-            until: auth.until,
-          });
-          return;
-        }
-        const leaderboard = leaderboardSnapshot("casual", auth.user);
-        writeJson(res, req, 200, {
-          ok: true,
-          user: publicUser(auth.user),
-          sessionToken: auth.sessionToken,
-          restored: auth.restored,
-          save: db.data.saves[auth.user.id] ?? null,
-          profile: profileSnapshot(client),
-          friends: friendsSnapshot(client),
-          chat: chatHistoryPayload(client),
-          leaderboard: leaderboard.rows,
-          playerRow: leaderboard.playerRow,
-        });
-      } catch {
-        writeJson(res, req, 400, { ok: false, error: "invalid_auth" });
-      }
+      await writeHttpAccountAuth(req, res);
+      return;
+    }
+    if (url.pathname === "/auth/register" && req.method === "POST") {
+      await writeHttpAccountAuth(req, res, "create");
+      return;
+    }
+    if (url.pathname === "/auth/login" && req.method === "POST") {
+      await writeHttpAccountAuth(req, res, "signin");
+      return;
+    }
+    if (url.pathname === "/auth/logout" && req.method === "POST") {
+      const payload = await readJsonBody(req).catch(() => ({}));
+      writeHttpLogout(req, res, url, payload);
       return;
     }
     if (url.pathname === "/api/profile" && req.method === "GET") {
-      const client = clientFromHttpSession(httpSessionTokenFrom(req, url));
-      if (!client) {
-        writeJson(res, req, 401, { ok: false, error: "session_expired" });
-        return;
-      }
-      writeJson(res, req, 200, { ok: true, ...profileSnapshot(client) });
+      writeHttpProfile(req, res, url);
+      return;
+    }
+    if (url.pathname === "/profile" && req.method === "GET") {
+      writeHttpProfile(req, res, url);
       return;
     }
     if (url.pathname === "/api/leaderboard" && req.method === "GET") {
-      const client = clientFromHttpSession(httpSessionTokenFrom(req, url));
-      if (!client) {
-        writeJson(res, req, 401, { ok: false, error: "session_expired" });
-        return;
-      }
-      const snapshot = leaderboardSnapshot(
-        url.searchParams.get("playlist") || "casual",
-        client.user,
-      );
-      writeJson(res, req, 200, {
-        ok: true,
-        leaderboard: snapshot.rows,
-        playerRow: snapshot.playerRow,
-      });
+      writeHttpLeaderboard(req, res, url);
+      return;
+    }
+    if (url.pathname === "/leaderboard" && req.method === "GET") {
+      writeHttpLeaderboard(req, res, url);
+      return;
+    }
+    if (url.pathname === "/leaderboard" && req.method === "POST") {
+      await writeHttpLeaderboardUpdate(req, res, url);
       return;
     }
     if (url.pathname === "/api/chat/history" && req.method === "GET") {
-      const client = clientFromHttpSession(httpSessionTokenFrom(req, url));
-      if (!client) {
-        writeJson(res, req, 401, { ok: false, error: "session_expired" });
-        return;
-      }
-      writeJson(res, req, 200, { ok: true, ...chatHistoryPayload(client) });
+      writeHttpChatHistory(req, res, url);
+      return;
+    }
+    if (url.pathname === "/chat/messages" && req.method === "GET") {
+      writeHttpChatHistory(req, res, url);
       return;
     }
     if (url.pathname === "/api/chat/send" && req.method === "POST") {
-      if (!checkHttpRate(req, "chat-http", 12, 60_000)) {
-        writeJson(res, req, 429, { ok: false, error: "rate_limited" });
-        return;
-      }
-      try {
-        const payload = await readJsonBody(req);
-        const client = clientFromHttpSession(
-          httpSessionTokenFrom(req, url, payload),
-        );
-        if (!client) {
-          writeJson(res, req, 401, { ok: false, error: "session_expired" });
-          return;
-        }
-        const result = chatSendPayload(client, payload);
-        writeJson(res, req, result.ok ? 200 : 400, result);
-      } catch {
-        writeJson(res, req, 400, { ok: false, error: "invalid_chat" });
-      }
+      await writeHttpChatSend(req, res, url);
+      return;
+    }
+    if (url.pathname === "/chat/messages" && req.method === "POST") {
+      await writeHttpChatSend(req, res, url);
+      return;
+    }
+    if (url.pathname === "/friends" && req.method === "GET") {
+      writeHttpFriends(req, res, url);
+      return;
+    }
+    if (url.pathname === "/friends/request" && req.method === "POST") {
+      await writeHttpFriendAction(req, res, url, "request");
+      return;
+    }
+    if (url.pathname === "/friends/accept" && req.method === "POST") {
+      await writeHttpFriendAction(req, res, url, "accept");
       return;
     }
     writeJson(res, req, 404, { ok: false, error: "not_found" });
@@ -1918,6 +2208,8 @@ export function createInfernoServer(options = {}) {
     const mode = msg.mode ?? "auto";
     if (!existing && mode === "signin")
       return { ok: false, error: "account_not_found" };
+    if (existing && mode === "create")
+      return { ok: false, error: "username_taken" };
     if (existing && !existing.passwordHash && mode === "signin")
       return { ok: false, error: "account_requires_upgrade" };
     const ban = existing
@@ -2688,12 +2980,26 @@ export function createInfernoServer(options = {}) {
     rooms,
     clients,
     db,
-    listen: () =>
-      new Promise((resolve) => server.listen(port, () => resolve(server))),
+    listen: async () => {
+      await db.ready;
+      return new Promise((resolve) =>
+        server.listen(port, host, () => resolve(server)),
+      );
+    },
     close: () =>
-      new Promise((resolve) => {
+      new Promise((resolve, reject) => {
         for (const client of clients.values()) client.ws.close();
-        wss.close(() => server.close(resolve));
+        wss.close(() =>
+          server.close(async (error) => {
+            try {
+              await db.close?.();
+              if (error) reject(error);
+              else resolve();
+            } catch (closeError) {
+              reject(closeError);
+            }
+          }),
+        );
       }),
   };
 }
@@ -2701,10 +3007,16 @@ export function createInfernoServer(options = {}) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   loadLocalEnvFile();
   const app = createInfernoServer();
-  app.listen().then((server) => {
-    const address = server.address();
-    console.log(
-      `InfernoDrift4 backend listening on ${typeof address === "object" ? address.port : address}`,
-    );
-  });
+  app
+    .listen()
+    .then((server) => {
+      const address = server.address();
+      console.log(
+        `InfernoDrift4 backend listening on ${typeof address === "object" ? address.port : address}`,
+      );
+    })
+    .catch((error) => {
+      console.error("[InfernoDrift4 backend] startup failed", error);
+      process.exitCode = 1;
+    });
 }
