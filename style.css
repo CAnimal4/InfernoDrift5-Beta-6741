@@ -1220,6 +1220,11 @@ body:has(#school-gate.show) #overlay {
   background: rgba(255, 255, 255, 0.045);
 }
 
+.chat-message.direct {
+  border: 1px solid rgba(122, 239, 255, 0.18);
+  background: rgba(73, 197, 255, 0.08);
+}
+
 .chat-sender,
 .leaderboard-name,
 .online-player-name {
@@ -1267,6 +1272,57 @@ body:has(#school-gate.show) #overlay {
 .chat-room-invite:disabled {
   cursor: default;
   opacity: 0.62;
+}
+
+.chat-command-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(122, 239, 255, 0.18);
+  border-radius: 12px;
+  background: rgba(122, 239, 255, 0.07);
+}
+
+.chat-command-panel[hidden] {
+  display: none;
+}
+
+.chat-command-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-command-header strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.chat-command-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.chat-command-choice {
+  padding: 6px 10px;
+  font-size: 0.72rem;
+}
+
+.chat-command-form {
+  display: grid;
+  gap: 7px;
+}
+
+.chat-command-form input,
+.chat-command-form textarea {
+  width: 100%;
+}
+
+.chat-command-form textarea {
+  min-height: 74px;
+  resize: vertical;
 }
 
 .online-list {

@@ -194,6 +194,7 @@ const profileActionStatus = document.getElementById("profile-action-status");
 const chatPopout = document.getElementById("chat-popout");
 const chatPopoutClose = document.getElementById("chat-popout-close");
 const chatPopoutQuick = document.getElementById("chat-popout-quick");
+const chatCommandPanel = document.getElementById("chat-command-panel");
 const chatPopoutLog = document.getElementById("chat-popout-log");
 const chatPopoutInput = document.getElementById("chat-popout-input");
 const chatPopoutSend = document.getElementById("chat-popout-send");
@@ -2132,6 +2133,11 @@ const onlineState = {
   remoteSnapshots: [],
   roomShared: false,
   roomSharePending: false,
+  chatMode: "lobby",
+  activeDmUserId: "",
+  activeDmUsername: "",
+  reportUsername: "",
+  reportReason: "",
   lastModerationStatus: "",
   moderationAction: null,
   pending: [],
@@ -5320,6 +5326,10 @@ function handleOnlineMessage(raw) {
       moderator: Boolean(message.moderator),
       text: message.text || "",
       quick: Boolean(message.quick),
+      channel: message.channel || "",
+      direct: Boolean(message.direct),
+      toUserId: message.toUserId || "",
+      toUsername: message.toUsername || "",
       roomCode: message.roomCode || message.roomInvite?.code || "",
       roomMode: message.roomMode || message.roomInvite?.mode || "",
       roomInvite: message.roomInvite || null,
@@ -5336,6 +5346,10 @@ function handleOnlineMessage(raw) {
           moderator: Boolean(entry.moderator),
           text: entry.text || "",
           quick: Boolean(entry.quick),
+          channel: entry.channel || "",
+          direct: Boolean(entry.direct),
+          toUserId: entry.toUserId || "",
+          toUsername: entry.toUsername || "",
           roomCode: entry.roomCode || entry.roomInvite?.code || "",
           roomMode: entry.roomMode || entry.roomInvite?.mode || "",
           roomInvite: entry.roomInvite || null,
@@ -5376,6 +5390,19 @@ function handleOnlineMessage(raw) {
     pushOnlineChatMessage({
       from: "Friends",
       text: `You are now friends with ${message.username || "that player"}.`,
+      quick: true,
+    });
+  } else if (message.type === "friend.reported") {
+    const delivery =
+      message.delivery === "delivered" ||
+      message.delivery === "delivered_sandbox"
+        ? "emailed"
+        : message.emailConfigured
+          ? "saved; email failed"
+          : "saved";
+    pushOnlineChatMessage({
+      from: "Reports",
+      text: `Report for ${message.username || "player"} ${delivery} for moderator review.`,
       quick: true,
     });
   } else if (message.type === "room.shared") {
@@ -5552,7 +5579,11 @@ function hideChatNotice() {
     clearTimeout(onlineState.chatNoticeTimer);
     onlineState.chatNoticeTimer = 0;
   }
-  if (chatNotice) chatNotice.hidden = true;
+  if (chatNotice) {
+    chatNotice.hidden = true;
+    chatNotice.dataset.dmUserId = "";
+    chatNotice.dataset.dmUsername = "";
+  }
 }
 
 function showChatNotice(message) {
@@ -5567,6 +5598,8 @@ function showChatNotice(message) {
     chatNoticeText.textContent =
       text.length > 96 ? `${text.slice(0, 93).trim()}...` : text;
   }
+  chatNotice.dataset.dmUserId = message.direct ? message.userId || "" : "";
+  chatNotice.dataset.dmUsername = message.direct ? from : "";
   chatNotice.hidden = false;
   if (onlineState.chatNoticeTimer) clearTimeout(onlineState.chatNoticeTimer);
   onlineState.chatNoticeTimer = window.setTimeout(() => hideChatNotice(), 5000);
@@ -5583,6 +5616,10 @@ function pushOnlineChatMessage(message, { notify = true } = {}) {
       .replace(/[<>]/g, "")
       .slice(0, 180),
     quick: Boolean(message.quick),
+    channel: String(message.channel || ""),
+    direct: Boolean(message.direct),
+    toUserId: String(message.toUserId || ""),
+    toUsername: sanitizeRemoteUsername(message.toUsername || ""),
     roomInvite,
     at: Number.isFinite(Number(message.at)) ? Number(message.at) : Date.now(),
   };
@@ -5668,6 +5705,95 @@ function joinRoomByCode(code, { source = "manual" } = {}) {
   return sent;
 }
 
+function isCurrentUserInDirectThread(message) {
+  const ownUserId = onlineState.user?.id || "";
+  if (!ownUserId || !message.direct) return false;
+  return message.userId === ownUserId || message.toUserId === ownUserId;
+}
+
+function isActiveDirectThreadMessage(message) {
+  if (onlineState.chatMode !== "dm" || !onlineState.activeDmUsername) {
+    return false;
+  }
+  const targetId = onlineState.activeDmUserId;
+  const targetName = onlineState.activeDmUsername;
+  const ownUserId = onlineState.user?.id || "";
+  const ownName = onlineState.user?.username || onlineState.username;
+  if (!isCurrentUserInDirectThread(message)) return false;
+  if (targetId) {
+    return message.userId === targetId || message.toUserId === targetId;
+  }
+  return (
+    message.from === targetName ||
+    message.toUsername === targetName ||
+    (message.from === ownName && message.toUsername === targetName) ||
+    (message.toUsername === ownName && message.from === targetName)
+  );
+}
+
+function openChatCommand(mode) {
+  onlineState.chatMode = mode;
+  onlineState.chatOpen = true;
+  if (mode !== "dm") {
+    onlineState.activeDmUserId = "";
+    onlineState.activeDmUsername = "";
+  }
+  if (mode !== "report") {
+    onlineState.reportUsername = "";
+    onlineState.reportReason = "";
+  }
+  updateOnlineUi();
+}
+
+function openDirectMessageThread(player = {}) {
+  const username = sanitizeRemoteUsername(player.username || player.name || "");
+  if (!username) return;
+  onlineState.chatMode = "dm";
+  onlineState.chatOpen = true;
+  onlineState.activeDmUserId = String(player.userId || player.id || "");
+  onlineState.activeDmUsername = username;
+  updateOnlineUi();
+  window.setTimeout(() => chatPopoutInput?.focus(), 0);
+}
+
+function submitReportCommand(username, reason) {
+  const cleanUsername = sanitizeRemoteUsername(username || "");
+  const cleanReason = String(reason || "Chat command report")
+    .trim()
+    .slice(0, 180);
+  if (!cleanUsername) {
+    pushOnlineChatMessage({
+      from: "Reports",
+      text: "Type a username before sending a report.",
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
+  const sent = sendOnlineMessage(
+    {
+      type: "friend.report",
+      username: cleanUsername,
+      reason: cleanReason || "Chat command report",
+    },
+    { queue: false },
+  );
+  if (!sent) {
+    pushOnlineChatMessage({
+      from: "Reports",
+      text: "Reports need an online connection. Reconnect and try again.",
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
+  onlineState.reportUsername = "";
+  onlineState.reportReason = "";
+  onlineState.chatMode = "lobby";
+  updateOnlineUi();
+  return true;
+}
+
 function sendQuickChat(text) {
   sendOnlineMessage({ type: "quick.send", text });
 }
@@ -5675,6 +5801,24 @@ function sendQuickChat(text) {
 function sendFreeChat(text) {
   const clean = String(text || "").trim();
   if (!clean) return;
+  const command = clean.toLowerCase();
+  if (command === "/dm" || command.startsWith("/dm ")) {
+    const username = sanitizeRemoteUsername(clean.slice(3).trim());
+    if (username) openDirectMessageThread({ username });
+    else openChatCommand("dm");
+    if (onlineChatInput) onlineChatInput.value = "";
+    if (chatPopoutInput) chatPopoutInput.value = "";
+    return;
+  }
+  if (command === "/report" || command.startsWith("/report ")) {
+    const username = sanitizeRemoteUsername(clean.slice(7).trim());
+    onlineState.reportUsername = username;
+    onlineState.reportReason = "";
+    openChatCommand("report");
+    if (onlineChatInput) onlineChatInput.value = "";
+    if (chatPopoutInput) chatPopoutInput.value = "";
+    return;
+  }
   if (!canUseOnlineFreeChat()) {
     pushOnlineChatMessage({
       from: "System",
@@ -5688,12 +5832,20 @@ function sendFreeChat(text) {
     sendHttpChat(clean);
     return;
   }
+  const directTarget =
+    onlineState.chatMode === "dm" && onlineState.activeDmUsername
+      ? {
+          channel: "friend",
+          username: onlineState.activeDmUsername,
+          userId: onlineState.activeDmUserId,
+        }
+      : { channel: "lobby" };
   const sent = sendOnlineMessage(
     {
       type: "chat.send",
       text: clean,
       age: onlineState.age,
-      channel: "lobby",
+      ...directTarget,
     },
     { queue: false },
   );
@@ -5734,6 +5886,13 @@ async function sendHttpChat(text) {
           sessionToken: onlineState.sessionToken,
           text,
           age: onlineState.age,
+          ...(onlineState.chatMode === "dm" && onlineState.activeDmUsername
+            ? {
+                channel: "friend",
+                username: onlineState.activeDmUsername,
+                userId: onlineState.activeDmUserId,
+              }
+            : {}),
         }),
       },
       7000,
@@ -5761,20 +5920,152 @@ async function sendHttpChat(text) {
   }
 }
 
+function renderChatCommandPanel() {
+  if (!chatCommandPanel) return;
+  chatCommandPanel.replaceChildren();
+  if (onlineState.chatMode === "lobby") {
+    chatCommandPanel.hidden = true;
+    return;
+  }
+  chatCommandPanel.hidden = false;
+  const header = document.createElement("div");
+  header.className = "chat-command-header";
+  const title = document.createElement("strong");
+  title.textContent =
+    onlineState.chatMode === "dm"
+      ? onlineState.activeDmUsername
+        ? `DM: ${onlineState.activeDmUsername}`
+        : "Direct Message"
+      : "Report Player";
+  const close = document.createElement("button");
+  close.className = "ghost icon-btn";
+  close.type = "button";
+  close.textContent = "×";
+  close.setAttribute("aria-label", "Exit chat command");
+  bindPressAction(close, () => {
+    onlineState.chatMode = "lobby";
+    onlineState.activeDmUserId = "";
+    onlineState.activeDmUsername = "";
+    onlineState.reportUsername = "";
+    onlineState.reportReason = "";
+    updateOnlineUi();
+  });
+  header.append(title, close);
+  chatCommandPanel.appendChild(header);
+
+  if (onlineState.chatMode === "dm") {
+    if (!onlineState.activeDmUsername) {
+      const list = document.createElement("div");
+      list.className = "chat-command-list";
+      const friends = onlineState.friends.slice(0, 8);
+      if (friends.length) {
+        friends.forEach((friend) => {
+          const button = document.createElement("button");
+          button.className = "ghost chat-command-choice";
+          button.type = "button";
+          button.textContent = friend.username || friend.name || "Friend";
+          bindPressAction(button, () => openDirectMessageThread(friend));
+          list.appendChild(button);
+        });
+      } else {
+        const hint = document.createElement("div");
+        hint.className = "hint";
+        hint.textContent = "No friends yet. Type any username below.";
+        list.appendChild(hint);
+      }
+      chatCommandPanel.appendChild(list);
+      const startRow = document.createElement("div");
+      startRow.className = "chat-command-form";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.maxLength = 24;
+      input.placeholder = "Username";
+      input.value = onlineState.activeDmUsername;
+      const button = document.createElement("button");
+      button.className = "primary";
+      button.type = "button";
+      button.textContent = "Start DM";
+      const start = () => openDirectMessageThread({ username: input.value });
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") start();
+      });
+      bindPressAction(button, start);
+      startRow.append(input, button);
+      chatCommandPanel.appendChild(startRow);
+    } else {
+      const hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent =
+        "Private chat is still filtered and reportable. Type below to send.";
+      chatCommandPanel.appendChild(hint);
+    }
+    return;
+  }
+
+  const form = document.createElement("div");
+  form.className = "chat-command-form report-form";
+  const userInput = document.createElement("input");
+  userInput.type = "text";
+  userInput.maxLength = 24;
+  userInput.placeholder = "Username to report";
+  userInput.value = onlineState.reportUsername;
+  const reasonInput = document.createElement("textarea");
+  reasonInput.maxLength = 180;
+  reasonInput.rows = 3;
+  reasonInput.placeholder = "Why? Include what happened.";
+  reasonInput.value = onlineState.reportReason;
+  const button = document.createElement("button");
+  button.className = "primary";
+  button.type = "button";
+  button.textContent = "Send Report";
+  const submit = () => submitReportCommand(userInput.value, reasonInput.value);
+  userInput.addEventListener("input", () => {
+    onlineState.reportUsername = userInput.value;
+  });
+  reasonInput.addEventListener("input", () => {
+    onlineState.reportReason = reasonInput.value;
+  });
+  userInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (reasonInput.value.trim()) submit();
+      else reasonInput.focus();
+    }
+  });
+  reasonInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) submit();
+  });
+  bindPressAction(button, submit);
+  const hint = document.createElement("div");
+  hint.className = "hint";
+  hint.textContent =
+    "Reports save for MODERATOR review and include recent public and DM chat from that player.";
+  form.append(userInput, reasonInput, button, hint);
+  chatCommandPanel.appendChild(form);
+}
+
 function renderChatLog(target) {
   if (!target) return;
   target.replaceChildren();
-  const messages = onlineState.chatMessages.slice(-12);
+  const messages =
+    target === chatPopoutLog && onlineState.chatMode === "dm"
+      ? onlineState.chatMessages.filter(isActiveDirectThreadMessage).slice(-12)
+      : onlineState.chatMessages
+          .filter((message) => !message.direct || target === chatPopoutLog)
+          .slice(-12);
   if (!messages.length) {
     const empty = document.createElement("div");
     empty.className = "hint";
-    empty.textContent = "No chat messages yet.";
+    empty.textContent =
+      onlineState.chatMode === "dm" && target === chatPopoutLog
+        ? "No DMs in this thread yet."
+        : "No chat messages yet.";
     target.appendChild(empty);
     return;
   }
   messages.forEach((message) => {
     const row = document.createElement("div");
-    row.className = "chat-message";
+    row.className = message.direct ? "chat-message direct" : "chat-message";
     const from = document.createElement("span");
     from.className = "chat-sender";
     renderPlayerNameInline(from, {
@@ -6172,6 +6463,7 @@ function updateOnlineUi() {
           ? "Rooms need live WebSocket connection. Account, chat, and leaderboard are using HTTPS fallback."
           : "No room joined.";
   }
+  renderChatCommandPanel();
   renderChatLog(onlineChatLog);
   renderChatLog(chatPopoutLog);
   syncStartAccountFields();
@@ -17430,6 +17722,19 @@ bindPressAction(onlineShareRoom, () => {
 bindPressAction(onlinePopoutChat, () => setChatPopoutOpen(true));
 bindPressAction(chatPopoutClose, () => setChatPopoutOpen(false));
 bindPressAction(chatNoticeClose, () => hideChatNotice());
+chatNotice?.addEventListener("click", (event) => {
+  if (event.target === chatNoticeClose) return;
+  const dmUsername = chatNotice.dataset.dmUsername || "";
+  if (dmUsername) {
+    openDirectMessageThread({
+      username: dmUsername,
+      userId: chatNotice.dataset.dmUserId || "",
+    });
+  } else {
+    setChatPopoutOpen(true);
+  }
+  hideChatNotice();
+});
 bindPressAction(onlineChatSend, () => sendFreeChat(onlineChatInput?.value));
 bindPressAction(chatPopoutSend, () => sendFreeChat(chatPopoutInput?.value));
 bindPressAction(onlineAddFriend, () => {
@@ -18393,11 +18698,18 @@ window.render_game_to_text = () => {
       },
       chat: {
         popoutOpen: onlineState.chatOpen,
+        mode: onlineState.chatMode,
+        activeDmUsername: onlineState.activeDmUsername,
+        reportUsername: onlineState.reportUsername,
         quickChatAvailable: true,
         freeChatAvailable: canUseOnlineFreeChat(),
         messageCount: onlineState.chatMessages.length,
+        dmMessageCount: onlineState.chatMessages.filter(
+          isCurrentUserInDirectThread,
+        ).length,
         historyWindowMs: 30 * 60 * 1000,
         noticeVisible: Boolean(chatNotice && !chatNotice.hidden),
+        noticeDmUsername: chatNotice?.dataset?.dmUsername || "",
         lastMessage: onlineState.chatMessages.at(-1) ?? null,
       },
       queue: onlineState.queue

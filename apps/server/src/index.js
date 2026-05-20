@@ -123,6 +123,7 @@ const BOT_NAMES = [
 const BAN_DURATION_MS = 24 * 60 * 60 * 1000;
 const CHAT_HISTORY_WINDOW_MS = 30 * 60 * 1000;
 const CHAT_HISTORY_LIMIT = 100;
+const REPORT_EMAIL_TO = "aidan.dwight@lbusd.org,clark.alden@lbusd.org";
 const FOUNDER_USERNAME = "Clark";
 const FOUNDER_FRIEND_XP_REWARD = 1000;
 const DAILY_GIFT_MIN_XP = 100;
@@ -722,6 +723,7 @@ async function sendFeedbackEmail({
   to,
   text,
   idempotencyKey,
+  subject,
 }) {
   const response = await transport("https://api.resend.com/emails", {
     method: "POST",
@@ -733,7 +735,7 @@ async function sendFeedbackEmail({
     body: JSON.stringify({
       from,
       to,
-      subject: `InfernoDrift4 feedback: ${row.feedbackType}`,
+      subject: subject || `InfernoDrift4 feedback: ${row.feedbackType}`,
       text,
       html: feedbackEmailHtml(text),
     }),
@@ -743,6 +745,89 @@ async function sendFeedbackEmail({
   return {
     ok: false,
     error: body?.message || body?.error || `resend_${response.status}`,
+  };
+}
+
+async function deliverReportEmail(report, recentChat, options) {
+  const apiKey = usableSecret(
+    options.resendApiKey ?? process.env.RESEND_API_KEY,
+  );
+  const to = parseFeedbackRecipients(
+    options.reportEmailTo ?? process.env.REPORT_EMAIL_TO ?? REPORT_EMAIL_TO,
+  );
+  const from = usableFeedbackSender(
+    options.feedbackFrom ??
+      options.feedbackEmailFrom ??
+      process.env.FEEDBACK_FROM ??
+      process.env.FEEDBACK_EMAIL_FROM,
+  );
+  const transport = options.feedbackFetch ?? fetch;
+  if (!apiKey || !to.length || !from || typeof transport !== "function") {
+    return { delivery: "stored_email_not_configured", emailConfigured: false };
+  }
+  const transcript = recentChat.length
+    ? recentChat
+        .map(
+          (entry) =>
+            `[${entry.createdAt}] ${entry.channel} ${entry.from}: ${entry.text}`,
+        )
+        .join("\n")
+    : "No recent messages from this player in the last 30 minutes.";
+  const text = [
+    `Report ID: ${report.id}`,
+    `Reported player: ${report.targetUsername} (${report.targetUserId || "unknown"})`,
+    `Reported by: ${report.reporterUsername} (${report.reporterUserId})`,
+    `Reason: ${report.reason}`,
+    `At: ${report.createdAt}`,
+    "",
+    "Recent chat from reported player, including DMs:",
+    transcript,
+  ].join("\n");
+  const subject = `InfernoDrift4 player report: ${report.targetUsername}`;
+  const primary = await sendFeedbackEmail({
+    apiKey,
+    transport,
+    row: { feedbackType: "player report", id: report.id },
+    from,
+    to,
+    text,
+    idempotencyKey: `report-${report.id}`,
+    subject,
+  });
+  if (primary.ok) return { delivery: "delivered", emailConfigured: true };
+  if (isResendSenderVerificationError(primary.error)) {
+    const sandboxTo = to.includes("clark.alden@lbusd.org")
+      ? ["clark.alden@lbusd.org"]
+      : [to[0]].filter(Boolean);
+    const sandbox = await sendFeedbackEmail({
+      apiKey,
+      transport,
+      row: { feedbackType: "player report", id: report.id },
+      from: "InfernoDrift4 <onboarding@resend.dev>",
+      to: sandboxTo,
+      text,
+      idempotencyKey: `report-${report.id}-sandbox`,
+      subject,
+    });
+    if (sandbox.ok) {
+      return {
+        delivery: "delivered_sandbox",
+        emailConfigured: true,
+        deliveredTo: sandboxTo,
+        emailWarning:
+          "Gmail copy requires a verified sender domain; delivered through Resend sandbox.",
+      };
+    }
+    return {
+      delivery: "stored_email_failed",
+      emailConfigured: true,
+      emailError: `${primary.error}; sandbox_fallback_failed: ${sandbox.error}`,
+    };
+  }
+  return {
+    delivery: "stored_email_failed",
+    emailConfigured: true,
+    emailError: primary.error,
   };
 }
 
@@ -1013,6 +1098,9 @@ export function createInfernoServer(options = {}) {
       moderator: message.moderator,
       text: message.text,
       quick: false,
+      direct: message.direct,
+      toUserId: message.toUserId,
+      toUsername: message.toUsername,
       createdAt: message.at,
     });
     db.save();
@@ -1277,10 +1365,6 @@ export function createInfernoServer(options = {}) {
     if (isBlockedBetween(client.user.id, target.id)) {
       return { ok: false, error: "friend_chat_blocked" };
     }
-    const friendState = ensureFriendState(client.user.id);
-    if (!friendState.friends?.[target.id]) {
-      return { ok: false, error: "friend_required" };
-    }
     return {
       ok: true,
       direct: true,
@@ -1307,9 +1391,32 @@ export function createInfernoServer(options = {}) {
           moderator: Boolean(message.moderator),
           text: message.text,
           quick: Boolean(message.quick),
+          channel: message.channel,
+          direct: Boolean(message.direct),
+          toUserId: message.toUserId || "",
+          toUsername: message.toUsername || "",
           at: message.createdAt,
         })),
     };
+  }
+
+  function recentReportChatForTarget(target, username) {
+    pruneChatMessages();
+    const cleanUsername = normalizeUsername(username, "");
+    const targetId = target?.id || "";
+    return db.data.chatMessages
+      .filter(
+        (message) =>
+          (targetId && message.userId === targetId) ||
+          normalizeUsername(message.from, "") === cleanUsername,
+      )
+      .slice(-30)
+      .map((message) => ({
+        createdAt: message.createdAt,
+        channel: message.channel || "lobby",
+        from: message.from,
+        text: message.text,
+      }));
   }
 
   function checkRate(client, key, limit, windowMs) {
@@ -2022,7 +2129,7 @@ export function createInfernoServer(options = {}) {
     send(client.ws, friendsSnapshot(client));
   }
 
-  function handleFriendReport(client, msg) {
+  async function handleFriendReport(client, msg) {
     if (!checkRate(client, "report", 3, 60_000))
       return send(client.ws, { type: "error", error: "rate_limited" });
     const username = normalizeUsername(msg.username, "");
@@ -2039,9 +2146,17 @@ export function createInfernoServer(options = {}) {
       reason,
       createdAt: nowIso(),
     };
+    const recentChat = recentReportChatForTarget(target, username);
+    report.recentChatCount = recentChat.length;
     db.data.reports.push(report);
     db.save();
-    send(client.ws, { type: "friend.reported", reportId: report.id, username });
+    const delivery = await deliverReportEmail(report, recentChat, options);
+    send(client.ws, {
+      type: "friend.reported",
+      reportId: report.id,
+      username,
+      ...delivery,
+    });
   }
 
   function handleSaveSync(client, msg) {
@@ -2447,6 +2562,9 @@ export function createInfernoServer(options = {}) {
             moderator: payload.moderator,
             text: payload.text,
             quick: payload.quick,
+            direct: payload.direct,
+            toUserId: payload.toUserId,
+            toUsername: payload.toUsername,
             createdAt: payload.at,
           });
           db.save();
@@ -2507,7 +2625,7 @@ export function createInfernoServer(options = {}) {
         }
 
         if (msg.type === "friend.report") {
-          handleFriendReport(client, msg);
+          await handleFriendReport(client, msg);
           return;
         }
 

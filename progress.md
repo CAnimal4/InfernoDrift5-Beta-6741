@@ -193,3 +193,10 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Leave attempts to close the tab and falls back to `about:blank` when browser security blocks `window.close()`.
 - Continue dismisses the gate for the current page session and returns to the normal InfernoDrift4 title/start surface.
 - Exposed school-gate state in `render_game_to_text()` and added smoke helpers/tests for Monday class, Monday break/lunch, Friday before-school, weekend, forced gate display, and dismissal.
+
+2026-05-19 chat commands pass:
+
+- Started targeted chat command work for `/dm` and `/report`: adding client chat-popout command panels, direct-message state, report submission UI, backend non-friend DM support, and report email delivery with recent public/DM chat context.
+- Added client `/dm` and `/report` command handling in the existing chat popout. `/dm` opens friend/non-friend direct-message selection, direct messages show as filtered private threads, incoming DMs raise a click-to-open notice, and `/report` opens a report form that submits to backend moderation.
+- Local Node backend and Cloudflare Worker now allow DMs to non-friend usernames unless blocked, preserve direct-message metadata in live chat state, and include recent chat from the reported player, including DM channels, in report emails to `aidan.dwight@lbusd.org` and `clark.alden@lbusd.org`.
+- Focused validation so far: `node --check script.js`, `node --check apps/server/src/index.js`, `node --check apps/worker/src/index.js`, and `npm test` passed.

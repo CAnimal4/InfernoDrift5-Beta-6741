@@ -174,6 +174,7 @@ const BOT_NAMES = [
 const BAN_DURATION_MS = 24 * 60 * 60 * 1000;
 const CHAT_HISTORY_WINDOW_MS = 30 * 60 * 1000;
 const CHAT_HISTORY_LIMIT = 100;
+const REPORT_EMAIL_TO = "aidan.dwight@lbusd.org,clark.alden@lbusd.org";
 const FOUNDER_USERNAME = "Clark";
 const FOUNDER_FRIEND_XP_REWARD = 1000;
 const DAILY_GIFT_MIN_XP = 100;
@@ -759,6 +760,7 @@ async function sendFeedbackEmail({
   to,
   text,
   idempotencyKey,
+  subject,
 }) {
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -770,7 +772,7 @@ async function sendFeedbackEmail({
     body: JSON.stringify({
       from,
       to,
-      subject: `InfernoDrift4 feedback: ${row.feedbackType}`,
+      subject: subject || `InfernoDrift4 feedback: ${row.feedbackType}`,
       text,
       html: feedbackEmailHtml(text),
     }),
@@ -780,6 +782,79 @@ async function sendFeedbackEmail({
   return {
     ok: false,
     error: body?.message || body?.error || `resend_${response.status}`,
+  };
+}
+
+async function deliverReportEmail(report, recentChat, env) {
+  const apiKey = usableSecret(env.RESEND_API_KEY);
+  const to = parseFeedbackRecipients(env.REPORT_EMAIL_TO ?? REPORT_EMAIL_TO);
+  const from = usableFeedbackSender(
+    env.FEEDBACK_FROM ?? env.FEEDBACK_EMAIL_FROM,
+  );
+  if (!apiKey || !to.length || !from) {
+    return { delivery: "stored_email_not_configured", emailConfigured: false };
+  }
+  const transcript = recentChat.length
+    ? recentChat
+        .map(
+          (entry) =>
+            `[${entry.createdAt}] ${entry.channel} ${entry.from}: ${entry.text}`,
+        )
+        .join("\n")
+    : "No recent messages from this player in the last 30 minutes.";
+  const text = [
+    `Report ID: ${report.id}`,
+    `Reported player: ${report.targetUsername} (${report.targetUserId || "unknown"})`,
+    `Reported by: ${report.reporterUsername} (${report.reporterUserId})`,
+    `Reason: ${report.reason}`,
+    `At: ${report.createdAt}`,
+    "",
+    "Recent chat from reported player, including DMs:",
+    transcript,
+  ].join("\n");
+  const subject = `InfernoDrift4 player report: ${report.targetUsername}`;
+  const primary = await sendFeedbackEmail({
+    apiKey,
+    row: { feedbackType: "player report", id: report.id },
+    from,
+    to,
+    text,
+    idempotencyKey: `report-${report.id}`,
+    subject,
+  });
+  if (primary.ok) return { delivery: "delivered", emailConfigured: true };
+  if (isResendSenderVerificationError(primary.error)) {
+    const sandboxTo = to.includes("clark.alden@lbusd.org")
+      ? ["clark.alden@lbusd.org"]
+      : [to[0]].filter(Boolean);
+    const sandbox = await sendFeedbackEmail({
+      apiKey,
+      row: { feedbackType: "player report", id: report.id },
+      from: "InfernoDrift4 <onboarding@resend.dev>",
+      to: sandboxTo,
+      text,
+      idempotencyKey: `report-${report.id}-sandbox`,
+      subject,
+    });
+    if (sandbox.ok) {
+      return {
+        delivery: "delivered_sandbox",
+        emailConfigured: true,
+        deliveredTo: sandboxTo,
+        emailWarning:
+          "Gmail copy requires a verified sender domain; delivered through Resend sandbox.",
+      };
+    }
+    return {
+      delivery: "stored_email_failed",
+      emailConfigured: true,
+      emailError: `${primary.error}; sandbox_fallback_failed: ${sandbox.error}`,
+    };
+  }
+  return {
+    delivery: "stored_email_failed",
+    emailConfigured: true,
+    emailError: primary.error,
   };
 }
 
@@ -1822,10 +1897,6 @@ export class InfernoRoom {
     if (this.isBlockedBetween(session.user.id, target.id)) {
       return { ok: false, error: "friend_chat_blocked" };
     }
-    const friendState = this.ensureFriendState(session.user.id);
-    if (!friendState.friends?.[target.id]) {
-      return { ok: false, error: "friend_required" };
-    }
     return {
       ok: true,
       direct: true,
@@ -1852,9 +1923,32 @@ export class InfernoRoom {
           moderator: Boolean(message.moderator),
           text: message.text,
           quick: Boolean(message.quick),
+          channel: message.channel,
+          direct: Boolean(message.direct),
+          toUserId: message.toUserId || "",
+          toUsername: message.toUsername || "",
           at: message.createdAt,
         })),
     };
+  }
+
+  recentReportChatForTarget(target, username) {
+    this.pruneChatMessages();
+    const cleanUsername = normalizeUsername(username, "");
+    const targetId = target?.id || "";
+    return this.data.chatMessages
+      .filter(
+        (message) =>
+          (targetId && message.userId === targetId) ||
+          normalizeUsername(message.from, "") === cleanUsername,
+      )
+      .slice(-30)
+      .map((message) => ({
+        createdAt: message.createdAt,
+        channel: message.channel || "lobby",
+        from: message.from,
+        text: message.text,
+      }));
   }
 
   makeHttpSession(user = null, sessionToken = "") {
@@ -2502,6 +2596,9 @@ export class InfernoRoom {
       moderator: payload.moderator,
       text: payload.text,
       quick: payload.quick,
+      direct: payload.direct,
+      toUserId: payload.toUserId,
+      toUsername: payload.toUsername,
       createdAt: payload.at,
     };
     this.data.chatMessages.push(chatRow);
@@ -2559,6 +2656,9 @@ export class InfernoRoom {
       moderator: payload.moderator,
       text: payload.text,
       quick: false,
+      direct: payload.direct,
+      toUserId: payload.toUserId,
+      toUsername: payload.toUsername,
       createdAt: payload.at,
     };
     this.data.chatMessages.push(chatRow);
@@ -2932,13 +3032,17 @@ export class InfernoRoom {
       reason,
       createdAt: nowIso(),
     };
+    const recentChat = this.recentReportChatForTarget(target, username);
+    report.recentChatCount = recentChat.length;
     this.data.reports.push(report);
     await writeReportToD1(this.env, report).catch(() => false);
     await this.persist();
+    const delivery = await deliverReportEmail(report, recentChat, this.env);
     send(session.ws, {
       type: "friend.reported",
       reportId: report.id,
       username,
+      ...delivery,
     });
   }
 

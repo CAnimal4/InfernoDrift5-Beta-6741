@@ -1121,6 +1121,89 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
   bannedGuest.ws.terminate();
 });
 
+test("direct-message command backend allows non-friends and report email includes DMs", async (t) => {
+  const dataDir = path.join(os.tmpdir(), `id4-dm-report-${Date.now()}`);
+  const sentEmails = [];
+  const app = createInfernoServer({
+    port: 0,
+    dataDir,
+    allowedOrigins: "http://127.0.0.1:5173",
+    resendApiKey: "test-resend-key",
+    feedbackFrom: "InfernoDrift4 <verified@example.com>",
+    reportEmailTo: "aidan.dwight@lbusd.org,clark.alden@lbusd.org",
+    feedbackFetch: async (url, init) => {
+      sentEmails.push({ url, body: JSON.parse(init.body) });
+      return { ok: true, json: async () => ({ id: "email-test" }) };
+    },
+  });
+  const server = await app.listen();
+  t.after(async () => {
+    await app.close();
+  });
+  const port = server.address().port;
+  const alpha = await makeWsClient(port);
+  const beta = await makeWsClient(port);
+  alpha.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "create",
+      username: "DmAlpha",
+      password: "alpha-password",
+      age: 13,
+    }),
+  );
+  beta.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "create",
+      username: "DmBeta",
+      password: "beta-password",
+      age: 13,
+    }),
+  );
+  await waitForMessage(alpha.messages, (msg) => msg.type === "auth.ok");
+  await waitForMessage(beta.messages, (msg) => msg.type === "auth.ok");
+
+  beta.ws.send(
+    JSON.stringify({
+      type: "chat.send",
+      age: 13,
+      channel: "friend",
+      username: "DmAlpha",
+      text: "private message that should be reportable",
+    }),
+  );
+  const dm = await waitForMessage(
+    alpha.messages,
+    (msg) => msg.type === "chat.message" && msg.direct === true,
+  );
+  assert.equal(dm.from, "DmBeta");
+  assert.equal(dm.toUsername, "DmAlpha");
+
+  alpha.ws.send(
+    JSON.stringify({
+      type: "friend.report",
+      username: "DmBeta",
+      reason: "Testing direct message reporting",
+    }),
+  );
+  const report = await waitForMessage(
+    alpha.messages,
+    (msg) => msg.type === "friend.reported" && msg.username === "DmBeta",
+  );
+  assert.equal(report.delivery, "delivered");
+  assert.equal(sentEmails.length, 1);
+  assert.deepEqual(sentEmails[0].body.to, [
+    "aidan.dwight@lbusd.org",
+    "clark.alden@lbusd.org",
+  ]);
+  assert.match(sentEmails[0].body.text, /Testing direct message reporting/);
+  assert.match(
+    sentEmails[0].body.text,
+    /private message that should be reportable/,
+  );
+});
+
 test("websocket backend persists sessions, claims, saves, friends, reports, feedback, and authoritative leaderboards", async (t) => {
   const dataDir = path.join(os.tmpdir(), `id4-phase4-${Date.now()}`);
   const app = createInfernoServer({
