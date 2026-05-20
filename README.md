@@ -9,7 +9,7 @@ Play: https://canimal4.github.io/InfernoDrift4/
 - Static client: `index.html`, `script.js`, `style.css`
 - Build output: `npm run build:web` copies the static game and icons into `dist/`
 - React/Vite code in `client/` remains reference/scaffolding only until it passes a future parity gate
-- Local backend, Replit deployment code, and Cloudflare Worker fallback code exist; hosted Replit online is live only after the Replit URL passes health and WebSocket smoke checks
+- Local backend, free Replit dev backend, and Cloudflare Worker fallback code exist; paid Replit publishing is not required for the current no-cost online path
 
 ## Implemented In The Rescue Surface
 
@@ -79,13 +79,15 @@ GitHub Pages deploys the `dist/` artifact produced by `npm run build:web`.
 
 ## Online Status
 
-GitHub Pages hosts only the static client. The primary hosted backend is the Replit Node service at `https://infernodrift4-online.replit.app` / `wss://infernodrift4-online.replit.app/ws`; Cloudflare Workers + Durable Objects remain a fallback at `wss://infernodrift4-online.clarkbythebay.workers.dev/ws`.
+GitHub Pages hosts only the static client. The current no-cost primary backend is the Replit Node dev URL at `https://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev` / `wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws`; Cloudflare Workers + Durable Objects remain a fallback at `wss://infernodrift4-online.clarkbythebay.workers.dev/ws`.
 
-Replit online remains blocked until:
+The paid Replit deployment URL `https://infernodrift4-online.replit.app` is blocked by Replit's plan gate. Do not use it unless a paid publish is later approved. The free dev URL is real and tested, but Replit warns that dev URLs are temporary and sleep after the workspace is left.
 
-- The `infernodrift4-online` Replit app is published from `https://github.com/CAnimal4/InfernoDrift4`.
-- Replit SQL/Postgres provides `DATABASE_URL` for persistent accounts, chat, leaderboard, saves, and social state.
-- `/health`, CORS from `https://canimal4.github.io`, and `INFERNO_ONLINE_SMOKE_URL=wss://infernodrift4-online.replit.app/ws node smoke_online_local.mjs` pass.
+Replit free dev URL verification:
+
+- `/health` returns `service: "infernodrift4-online"` with Postgres JSONB persistence.
+- CORS from `https://canimal4.github.io` passes.
+- `INFERNO_ONLINE_SMOKE_URL=wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws node smoke_online_local.mjs` passes.
 
 Cloudflare fallback remains live only when:
 

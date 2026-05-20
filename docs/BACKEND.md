@@ -5,7 +5,7 @@ InfernoDrift4 has two backend paths:
 - `apps/server`: local Node/WebSocket backend for development and non-Cloudflare hosting.
 - `apps/worker`: Cloudflare Worker + Durable Object backend for live room coordination.
 
-The root static InfernoDrift4 client remains playable offline. Production online now prefers the Replit backend at `wss://infernodrift4-online.replit.app/ws` and keeps the verified Cloudflare Worker at `wss://infernodrift4-online.clarkbythebay.workers.dev/ws` as fallback. Online can still be overridden from the Online tab, `localStorage`, `window.INFERNO_ONLINE_URL`, or the `?online=` query parameter.
+The root static InfernoDrift4 client remains playable offline. Production online now prefers the free Replit dev backend at `wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws` and keeps the verified Cloudflare Worker at `wss://infernodrift4-online.clarkbythebay.workers.dev/ws` as fallback. Online can still be overridden from the Online tab, `localStorage`, `window.INFERNO_ONLINE_URL`, or the `?online=` query parameter.
 
 ## Local Node Backend
 
@@ -42,15 +42,16 @@ The Node backend is the Replit-compatible implementation. Replit should import `
 npm run dev:server
 ```
 
-Required Replit configuration:
+Current no-cost Replit configuration:
 
 - App name: `infernodrift4-online`
-- Public URL: `https://infernodrift4-online.replit.app`
-- WebSocket URL: `wss://infernodrift4-online.replit.app/ws`
+- Free dev HTTP URL: `https://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev`
+- Free dev WebSocket URL: `wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws`
+- Paid publish URL, not currently usable without plan upgrade: `https://infernodrift4-online.replit.app`
 - Environment: `PORT` from Replit, `ALLOWED_ORIGINS=https://canimal4.github.io,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:4173,http://127.0.0.1:4173`
 - Persistence: set `DATABASE_URL` through Replit SQL/Postgres. When `DATABASE_URL` is present, the server stores the normalized backend state in the `infernodrift4_state` JSONB table. Local JSON remains a development fallback only.
 
-Replit exposes HTTPS/WSS on the public deployment automatically. Use a Reserved VM or the lowest always-on option available without new billing prompts for WebSocket stability.
+Replit dev URLs expose HTTPS/WSS for free while the workspace is running. Replit warns that dev URLs are temporary and sleep after the workspace is left. Use a Reserved VM or the lowest always-on option only if a paid billing change is explicitly approved later.
 
 The local backend accepts WebSocket connections on the HTTP server. The documented `/ws` path is the client convention and matches the Worker route.
 
@@ -93,7 +94,8 @@ The workflow explicitly skips deploy when those secrets are absent. Safari dashb
 Set the Online tab server URL to one of:
 
 - `ws://127.0.0.1:8787/ws`
-- `wss://infernodrift4-online.replit.app/ws`
+- `wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws`
+- `wss://infernodrift4-online.replit.app/ws` only if paid publishing is later approved
 - `wss://infernodrift4-online.clarkbythebay.workers.dev/ws`
 - `wss://online.<your-domain>/ws` once a Cloudflare custom domain is attached to the Worker.
 

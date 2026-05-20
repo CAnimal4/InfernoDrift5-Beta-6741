@@ -60,10 +60,13 @@ const DEFAULT_INPUT: InputFrame = {
 };
 const ONLINE_CONNECT_TIMEOUT_MS = 8000;
 const REPLIT_PRODUCTION_BACKEND_URL =
+  "wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws";
+const REPLIT_PAID_DEPLOYMENT_BACKEND_URL =
   "wss://infernodrift4-online.replit.app/ws";
 const WORKER_FALLBACK_BACKEND_URL =
   "wss://infernodrift4-online.clarkbythebay.workers.dev/ws";
 const LEGACY_PRODUCTION_BACKEND_URLS = new Set([
+  REPLIT_PAID_DEPLOYMENT_BACKEND_URL,
   WORKER_FALLBACK_BACKEND_URL,
   "wss://infernodrift4-online.clarkbythebay.workers.dev/ws?room=global-v2",
   "wss://infernodrift4-online.clarkbythebay.workers.dev/ws?room=global-v3",

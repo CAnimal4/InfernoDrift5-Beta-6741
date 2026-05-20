@@ -80,9 +80,9 @@ Latest Pages smoke, run on 2026-05-16:
 
 Local backend smoke must pass before any online UI work is trusted. Hosted online is blocked until:
 
-- Replit deployment publishes `infernodrift4-online`.
-- `/health` responds from `https://infernodrift4-online.replit.app`.
-- `INFERNO_ONLINE_SMOKE_URL=wss://infernodrift4-online.replit.app/ws node smoke_online_local.mjs` passes.
+- Replit dev URL is running for `infernodrift4-online`.
+- `/health` responds from `https://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev`.
+- `INFERNO_ONLINE_SMOKE_URL=wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws node smoke_online_local.mjs` passes.
 - Worker fallback remains available at `wss://infernodrift4-online.clarkbythebay.workers.dev/ws`.
 - The deployed Pages client completes a two-client room/chat test against Replit and degrades cleanly to Worker fallback or Guest Offline when Replit fails.
 

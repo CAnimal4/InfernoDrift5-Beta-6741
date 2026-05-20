@@ -6,7 +6,7 @@ Status: active work is the InfernoDrift4 static launch rescue. The current shipp
 
 - Repo: https://github.com/CAnimal4/InfernoDrift4
 - Pages target: https://canimal4.github.io/InfernoDrift4/
-- Replit primary backend: https://infernodrift4-online.replit.app / wss://infernodrift4-online.replit.app/ws
+- Replit free dev primary backend: https://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev / wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws
 - Cloudflare Worker fallback: wss://infernodrift4-online.clarkbythebay.workers.dev/ws
 
 ## Current Implementation Summary
@@ -29,7 +29,7 @@ Status: active work is the InfernoDrift4 static launch rescue. The current shipp
 ## Backend Status
 
 - Local Node backend is real/local and covered by tests/smoke.
-- Replit uses the Node backend as the production primary target. The published Replit URL must pass `/health`, CORS, WebSocket smoke, and Pages two-client checks before being claimed live.
+- Replit uses the Node backend as the production primary target through the free dev URL while the workspace is running. A paid published Replit URL must not be claimed live unless publishing is later approved and verified.
 - Cloudflare Worker/Durable Object source and URL remain fallback-only.
 - Friends, persistent accounts, ranked persistence, cloud saves, DMs, reports, and live events remain backend-gated and must not be described as live unless the active backend verification passes.
 
@@ -72,16 +72,16 @@ For hosted online work:
 ```bash
 npm run worker:check
 npm run worker:types
-curl https://infernodrift4-online.replit.app/health
-INFERNO_ONLINE_SMOKE_URL=wss://infernodrift4-online.replit.app/ws node smoke_online_local.mjs
+curl https://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/health
+INFERNO_ONLINE_SMOKE_URL=wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws node smoke_online_local.mjs
 INFERNO_ONLINE_SMOKE_URL=wss://infernodrift4-online.clarkbythebay.workers.dev/ws node smoke_online_local.mjs
 ```
 
-Hosted online remains blocked until the Replit URL passes hosted smoke and a Pages two-client browser test. The Worker URL stays as a fallback, not the primary.
+Hosted online remains blocked until the active Replit URL passes hosted smoke and a Pages two-client browser test. The Worker URL stays as fallback.
 
 ## Known Limitations
 
 - Online/social remains backend-gated in this phase; the static game is honest about offline, HTTP-fallback, and live-room status.
 - Keyboard remapping and controller support are implemented for the static launch surface, but physical controller QA still depends on browser/device availability.
 - Audio runtime and dynamic music are not complete.
-- Hosted online requires Replit publish/deployment and verification.
+- Paid hosted online requires Replit publish/deployment and verification; the current free dev URL requires the Replit workspace to stay runnable.
