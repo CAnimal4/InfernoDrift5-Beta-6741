@@ -1,5 +1,9 @@
 Original prompt: Implement the InfernoDrift4 revamp plan on top of the current InfernoDrift-derived game: better radar, cleaner HUD/menu, stronger graphics/effects, distinct modes/minigames, live Cloudflare Workers + Durable Objects online, favicon from uploaded asset, tests, push, deploy, and verification.
 
+2026-05-20 repo sync verification:
+
+- Confirmed `InfernoDrift` and `InfernoDrift4` use the shared peer-sync GitHub Actions workflow so ID4 updates can propagate between both repos while preserving repo-specific Pages URLs.
+
 2026-05-13:
 
 - Started from `main` at `bc965cf`; current worktree was clean.
