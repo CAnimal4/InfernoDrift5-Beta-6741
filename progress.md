@@ -222,6 +222,26 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 
 - Investigated the private-room Share Code button returning `rate_limited`. The backend was counting every `input.frame` live gameplay packet against the same generic `"protocol"` bucket as command messages, so normal room gameplay could exhaust the 60-per-10s command budget before `room.share` arrived.
 - Updated both the local Node backend and Cloudflare Worker to exempt validated `input.frame` messages from the generic command protocol bucket while preserving the dedicated `room-share`, chat, social, save, moderation, report, and feedback limits.
+
+2026-05-20 Firebase migration stress QA:
+
+- Added `smoke_firebase_offline.mjs` and `npm run smoke:firebase` to exercise the built Pages artifact with Firebase as the default backend, no Replit URLs, empty Firebase config fallback, bad username rejection, account failure fallback, Guest Offline launch, Firebase diagnostics, blocked connect, and feedback over-limit handling.
+- Tightened Firebase username and leaderboard validation so invalid usernames are rejected instead of silently normalized and malformed scores such as missing/NaN values are rejected.
+- Improved Firebase chat/content guardrails for obvious sexual-content bypass spacing.
+- Removed stale tracked React bundle assets from `assets/` so `dist/` only carries the current static game, Firebase modules, icons/service files, and the mode thumbnail sprite.
+- Fixed feedback length UX so the textarea no longer silently truncates at 2,500 characters; the counter can exceed the limit and the UI reports exactly how many characters must be removed.
+- Stress validation passed: `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke:firebase`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run worker:check`, `npm run worker:types`, targeted Prettier checks for changed formatted files, and the required develop-web-game Playwright client. The only broad format failure remains pre-existing unformatted files plus the untracked handoff file.
+
+2026-05-20 Firebase backend migration pass:
+
+- Switched the production online direction away from Replit/Cloudflare and toward Firebase online-lite. Replit dev URLs are no longer acceptable as production, and Cloudflare/Worker code is legacy fallback/reference only unless explicitly requested.
+- Added `firebase-config.js`, `firebase-online.js`, and `firebase-online-core.js`. The runtime dynamically imports the Firebase modular SDK so a blocked Firebase CDN does not prevent the game from loading.
+- Firebase mode is now the default backend mode in `script.js`; old WebSocket URLs are ignored unless `BACKEND_MODE=websocket` is explicitly selected by runtime config/query.
+- Added Firebase Auth account handling with username-derived email/password, Firebase Anonymous guest handling, Firestore username claim transaction support, progress sync, total-XP leaderboard rows, lobby chat, feedback storage, friend requests/accepts, and diagnostics.
+- Kept authoritative multiplayer honest: Firebase mode disables live rooms/queues and explains that server-authoritative rooms need a separate trusted WebSocket server.
+- Added `firestore.rules` for Auth-gated user/progress writes, username uniqueness, conservative leaderboard writes, chat length checks, feedback limits, friend request boundaries, and diagnostics.
+- Added Firebase validation tests in `tests/firebase-online.test.mjs`; focused run `node --test tests/firebase-online.test.mjs` passed.
+- Updated README and docs so future Codex prompts target Firebase config/rules and do not publish/sync to Replit or Cloudflare unless the owner explicitly asks for legacy server work.
 - Removed noisy per-frame `input.accepted` acknowledgements that could queue ahead of `room.shared`, and made room-share chat/ack broadcast before D1/persistence work so the code appears immediately.
 - Added regression coverage that creates a room, sends 70 valid live input frames, shares the room code, receives `room.shared`, and does not receive per-frame `input.accepted` spam.
 - Validation so far: `node --check apps/server/src/index.js`, `node --check apps/worker/src/index.js`, `node --check smoke_online_local.mjs`, `node --test tests/server.test.mjs`, `npm run typecheck`, `npm test`, `npm run smoke:online-local`, and `npm run worker:check` passed.

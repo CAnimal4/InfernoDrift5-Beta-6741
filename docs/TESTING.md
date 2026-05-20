@@ -27,16 +27,24 @@ npm run smoke:online-local
 
 ## Backend Tests
 
-`npm test` and `npm run smoke:online-local` cover the local backend, sanitizer, age-gated free chat, quick chat, private rooms, bot fill metadata, input snapshots, and leaderboard shell.
+`npm test` covers Firebase validation helpers plus the legacy local backend. `npm run smoke:online-local` covers the legacy Node/WebSocket room server, sanitizer, age-gated free chat, quick chat, private rooms, bot fill metadata, input snapshots, and leaderboard shell.
 
-Cloudflare dry checks:
+Firebase manual checks:
+
+- Firebase project uses Spark/free plan.
+- Email/Password and Anonymous auth are enabled.
+- Firestore production database has `firestore.rules` published.
+- Online -> Server settings -> Run Firebase Test passes from local and deployed Pages.
+- Create account, duplicate username, anonymous guest, lobby chat, leaderboard, feedback, friends, and offline fallback work without hangs.
+
+Legacy Cloudflare dry checks:
 
 ```bash
 npm run worker:check
 npm run worker:types
 ```
 
-Hosted Worker smoke only after deployment:
+Hosted Worker smoke only for explicit legacy WebSocket work:
 
 ```bash
 INFERNO_ONLINE_SMOKE_URL=wss://<verified-worker>/ws node smoke_online_local.mjs

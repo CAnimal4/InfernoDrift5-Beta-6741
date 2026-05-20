@@ -5,9 +5,9 @@ Status: active work is the InfernoDrift4 static launch rescue. The current shipp
 ## URLs
 
 - Repo: https://github.com/CAnimal4/InfernoDrift4
-- Pages target: https://canimal4.github.io/InfernoDrift4/
-- Replit free dev primary backend: https://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev / wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws
-- Cloudflare Worker fallback: wss://infernodrift4-online.clarkbythebay.workers.dev/ws
+- Pages target: https://canimal4.github.io/InfernoDrift/
+- Primary online backend mode: Firebase online-lite
+- Legacy Worker fallback/reference: wss://infernodrift4-online.clarkbythebay.workers.dev/ws
 
 ## Current Implementation Summary
 
@@ -20,7 +20,7 @@ Status: active work is the InfernoDrift4 static launch rescue. The current shipp
 - HUD/menu Phase 2 is active: compact gameplay clusters, focused pause actions, structured result stats, clearer Play/Garage/Progress/Settings/Controls/Help hierarchy, and scroll-safe long panels.
 - Garage Phase 2 is active: Three.js preview bay, drag rotation, zoom/reset controls, three local loadouts, class summaries, instant cosmetic application, and migration from the old flat customization save.
 - Controls Phase 2 is active: `X` remains jump/in-air trick, `B` is the alternate backflip/trick key, keyboard remapping persists, touch presets/scale are configurable, controller status is visible, and standard Gamepad API controls are mapped.
-- `C` is reserved for backend-backed chat.
+- `C` opens Firebase-backed chat when signed in or online as guest.
 - Remote human username tags are available through the test/API layer for real players only and remain unobtrusive.
 - Phase 3 repair is active: the Play board exposes Campaign, Arena, Speed, Tricks, Chase, and Minigames groups with Campaign Survival, Max Arena, Race, Time Trial, Stunt Park, Hunter Tag, Battle Arena, Ramp Rush, Boost Bowling, Lava Floor, and King of the Zone.
 - Mode runs now use distinct local rules and scene objects: bounded winding race tracks, solo stunt loops/rings, Hunter Tag role switching, red-vs-blue laser battle, rising lava platforms, king zones, and ten-pin Boost Bowling.
@@ -28,10 +28,11 @@ Status: active work is the InfernoDrift4 static launch rescue. The current shipp
 
 ## Backend Status
 
-- Local Node backend is real/local and covered by tests/smoke.
-- Replit uses the Node backend as the production primary target through the free dev URL while the workspace is running. A paid published Replit URL must not be claimed live unless publishing is later approved and verified.
-- Cloudflare Worker/Durable Object source and URL remain fallback-only.
-- Friends, persistent accounts, ranked persistence, cloud saves, DMs, reports, and live events remain backend-gated and must not be described as live unless the active backend verification passes.
+- Firebase online-lite is the production default for accounts, anonymous guests, username uniqueness, progress, leaderboard, lobby chat, friends, feedback, and diagnostics.
+- Local Node backend is real/local and covered by tests/smoke for legacy WebSocket room-server work.
+- Cloudflare Worker/Durable Object source and URL remain legacy fallback/reference only.
+- Replit publish is not part of the free path, and Replit dev URLs must not be production.
+- Live authoritative multiplayer remains unavailable in Firebase mode; local/bot/offline play stays available.
 
 ## Required Verification Before Release Sign-Off
 
@@ -67,21 +68,20 @@ Latest Pages smoke:
 - Served the static InfernoDrift4 game with `script.js`; no React/Vite bundle detected.
 - Browser smoke started Campaign Survival, verified the Phase 3 mode catalog, completed a Race result, confirmed Max Arena, and reported public modes as `campaign-survival` and `max-arena`. Console output contained only expected headless WebGL `ReadPixels` warnings.
 
-For hosted online work:
+For Firebase online work:
 
 ```bash
-npm run worker:check
-npm run worker:types
-curl https://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/health
-INFERNO_ONLINE_SMOKE_URL=wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws node smoke_online_local.mjs
-INFERNO_ONLINE_SMOKE_URL=wss://infernodrift4-online.clarkbythebay.workers.dev/ws node smoke_online_local.mjs
+npm run typecheck
+npm test
+npm run build
 ```
 
-Hosted online remains blocked until the active Replit URL passes hosted smoke and a Pages two-client browser test. The Worker URL stays as fallback.
+Then use the deployed Pages Online tab **Run Firebase Test** button to verify Auth and Firestore read/write from the real frontend.
 
 ## Known Limitations
 
-- Online/social remains backend-gated in this phase; the static game is honest about offline, HTTP-fallback, and live-room status.
+- Firebase client-submitted leaderboard scores are not cheat-proof without a trusted server or Cloud Functions.
+- Firebase is not an authoritative realtime physics room server; live rooms/queues stay disabled in Firebase mode.
 - Keyboard remapping and controller support are implemented for the static launch surface, but physical controller QA still depends on browser/device availability.
 - Audio runtime and dynamic music are not complete.
-- Paid hosted online requires Replit publish/deployment and verification; the current free dev URL requires the Replit workspace to stay runnable.
+- Replit paid publish is not needed for the Firebase path.

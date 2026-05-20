@@ -6,9 +6,10 @@ Updated for the InfernoDrift4 static launch rescue.
 
 - Active launch client: root `index.html`, `script.js`, `style.css`
 - Static build: `scripts/build-site.mjs` -> `dist/`
+- Firebase online-lite: `firebase-config.js`, `firebase-online.js`, `firebase-online-core.js`, `firestore.rules`
 - Local backend: `apps/server`
-- Replit Node backend target: `apps/server`
-- Cloudflare Worker fallback: `apps/worker`
+- Legacy local/Replit backend reference: `apps/server`
+- Legacy Cloudflare Worker fallback/reference: `apps/worker`
 
 The React/Vite client is not current launch proof.
 
@@ -78,13 +79,16 @@ Latest Pages smoke, run on 2026-05-16:
 
 ## Online QA
 
-Local backend smoke must pass before any online UI work is trusted. Hosted online is blocked until:
+Firebase online-lite is the default production online path. Required Firebase checks:
 
-- Replit dev URL is running for `infernodrift4-online`.
-- `/health` responds from `https://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev`.
-- `INFERNO_ONLINE_SMOKE_URL=wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws node smoke_online_local.mjs` passes.
-- Worker fallback remains available at `wss://infernodrift4-online.clarkbythebay.workers.dev/ws`.
-- The deployed Pages client completes a two-client room/chat test against Replit and degrades cleanly to Worker fallback or Guest Offline when Replit fails.
+- Firebase project is on Spark/free plan.
+- Email/Password and Anonymous auth are enabled.
+- Firestore production database exists with `firestore.rules` published.
+- `firebase-config.js` contains the public web config.
+- Deployed Pages Online tab **Run Firebase Test** passes Auth plus Firestore read/write.
+- Create account, duplicate username, anonymous guest, lobby chat, leaderboard, feedback, friends, and offline fallback are tested from a fresh browser.
+
+Legacy `npm run smoke:online-local` still covers the old Node/WebSocket room server. Passing that smoke does not prove Firebase production live rooms, because Firebase mode intentionally disables authoritative rooms.
 
 ## Known Noise
 

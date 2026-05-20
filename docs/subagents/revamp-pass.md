@@ -12,5 +12,5 @@ This report is reset for the InfernoDrift4 launch rescue. Earlier React/TypeScri
 ## Remaining Gaps
 
 - Full offline mode roster and six minigames need static-runtime implementation and smoke coverage before being called done.
-- Keyboard remap, controller support, full audio runtime, and hosted Replit online verification remain planned phases.
-- Replit online is the production primary target through the free dev URL, with the Cloudflare Worker as fallback. Do not claim paid hosted online live until Replit publish passes `/health`, WebSocket smoke, and Pages two-client verification.
+- Full audio runtime remains a planned phase.
+- Firebase online-lite is the production online target. Do not use Replit dev links or Cloudflare Worker deploys unless the owner explicitly asks for legacy room-server work.

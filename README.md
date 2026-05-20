@@ -2,14 +2,14 @@
 
 InfernoDrift4 is the restored launch rescue: the shipped game is the root static `index.html`, `script.js`, and `style.css` experience, built from the proven base InfernoDrift4 feel instead of the rejected React rewrite.
 
-Play: https://canimal4.github.io/InfernoDrift4/
+Play: https://canimal4.github.io/InfernoDrift/
 
 ## Current Launch Surface
 
 - Static client: `index.html`, `script.js`, `style.css`
 - Build output: `npm run build:web` copies the static game and icons into `dist/`
 - React/Vite code in `client/` remains reference/scaffolding only until it passes a future parity gate
-- Local backend, free Replit dev backend, and Cloudflare Worker fallback code exist; paid Replit publishing is not required for the current no-cost online path
+- Firebase online-lite is the default production backend path for accounts, chat, leaderboard, friends, feedback, and progress; the local Node backend and Cloudflare Worker remain legacy/dev fallback code only
 
 ## Implemented In The Rescue Surface
 
@@ -21,7 +21,8 @@ Play: https://canimal4.github.io/InfernoDrift4/
 - Forward-relative radar: top is in front, left is car-left, right is car-right, edge icons show off-radar threats
 - Local garage/customization loadout system with instant car changes and unlock previews
 - Touch controls, phone/tablet layout tuning, deterministic smoke hooks, and local saves
-- Local WebSocket backend smoke coverage for rooms, bot fill, quick chat, age-gated free chat, sanitizer, input snapshots, and leaderboard shell
+- Firebase online-lite integration with anonymous guest auth, username/password account wrapper, Firestore chat/leaderboards/friends/feedback/progress, diagnostics, and offline fallback
+- Local WebSocket backend smoke coverage remains for legacy room-server development only
 
 ## Run Locally
 
@@ -40,7 +41,7 @@ npm run dev:server
 curl http://127.0.0.1:8787/health
 ```
 
-The static game is fully playable offline. Live online requires a separate backend and must not be described as live until verified.
+The static game is fully playable offline. Firebase covers online-lite social/persistence features. Server-authoritative realtime rooms still require a separate trusted WebSocket backend and must not be described as live when Firebase mode is active.
 
 ## Controls
 
@@ -52,7 +53,7 @@ The static game is fully playable offline. Live online requires a separate backe
 - Restart: `R`
 - Menu: `Esc` or `M`
 - Max Arena ball cam: `L`
-- Online chat: `C` is reserved for the backend-backed chat phase
+- Online chat: `C` opens Firebase-backed chat when signed in or online as guest
 - Touch: landscape joystick plus Drift/Boost/Jump/Backflip buttons
 
 ## Development Checks
@@ -68,7 +69,7 @@ npm run test:e2e
 npm run smoke:online-local
 ```
 
-Cloudflare fallback checks, when working on online:
+Legacy Cloudflare fallback checks, only when explicitly working on the old WebSocket backend:
 
 ```bash
 npm run worker:check
@@ -79,27 +80,26 @@ GitHub Pages deploys the `dist/` artifact produced by `npm run build:web`.
 
 ## Online Status
 
-GitHub Pages hosts only the static client. The current no-cost primary backend is the Replit Node dev URL at `https://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev` / `wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws`; Cloudflare Workers + Durable Objects remain a fallback at `wss://infernodrift4-online.clarkbythebay.workers.dev/ws`.
+GitHub Pages hosts only the static client. Production defaults to `BACKEND_MODE=firebase`. Firebase Auth and Firestore are the primary no-cost backend for accounts, anonymous guests, usernames, progress, leaderboard, lobby chat, friends, feedback, and diagnostics.
 
-The paid Replit deployment URL `https://infernodrift4-online.replit.app` is blocked by Replit's plan gate. Do not use it unless a paid publish is later approved. The free dev URL is real and tested, but Replit warns that dev URLs are temporary and sleep after the workspace is left.
+Replit publish is not required and Replit dev links must not be used for production. The old Worker URL `wss://infernodrift4-online.clarkbythebay.workers.dev/ws` stays only as a manual legacy fallback/reference while Firebase is the default for school-network users.
 
-Replit free dev URL verification:
+Firebase launch requirements:
 
-- `/health` returns `service: "infernodrift4-online"` with Postgres JSONB persistence.
-- CORS from `https://canimal4.github.io` passes.
-- `INFERNO_ONLINE_SMOKE_URL=wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws node smoke_online_local.mjs` passes.
+- Create a Firebase project on the Spark/free plan.
+- Enable Authentication providers: Email/Password and Anonymous.
+- Enable Firestore and publish `firestore.rules`.
+- Fill the public web config in `firebase-config.js` or provide `window.INFERNO_FIREBASE_CONFIG` before `script.js`.
+- Use the Online tab **Run Firebase Test** button to verify Auth plus Firestore read/write from the deployed Pages site.
 
-Cloudflare fallback remains live only when:
+Firebase limitations:
 
-- GitHub secrets `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are configured.
-- The `infernodrift4` D1 database (`830d1cce-a09c-4112-8a28-24b421c4acda`) has remote migrations applied.
-- Worker secrets such as `RESEND_API_KEY` and a production session secret are configured when those features are claimed live.
-- A concrete `wss://.../ws` Worker endpoint passes `INFERNO_ONLINE_SMOKE_URL=wss://.../ws node smoke_online_local.mjs`.
-- The deployed Pages game is tested with that endpoint in a two-client browser flow.
+- Firestore leaderboards are client-submitted and not cheat-proof without a trusted server or Cloud Functions.
+- Firebase is not an authoritative physics/multiplayer server. Live rooms/queues remain disabled in Firebase mode.
+- If Firebase is unavailable, the game falls back to Guest Offline and local saves/bots remain usable.
 
-School-network hardening:
+Legacy fallback remains available only when explicitly selected:
 
-- Prefer a normal custom Worker domain, such as `wss://online.<owned-domain>/ws`, when the project has a Cloudflare-managed domain available. A `workers.dev` URL may be blocked by some school filters.
-- The Online tab includes a **Test Connection** button that checks HTTPS backend health, signed-in account/leaderboard/chat-history fallback, and live WebSocket room reachability.
-- Backup backend URLs can be entered in the Online tab or provided through `window.INFERNO_BACKUP_ONLINE_URLS`; the client tries healthy backups automatically.
-- If WebSockets are blocked but HTTPS works, account/chat/leaderboard use HTTPS fallback and live rooms show a clear blocked-state message.
+- Set `window.INFERNO_BACKEND_MODE = "websocket"` or `?backendMode=websocket`.
+- Then enter a local server, Worker, or other trusted WebSocket URL in the Online tab.
+- Do not sync Cloudflare/Replit and Firebase state automatically; future backend work should target Firebase unless the project owner explicitly asks for a legacy server deployment.

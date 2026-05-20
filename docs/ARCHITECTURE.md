@@ -7,7 +7,8 @@ The previous React/Vite/TypeScript work remains in `client/` and `packages/` as 
 ## Static Client
 
 - `index.html`: DOM shell for canvas, HUD, status bars, menu, garage/customization, touch controls, radar, overlays, and test-accessible controls.
-- `script.js`: current gameplay runtime. It owns Three.js scene setup, vehicle handling, camera, hunters, ramps, powerups, Max Arena, customization, saves, radar, HUD updates, touch controls, and browser automation hooks.
+- `script.js`: current gameplay runtime. It owns Three.js scene setup, vehicle handling, camera, hunters, ramps, powerups, Max Arena, customization, saves, radar, HUD updates, touch controls, Firebase/legacy online wiring, and browser automation hooks.
+- `firebase-config.js`, `firebase-online.js`, `firebase-online-core.js`: Firebase online-lite integration and testable validation helpers.
 - `style.css`: current HUD/menu/touch/radar/garage styling.
 - `scripts/build-site.mjs`: static Pages build. It copies root assets into `dist/` and writes `.nojekyll`.
 
@@ -28,11 +29,12 @@ The static runtime includes the current real game systems:
 
 ## Backend
 
+- Firebase online-lite is the production default for accounts, anonymous guests, usernames, progress, leaderboard, chat, friends, feedback, and diagnostics.
 - `apps/server`: local Node/WebSocket backend for development and smoke tests.
-- `apps/worker`: Cloudflare Worker + Durable Object backend scaffold.
+- `apps/worker`: Cloudflare Worker + Durable Object backend scaffold retained as a legacy room-server fallback/reference.
 - `packages/protocol`: TypeScript protocol/moderation reference for tests.
 
-The static game is playable offline without any backend. Hosted online remains blocked until a verified Worker WebSocket URL is deployed and tested from GitHub Pages.
+The static game is playable offline without any backend. Firebase is not an authoritative realtime physics server, so live rooms/queues stay disabled in Firebase mode unless a trusted WebSocket server is explicitly selected for legacy development.
 
 ## Deployment
 

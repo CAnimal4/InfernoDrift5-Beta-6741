@@ -350,7 +350,7 @@
               <div class="online-layout">
                 <div class="online-panel">
                   <div class="custom-section-title">Account & Online</div>
-                  <div class="online-status" id="online-status">Backend ready when local server is running</div>
+                  <div class="online-status" id="online-status">Firebase online-lite is the default backend</div>
                   <div class="cta-row compact-actions">
                     <button class="primary" id="online-connect" type="button">Connect</button>
                     <button class="ghost" id="online-disconnect" type="button">Disconnect</button>
@@ -368,11 +368,11 @@
                   <details class="advanced-online-settings">
                     <summary>Server settings</summary>
                     <label class="field">
-                      <span>Backend URL</span>
+                      <span>Legacy WebSocket URL</span>
                       <input id="online-backend-url" type="url" placeholder="ws://127.0.0.1:8787/ws" autocomplete="url" />
                     </label>
                     <label class="field">
-                      <span>Backup Backend URLs</span>
+                      <span>Legacy Backup URLs</span>
                       <textarea id="online-backup-urls" maxlength="600" placeholder="One backup backend URL per line"></textarea>
                     </label>
                     <div class="cta-row compact-actions">
@@ -380,7 +380,7 @@
                     </div>
                     <div class="online-room-card connection-report" id="online-connection-report">No connection test run yet.</div>
                     <div class="online-room-card connection-report" id="online-diagnostics">Diagnostics are waiting for a connection check.</div>
-                    <p class="hint">Hosted online uses secure HTTPS/WSS. If a school blocks the main backend, InfernoDrift4 tries healthy backup URLs and falls back to HTTPS for accounts, chat, and leaderboard when live rooms are blocked.</p>
+                    <p class="hint">Production uses Firebase for accounts, chat, leaderboard, friends, feedback, and progress. Legacy WebSocket servers are manual fallback only; server-authoritative rooms are unavailable when Firebase online-lite is active.</p>
                   </details>
                 </div>
                 <div class="online-panel">
@@ -708,7 +708,7 @@
           </label>
           <label class="field">
             <span>Message</span>
-            <textarea id="feedback-message" maxlength="2500" rows="5" placeholder="What happened?"></textarea>
+            <textarea id="feedback-message" rows="5" placeholder="What happened?"></textarea>
             <small class="feedback-counter" id="feedback-counter">0 / 2,500</small>
           </label>
           <label class="field toggle">
@@ -723,7 +723,7 @@
             <span>Reply Email</span>
             <input id="feedback-email" type="email" placeholder="Optional for 13+" autocomplete="email" disabled />
           </label>
-          <div class="feedback-status" id="feedback-status">Feedback saves only when a backend endpoint is configured.</div>
+          <div class="feedback-status" id="feedback-status">Feedback saves to Firebase when you are signed in or online as guest.</div>
           <div class="cta-row compact-actions">
             <button class="primary" id="feedback-submit" type="button">Submit Feedback</button>
             <button class="ghost" id="feedback-cancel" type="button">Cancel</button>

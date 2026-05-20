@@ -2,30 +2,37 @@
 
 ## GitHub Pages Frontend
 
-The current frontend build is the restored static InfernoDrift4 root game. `npm run build:web` copies `index.html`, `script.js`, `style.css`, icons, manifest, service-worker reset file, and static card art into `dist/`.
+The current frontend build is the restored static InfernoDrift4 root game. `npm run build:web` copies `index.html`, `script.js`, `style.css`, Firebase client modules, icons, manifest, service-worker reset file, and static card art into `dist/`.
 
 1. Push `main`.
 2. Ensure GitHub Pages source is GitHub Actions.
 3. Wait for `Deploy GitHub Pages`.
-4. Open https://canimal4.github.io/InfernoDrift4/.
+4. Open https://canimal4.github.io/InfernoDrift/.
 
 The Pages workflow runs `npm ci`, `npm run typecheck`, `npm run test`, `npm run build:web`, uploads `dist/`, and deploys with official Pages artifact actions.
 
-## Cloudflare Worker Backend
+## Firebase Backend
 
-The Cloudflare Worker backend is retained as a fallback. Worker source exists in `apps/worker` and is configured by `wrangler.jsonc`.
+Firebase is the production online backend for this migration. There is no Replit publish step.
 
-Required GitHub secrets:
+Manual Firebase Console setup:
 
-- `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_D1_DATABASE_ID`
+1. Create a Spark/free Firebase project.
+2. Add a Web app and copy its public web config into `firebase-config.js`.
+3. Enable Authentication providers:
+   - Email/Password
+   - Anonymous
+4. Create Firestore in production mode.
+5. Paste and publish `firestore.rules`.
+6. Open the deployed Pages site and run Online -> Server settings -> Run Firebase Test.
 
-Cloudflare D1:
+Do not enable Blaze/billing, paid extensions, Replit paid publish, Firebase Admin SDK keys, or service-account JSON without explicit owner approval.
 
-- Database name: `infernodrift4`
-- Database ID: `830d1cce-a09c-4112-8a28-24b421c4acda`
-- Created from the Cloudflare dashboard on May 18, 2026.
+Expected Firebase collections are documented in `docs/FIREBASE_MIGRATION.md`.
+
+## Legacy Cloudflare Worker Backend
+
+The Cloudflare Worker backend is retained only as a legacy WebSocket fallback/reference. Worker source exists in `apps/worker` and is configured by `wrangler.jsonc`.
 
 Dry checks:
 
@@ -34,60 +41,14 @@ npm run worker:check
 npm run worker:types
 ```
 
-Manual deploy is allowed only when credentials are available and safe:
+Do not deploy Cloudflare or make `workers.dev` primary for school users unless the owner explicitly asks for legacy room-server work.
 
-```bash
-npx wrangler d1 migrations apply infernodrift4 --remote
-CLOUDFLARE_ACCOUNT_ID=... CLOUDFLARE_API_TOKEN=... npm run deploy:worker
-```
+## Legacy Replit Backend
 
-Do not use the dashboard Console as the primary migration runner for the multi-statement migration files. Use Wrangler or the GitHub Action path so Cloudflare records the migration state consistently.
+Replit publish requires payment and is not part of the free Firebase migration. Replit dev URLs must not be used as production URLs.
 
-Feedback email delivery also requires Worker secrets/config:
-
-```bash
-printf '%s' "$RESEND_API_KEY" | npx wrangler secret put RESEND_API_KEY
-```
-
-`FEEDBACK_FROM` must be a verified sender in Resend before the UI can truthfully say email delivery is configured.
-
-Do not mark hosted online as live until a concrete `wss://.../ws` endpoint passes:
-
-```bash
-INFERNO_ONLINE_SMOKE_URL=wss://<verified-worker>/ws node smoke_online_local.mjs
-```
-
-Then verify a two-client room flow from the deployed Pages game.
-
-## Replit Backend
-
-The current no-cost primary online backend is the Replit Node dev URL:
-
-- App name: `infernodrift4-online`
-- HTTP URL: `https://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev`
-- WebSocket URL: `wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws`
-- Paid publish URL, blocked without plan upgrade: `https://infernodrift4-online.replit.app`
-- Source repository: `https://github.com/CAnimal4/InfernoDrift4`
-
-Deployment checklist:
-
-1. Import/connect the GitHub repository in Replit.
-2. Ensure the run command is `npm run dev:server`.
-3. Add Replit SQL/Postgres and configure `DATABASE_URL` as a Replit environment variable or secret.
-4. Set `ALLOWED_ORIGINS` to `https://canimal4.github.io,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:4173,http://127.0.0.1:4173`.
-5. Use the free Replit dev URL while the workspace is running.
-6. Stop before any billing, paid plan, password, token, or security prompt that was not explicitly approved.
-
-Verification:
-
-```bash
-curl https://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/health
-curl -H 'Origin: https://canimal4.github.io' https://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/health
-INFERNO_ONLINE_SMOKE_URL=wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws node smoke_online_local.mjs
-```
-
-If Replit is blocked, down, or slow, the frontend keeps the Cloudflare Worker fallback and Guest Offline play path available.
+Keep Replit code only as a behavioral reference for the old Node backend.
 
 ## Manual UI Work
 
-Use Safari + Computer Use for Cloudflare or GitHub dashboard inspection/configuration when needed. Ask before billing changes, risky DNS changes, deletion, secret rotation, domain transfers, or irreversible account-level settings.
+Use Safari + Computer Use for Firebase/GitHub dashboard inspection/configuration when needed. Stop before billing changes, paid plans, deleting data, private key creation, secret rotation, domain transfers, or irreversible account-level settings.

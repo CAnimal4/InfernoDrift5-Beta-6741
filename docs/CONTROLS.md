@@ -12,7 +12,7 @@
 - Max Arena ball cam: `L`
 - Max Arena ball lunge: `Space`
 - Max Arena target lunge: `Ctrl` or `Command`
-- Online chat: `C` is reserved for the backend-backed chat phase
+- Online chat: `C` opens Firebase-backed chat when signed in or online as guest
 - Controls can be remapped in the in-game Controls tab. Duplicate primary bindings are rejected.
 
 ## Touch

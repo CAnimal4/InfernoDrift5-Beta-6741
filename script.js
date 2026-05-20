@@ -1,4 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
+import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
+import { createFirebaseOnlineService } from "./firebase-online.js";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -327,19 +329,17 @@ const DAILY_GIFT_MIN_XP = 100;
 const DAILY_GIFT_MAX_XP = 1000;
 const DAILY_GIFT_STEP_XP = 25;
 const ONLINE_PROTOCOL_VERSION = 1;
-const REPLIT_PRODUCTION_BACKEND_URL =
-  "wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws";
-const REPLIT_PAID_DEPLOYMENT_BACKEND_URL =
-  "wss://infernodrift4-online.replit.app/ws";
+const BACKEND_MODE_FIREBASE = "firebase";
+const BACKEND_MODE_WEBSOCKET = "websocket";
+const DEFAULT_BACKEND_MODE = BACKEND_MODE_FIREBASE;
 const WORKER_FALLBACK_BACKEND_URL =
   "wss://infernodrift4-online.clarkbythebay.workers.dev/ws";
 const LEGACY_PRODUCTION_BACKEND_URLS = new Set([
-  REPLIT_PAID_DEPLOYMENT_BACKEND_URL,
   WORKER_FALLBACK_BACKEND_URL,
   "wss://infernodrift4-online.clarkbythebay.workers.dev/ws?room=global-v2",
   "wss://infernodrift4-online.clarkbythebay.workers.dev/ws?room=global-v3",
 ]);
-const DEFAULT_PRODUCTION_BACKEND_URL = REPLIT_PRODUCTION_BACKEND_URL;
+const DEFAULT_PRODUCTION_BACKEND_URL = "";
 const DEFAULT_LOCAL_BACKEND_URL = "ws://127.0.0.1:8787/ws";
 const DEFAULT_BACKUP_BACKEND_URLS = [WORKER_FALLBACK_BACKEND_URL];
 const QUICK_CHAT_MESSAGES = [
@@ -2084,11 +2084,12 @@ const gamepadState = {
 };
 
 const onlineState = {
+  backendMode: DEFAULT_BACKEND_MODE,
   backendUrl: "",
   backendDefaulted: false,
   feedbackUrl: "",
-  status: "offline",
-  statusText: "Offline: no backend configured",
+  status: "idle",
+  statusText: "Firebase online-lite ready when configured",
   connectionStage: "idle",
   transport: "offline",
   backendHealth: null,
@@ -2159,7 +2160,49 @@ const onlineState = {
   chatNoticeTimer: 0,
   lastSystemMessageText: "",
   lastSystemMessageAt: 0,
+  firebase: {
+    configured: false,
+    projectId: "not-configured",
+    authStatus: "idle",
+    firestoreStatus: "idle",
+    chatStatus: "idle",
+    leaderboardStatus: "idle",
+    friendsStatus: "idle",
+    diagnosticsStatus: "idle",
+    chatListenerActive: false,
+    lastError: "",
+  },
 };
+
+const firebaseConfig = getFirebaseConfig();
+const firebaseOnline = createFirebaseOnlineService({
+  config: firebaseConfig,
+  onEvent: (event) => {
+    handleOnlineMessage(JSON.stringify(event));
+  },
+});
+
+function isFirebaseBackendMode() {
+  return onlineState.backendMode === BACKEND_MODE_FIREBASE;
+}
+
+function syncFirebaseServiceStatus() {
+  const status = firebaseOnline.getStatus();
+  const configStatus = getFirebaseConfigStatus(firebaseConfig);
+  onlineState.firebase = {
+    configured: configStatus.configured,
+    projectId: configStatus.projectId,
+    authStatus: status.authStatus || "idle",
+    firestoreStatus: status.firestoreStatus || "idle",
+    chatStatus: status.chatStatus || "idle",
+    leaderboardStatus: status.leaderboardStatus || "idle",
+    friendsStatus: status.friendsStatus || "idle",
+    diagnosticsStatus: status.diagnosticsStatus || "idle",
+    chatListenerActive: Boolean(status.chatListenerActive),
+    lastError: status.lastError || "",
+  };
+  return status;
+}
 
 const maxTeamCustomization = {
   blue: { ...DEFAULT_MAX_TEAM_CUSTOMIZATION.blue },
@@ -3708,6 +3751,37 @@ function buildFreshAccountSavePayload() {
 }
 
 function syncProgressionToBackend() {
+  if (isFirebaseBackendMode()) {
+    if (
+      onlineState.profileMode !== "account" ||
+      onlineState.guestTemporary ||
+      !onlineState.user
+    ) {
+      return false;
+    }
+    const now = performance.now();
+    onlineState.lastProgressSyncAt = now;
+    onlineState.nextProgressSyncAt = now + ONLINE_PROGRESS_SYNC_INTERVAL_MS;
+    onlineState.leaderboardSyncStatus = "syncing";
+    onlineState.leaderboardPlayerRow = {
+      ...getCurrentPlayerXpLeaderboardRow(),
+      source: "pending",
+    };
+    firebaseOnline
+      .syncProgress(buildPersistentSavePayload())
+      .then(() => {
+        onlineState.saveSyncedAt = Date.now();
+        requestOnlineLeaderboard({ force: true });
+        syncFirebaseServiceStatus();
+        updateOnlineUi();
+      })
+      .catch((error) => {
+        onlineState.leaderboardSyncStatus = "firebase-error";
+        onlineState.lastError = describeOnlineError(error?.message || "");
+        updateOnlineUi();
+      });
+    return true;
+  }
   if (
     !isOnlineSocketOpen() ||
     onlineState.profileMode !== "account" ||
@@ -3731,6 +3805,18 @@ function syncProgressionToBackend() {
 }
 
 function forceOnlineProgressSync({ force = false } = {}) {
+  if (isFirebaseBackendMode()) {
+    if (
+      onlineState.profileMode !== "account" ||
+      onlineState.guestTemporary ||
+      !onlineState.user
+    ) {
+      return false;
+    }
+    const now = performance.now();
+    if (!force && now < onlineState.nextProgressSyncAt) return false;
+    return syncProgressionToBackend();
+  }
   if (
     !isOnlineSocketOpen() ||
     onlineState.profileMode !== "account" ||
@@ -4325,6 +4411,23 @@ function renderConnectionReport() {
 
 function renderOnlineDiagnostics() {
   if (!onlineDiagnostics) return;
+  if (isFirebaseBackendMode()) {
+    syncFirebaseServiceStatus();
+    onlineDiagnostics.textContent = [
+      `Frontend ${window.location.origin || "local file"}`,
+      `Backend mode firebase`,
+      `Firebase project ${onlineState.firebase.projectId}`,
+      `Auth ${onlineState.firebase.authStatus}${onlineState.user ? ` (${onlineState.user.username})` : ""}`,
+      `Firestore ${onlineState.firebase.firestoreStatus}`,
+      `Chat ${onlineState.firebase.chatStatus}${onlineState.firebase.chatListenerActive ? " listener-on" : ""}`,
+      `Leaderboard ${onlineState.firebase.leaderboardStatus}`,
+      `Diagnostics ${onlineState.firebase.diagnosticsStatus}`,
+      `Realtime DB not used`,
+      `Last error ${onlineState.firebase.lastError || onlineState.lastError || "none"}`,
+      `Offline fallback ${onlineState.profileMode === "guest" && !onlineState.user ? "yes" : "no"}`,
+    ].join(" · ");
+    return;
+  }
   const baseUrl = deriveHttpBaseUrl(onlineState.backendUrl) || "not configured";
   const health = onlineState.backendHealth?.ok
     ? `ok ${onlineState.backendHealth.status || 200}`
@@ -4357,6 +4460,75 @@ function renderOnlineDiagnostics() {
 }
 
 async function runOnlineConnectionTest({ applyHealthy = true } = {}) {
+  if (isFirebaseBackendMode()) {
+    onlineState.connectionReport = [];
+    onlineState.connectionTestStatus = "checking";
+    onlineState.lastConnectionTestAt = Date.now();
+    setOnlineStatus("checking", "Running Firebase test");
+    renderConnectionReport();
+    updateOnlineUi();
+    const result = await firebaseOnline.runDiagnostics({
+      timeoutMs: ONLINE_AUTH_TIMEOUT_MS,
+    });
+    syncFirebaseServiceStatus();
+    onlineState.backendHealth = {
+      ok: Boolean(result.ok),
+      service: "firebase",
+      error: result.ok ? "" : result.error || "firebase_unavailable",
+      status: result.ok ? 200 : 0,
+      checkedAt: Date.now(),
+    };
+    onlineState.connectionReport = [
+      {
+        url: `firebase://${onlineState.firebase.projectId}`,
+        health: onlineState.backendHealth,
+        httpFallback: {
+          ok: Boolean(result.auth && result.firestore),
+          auth: Boolean(result.auth),
+          firestore: Boolean(result.firestore),
+        },
+        websocket: {
+          ok: false,
+          error: "firebase_no_authoritative_websocket",
+        },
+      },
+    ];
+    onlineState.connectionTestStatus = result.ok ? "ok" : "failed";
+    onlineState.transport = result.ok ? BACKEND_MODE_FIREBASE : "offline";
+    if (result.ok && result.status?.user) {
+      handleOnlineMessage(
+        JSON.stringify({
+          type: "auth.ok",
+          user: result.status.user,
+          sessionToken: result.status.uid,
+        }),
+      );
+      await Promise.allSettled([
+        firebaseOnline.subscribeChat(),
+        firebaseOnline.refreshLeaderboard(),
+        firebaseOnline.refreshFriends(),
+      ]);
+      syncFirebaseServiceStatus();
+    }
+    setOnlineStatus(
+      result.ok ? "connected" : "unavailable",
+      result.ok
+        ? "Firebase test passed"
+        : "Online services are unavailable on this network",
+      result.ok
+        ? "Auth and Firestore read/write work. Live server rooms stay unavailable without a server."
+        : describeOnlineError(result.error || "firebase_unavailable"),
+    );
+    renderConnectionReport();
+    renderOnlineDiagnostics();
+    updateOnlineUi();
+    return {
+      status: onlineState.connectionTestStatus,
+      activeBackendUrl: "",
+      report: onlineState.connectionReport,
+      firebase: onlineState.firebase,
+    };
+  }
   onlineState.backendUrl = normalizeOnlineBackendUrl(
     onlineBackendUrlInput?.value || onlineState.backendUrl,
   );
@@ -4433,20 +4605,39 @@ async function runOnlineConnectionTest({ applyHealthy = true } = {}) {
 function loadOnlineConfig() {
   const onlinePrefs = readLocalJson(ONLINE_STORAGE_KEY, {});
   const feedbackPrefs = readLocalJson(FEEDBACK_STORAGE_KEY, {});
-  const explicitBackend =
+  const runtimeMode =
+    getRuntimeParam("backendMode", "backend", "onlineMode") ||
+    window.INFERNO_BACKEND_MODE ||
+    onlinePrefs.backendMode ||
+    DEFAULT_BACKEND_MODE;
+  onlineState.backendMode =
+    String(runtimeMode).toLowerCase() === BACKEND_MODE_WEBSOCKET
+      ? BACKEND_MODE_WEBSOCKET
+      : BACKEND_MODE_FIREBASE;
+  const runtimeBackend =
     getRuntimeParam("online", "onlineUrl", "ws") ||
     window.INFERNO_ONLINE_URL ||
-    onlinePrefs.backendUrl ||
     "";
+  const explicitBackend =
+    onlineState.backendMode === BACKEND_MODE_WEBSOCKET
+      ? runtimeBackend || onlinePrefs.backendUrl || ""
+      : "";
   const backupRuntime =
-    getRuntimeParam("onlineBackup", "backupOnline", "backupWs") ||
-    onlinePrefs.backupBackendUrls ||
-    getWindowBackupBackendUrls();
-  const configuredBackend = explicitBackend || getDefaultOnlineBackendUrl();
+    onlineState.backendMode === BACKEND_MODE_WEBSOCKET
+      ? getRuntimeParam("onlineBackup", "backupOnline", "backupWs") ||
+        onlinePrefs.backupBackendUrls ||
+        getWindowBackupBackendUrls()
+      : [];
+  const configuredBackend =
+    onlineState.backendMode === BACKEND_MODE_WEBSOCKET
+      ? explicitBackend || getDefaultOnlineBackendUrl()
+      : explicitBackend || "";
   const normalizedBackend = normalizeOnlineBackendUrl(configuredBackend);
-  onlineState.backendUrl = LEGACY_PRODUCTION_BACKEND_URLS.has(normalizedBackend)
-    ? DEFAULT_PRODUCTION_BACKEND_URL
-    : normalizedBackend;
+  onlineState.backendUrl =
+    onlineState.backendMode === BACKEND_MODE_WEBSOCKET &&
+    LEGACY_PRODUCTION_BACKEND_URLS.has(normalizedBackend)
+      ? DEFAULT_PRODUCTION_BACKEND_URL
+      : normalizedBackend;
   onlineState.backupBackendUrls = parseBackendUrlList(backupRuntime).filter(
     (url) => url !== onlineState.backendUrl,
   );
@@ -4469,7 +4660,10 @@ function loadOnlineConfig() {
     onlineBackendUrlInput.value = onlineState.backendUrl;
   if (onlineBackupUrlsInput)
     onlineBackupUrlsInput.value = onlineState.backupBackendUrls.join("\n");
-  if (onlineState.backendUrl && onlineState.status === "offline") {
+  if (isFirebaseBackendMode()) {
+    syncFirebaseServiceStatus();
+    onlineState.statusText = "Firebase online-lite is the default backend.";
+  } else if (onlineState.backendUrl && onlineState.status === "offline") {
     onlineState.statusText = `Backend ready: ${onlineState.backendUrl}`;
   }
   if (onlineUsernameInput) onlineUsernameInput.value = onlineState.username;
@@ -4479,6 +4673,7 @@ function loadOnlineConfig() {
 
 function saveOnlineConfig() {
   const payload = {
+    backendMode: onlineState.backendMode,
     backendUrl: onlineState.backendUrl,
     backupBackendUrls: onlineState.backupBackendUrls,
     age: onlineState.age,
@@ -4538,7 +4733,21 @@ function isOnlineSocketOpen() {
   return onlineState.socket?.readyState === WebSocket.OPEN;
 }
 
+function isOnlineServiceConnected() {
+  return isFirebaseBackendMode() ? Boolean(onlineState.user) : isOnlineSocketOpen();
+}
+
 function sendOnlineMessage(payload, { queue = true } = {}) {
+  if (isFirebaseBackendMode()) {
+    pushOnlineChatMessage({
+      from: "System",
+      text:
+        "Live rooms and authoritative multiplayer need a server backend. Firebase is handling accounts, chat, leaderboard, friends, feedback, and progress.",
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
   if (isOnlineSocketOpen()) {
     onlineState.socket.send(JSON.stringify(payload));
     return true;
@@ -4571,7 +4780,7 @@ function getOnlineRoomOptions() {
 
 function makeRandomGuestUsername() {
   const suffix = Math.floor(1000 + Math.random() * 9000);
-  return `Guest ${suffix}`;
+  return `Guest_${suffix}`;
 }
 
 function setStartAccountStatus(text, tone = "info") {
@@ -4615,9 +4824,16 @@ function buildAccountAuthPayload(mode = "auto") {
   const username = sanitizeRemoteUsername(startAccountUsername?.value || "");
   const password = String(startAccountPassword?.value || "");
   const ageValue = Number(startAccountAge?.value);
-  if (!username || username.length < 2) {
+  if (!username || username.length < 3) {
     setStartAccountStatus(
-      "Enter a username with at least 2 characters.",
+      "Enter a username with 3-20 letters, numbers, underscores, or hyphens.",
+      "error",
+    );
+    return null;
+  }
+  if (!/^[A-Za-z0-9_-]{3,20}$/.test(username)) {
+    setStartAccountStatus(
+      "Username can only use letters, numbers, underscores, or hyphens.",
       "error",
     );
     return null;
@@ -4648,9 +4864,132 @@ function buildAccountAuthPayload(mode = "auto") {
   };
 }
 
+function buildFirebaseAuthResultMessage(result, { guest = false } = {}) {
+  return {
+    type: "auth.ok",
+    user: {
+      ...(result.user || {}),
+      account: !guest,
+      guest,
+      backendMode: BACKEND_MODE_FIREBASE,
+    },
+    sessionToken: result.sessionToken || result.user?.uid || result.user?.id || "",
+    save: result.save || null,
+  };
+}
+
+async function completeFirebaseAuth(result, { guest = false } = {}) {
+  onlineState.transport = BACKEND_MODE_FIREBASE;
+  onlineState.backendHealth = {
+    ok: true,
+    service: "firebase",
+    status: 200,
+    checkedAt: Date.now(),
+  };
+  onlineState.fallbackAttempted = false;
+  handleOnlineMessage(JSON.stringify(buildFirebaseAuthResultMessage(result, { guest })));
+  onlineState.profileMode = guest ? "guest" : "account";
+  onlineState.guestTemporary = guest;
+  onlineState.authRequired = false;
+  onlineState.chatSendStatus = "ready";
+  onlineState.accountStatus = guest
+    ? `${onlineState.username} is online as a Firebase guest.`
+    : `Signed in as ${onlineState.username}.`;
+  syncFirebaseServiceStatus();
+  await firebaseOnline.subscribeChat().catch((error) => {
+    onlineState.chatSendStatus = "failed";
+    onlineState.lastError = describeOnlineError(error?.message || "");
+  });
+  await Promise.allSettled([
+    firebaseOnline.refreshLeaderboard(),
+    firebaseOnline.refreshFriends(),
+  ]);
+  syncFirebaseServiceStatus();
+  saveOnlineConfig();
+  updateOnlineUi();
+}
+
+async function submitFirebaseStartAccount() {
+  if (startAccountSubmit) startAccountSubmit.textContent = "Retry Online";
+  if (startBtn) startBtn.textContent = "Continue Offline";
+  const payload = buildAccountAuthPayload("auto");
+  if (!payload) return false;
+  onlineState.pendingStartAfterAuth = true;
+  onlineState.pendingAuth = null;
+  onlineState.sessionToken = "";
+  setStartAccountStatus(`Connecting account for ${payload.username}...`);
+  setOnlineStatus("checking", "Checking Firebase online services");
+  updateConnectionStage("checking-online");
+  updateOnlineUi();
+  try {
+    const result = await firebaseOnline.signInAccount({
+      username: payload.username,
+      password: payload.password,
+      age: payload.age,
+      savePayload: buildPersistentSavePayload(),
+      timeoutMs: ONLINE_AUTH_TIMEOUT_MS,
+    });
+    syncFirebaseServiceStatus();
+    await completeFirebaseAuth(result, { guest: false });
+    if (onlineState.pendingStartAfterAuth) {
+      onlineState.pendingStartAfterAuth = false;
+      if (overlay.classList.contains("show")) startRun(true);
+    }
+    return true;
+  } catch (error) {
+    onlineState.pendingStartAfterAuth = false;
+    onlineState.transport = "offline";
+    onlineState.timeoutReason = error?.message || "firebase_unavailable";
+    syncFirebaseServiceStatus();
+    setOfflineGuestFallbackStatus();
+    setOnlineStatus(
+      "failed",
+      "Account connection failed",
+      describeOnlineError(error?.message || "firebase_unavailable"),
+    );
+    updateOnlineUi();
+    return false;
+  }
+}
+
+async function startFirebaseGuestSession() {
+  setOnlineStatus("checking", "Checking Firebase guest mode");
+  updateConnectionStage("checking-online");
+  try {
+    const result = await firebaseOnline.signInGuest({
+      username: onlineState.username,
+      age: onlineState.age,
+      savePayload: buildPersistentSavePayload(),
+      timeoutMs: ONLINE_AUTH_TIMEOUT_MS,
+    });
+    syncFirebaseServiceStatus();
+    await completeFirebaseAuth(result, { guest: true });
+    setStartAccountStatus(`${onlineState.username} is online as a Firebase guest.`);
+    return true;
+  } catch (error) {
+    onlineState.transport = "offline";
+    onlineState.timeoutReason = error?.message || "firebase_unavailable";
+    onlineState.profileMode = "guest";
+    onlineState.guestTemporary = true;
+    syncFirebaseServiceStatus();
+    setOfflineGuestFallbackStatus();
+    setOnlineStatus(
+      "unavailable",
+      "Online services are unavailable on this network",
+      describeOnlineError(error?.message || "firebase_unavailable"),
+    );
+    updateOnlineUi();
+    return false;
+  }
+}
+
 function submitStartAccount() {
   if (startAccountSubmit) startAccountSubmit.textContent = "Create / Sign In";
   if (startBtn) startBtn.textContent = "Play as Guest";
+  if (isFirebaseBackendMode()) {
+    submitFirebaseStartAccount();
+    return true;
+  }
   onlineState.backendUrl = normalizeOnlineBackendUrl(
     onlineBackendUrlInput?.value || onlineState.backendUrl,
   );
@@ -4684,21 +5023,34 @@ function startGuestProfile() {
   onlineState.accountStatus = `${onlineState.username} is a temporary guest. Progress saves only for this browser tab.`;
   if (onlineUsernameInput) onlineUsernameInput.value = onlineState.username;
   syncStartAccountFields();
-  if (onlineState.backendUrl && !onlineState.backendDefaulted) {
-    setStartAccountStatus(
-      `${onlineState.username} is entering as a temporary online guest...`,
-    );
-    connectOnline();
-  }
   try {
     sessionStorage.removeItem(SAVE_STORAGE_KEY);
   } catch {
     // Session storage may be unavailable in private modes.
   }
+  if (isFirebaseBackendMode()) {
+    startFirebaseGuestSession();
+  } else if (onlineState.backendUrl && !onlineState.backendDefaulted) {
+    setStartAccountStatus(
+      `${onlineState.username} is entering as a temporary online guest...`,
+    );
+    connectOnline();
+  }
   startRun(true);
 }
 
 function claimOnlineGuest() {
+  if (isFirebaseBackendMode()) {
+    onlineState.username = sanitizeRemoteUsername(
+      onlineUsernameInput?.value || onlineState.username,
+    );
+    onlineState.age = Number.isFinite(Number(onlineAgeInput?.value))
+      ? THREE.MathUtils.clamp(Number(onlineAgeInput.value), 0, 120)
+      : null;
+    saveOnlineConfig();
+    startFirebaseGuestSession();
+    return;
+  }
   onlineState.username = sanitizeRemoteUsername(
     onlineUsernameInput?.value || onlineState.username,
   );
@@ -4726,6 +5078,18 @@ function claimOnlineGuest() {
 }
 
 function claimOnlineUsername() {
+  if (isFirebaseBackendMode()) {
+    onlineState.username = sanitizeRemoteUsername(
+      onlineUsernameInput?.value || onlineState.username,
+    );
+    onlineState.age = Number.isFinite(Number(onlineAgeInput?.value))
+      ? THREE.MathUtils.clamp(Number(onlineAgeInput.value), 0, 120)
+      : onlineState.age;
+    saveOnlineConfig();
+    updateOnlineUi();
+    startFirebaseGuestSession();
+    return;
+  }
   onlineState.username = sanitizeRemoteUsername(
     onlineUsernameInput?.value || onlineState.username,
   );
@@ -4749,6 +5113,10 @@ function claimOnlineUsername() {
 }
 
 function requestOnlineProfile() {
+  if (isFirebaseBackendMode()) {
+    requestFirebaseProfile();
+    return;
+  }
   if (onlineState.transport === "http-fallback") {
     requestHttpProfile();
     return;
@@ -4784,7 +5152,34 @@ async function requestHttpProfile() {
   }
 }
 
+async function requestFirebaseProfile() {
+  try {
+    syncFirebaseServiceStatus();
+    const progress = await firebaseOnline.getProgress();
+    const status = syncFirebaseServiceStatus();
+    if (status.user || progress) {
+      handleOnlineMessage(
+        JSON.stringify({
+          type: "profile.snapshot",
+          user: status.user || onlineState.user,
+          save: progress?.payload ? { payload: progress.payload } : null,
+          restrictions: {},
+        }),
+      );
+    }
+    return true;
+  } catch (error) {
+    onlineState.profileActionStatus = describeOnlineError(error?.message || "");
+    updateOnlineUi();
+    return false;
+  }
+}
+
 function requestOnlineLeaderboard({ force = false } = {}) {
+  if (isFirebaseBackendMode()) {
+    requestFirebaseLeaderboard({ force });
+    return true;
+  }
   if (onlineState.transport === "http-fallback") {
     requestHttpLeaderboard({ force });
     return true;
@@ -4797,6 +5192,26 @@ function requestOnlineLeaderboard({ force = false } = {}) {
     { type: "leaderboard.get", playlist: "casual" },
     { queue: false },
   );
+}
+
+async function requestFirebaseLeaderboard({ force = false } = {}) {
+  const now = performance.now();
+  if (!force && now - onlineState.leaderboardSyncedAt < 12000) return false;
+  if (!onlineState.user) {
+    onlineState.leaderboardSyncStatus = "local";
+    return false;
+  }
+  onlineState.leaderboardSyncStatus = "syncing";
+  try {
+    await firebaseOnline.refreshLeaderboard();
+    syncFirebaseServiceStatus();
+    return true;
+  } catch (error) {
+    onlineState.leaderboardSyncStatus = "firebase-error";
+    onlineState.lastError = describeOnlineError(error?.message || "");
+    updateOnlineUi();
+    return false;
+  }
 }
 
 async function requestHttpLeaderboard({ force = false } = {}) {
@@ -4831,6 +5246,15 @@ async function requestHttpLeaderboard({ force = false } = {}) {
 
 function logoutOnlineProfile() {
   onlineState.profileActionStatus = "Logging out...";
+  if (isFirebaseBackendMode()) {
+    firebaseOnline.logout().finally(() => {
+      completeLocalLogout("Logged out of Firebase.");
+      syncFirebaseServiceStatus();
+      updateOnlineUi();
+    });
+    updateOnlineUi();
+    return;
+  }
   if (isOnlineSocketOpen()) {
     sendOnlineMessage({ type: "profile.logout" }, { queue: false });
   } else {
@@ -4894,6 +5318,12 @@ function deleteOnlineProfile() {
     return;
   }
   onlineState.profileDeleteStatus = "Deleting account...";
+  if (isFirebaseBackendMode()) {
+    onlineState.profileDeleteStatus =
+      "Firebase account deletion requires the Firebase console or a trusted server. Log out here, then delete from Firebase if needed.";
+    updateOnlineUi();
+    return;
+  }
   if (isOnlineSocketOpen()) {
     sendOnlineMessage(
       { type: "profile.delete", confirmUsername },
@@ -4917,10 +5347,18 @@ function describeOnlineError(error = "") {
       "That name was a temporary guest profile. Try signing in again to upgrade it into a normal account, or choose another username.",
     account_not_found: "No account exists with that username yet.",
     invalid_credentials: "That username and password do not match.",
+    username_invalid:
+      "Use 3-20 letters, numbers, underscores, or hyphens for your username.",
+    username_rejected:
+      "That username is not allowed. Try a school-appropriate racer name.",
     username_reserved: "That username is reserved.",
     username_taken: "That username is already taken.",
+    weak_password: "Password must be at least 6 characters.",
     chat_requires_13_plus:
       "Typed chat requires your real age to be 13 or older. Quick chat still works.",
+    chat_rate_limited: "Slow down for a moment before sending another chat.",
+    text_rejected:
+      "That message was blocked by the safety filter. Try safer wording.",
     room_not_found:
       "That room code was not found. Check the code and try again.",
     room_full: "That room is full.",
@@ -4933,6 +5371,14 @@ function describeOnlineError(error = "") {
     feedback_too_long: "Feedback must be 2,500 characters or fewer.",
     feedback_rejected:
       "Feedback was blocked by the safety filter. Try shorter, school-appropriate wording.",
+    firebase_not_configured:
+      "Firebase is not configured yet. Add the Firebase web config and rules.",
+    firebase_timeout:
+      "Firebase did not answer quickly. You can still play Guest Offline.",
+    firebase_unavailable:
+      "Firebase online services are unavailable on this network.",
+    permission_denied:
+      "Firebase rejected that request. Check Auth, Firestore, and rules.",
     health_timeout:
       "The online backend did not answer quickly. A school network may be blocking it.",
     health_failed: "The online backend could not be reached from this browser.",
@@ -5018,7 +5464,76 @@ async function handleHttpFallbackAuth(authPayload) {
   }
 }
 
+async function connectFirebaseOnline({ reconnect = false } = {}) {
+  clearOnlineTimers();
+  setOnlineStatus(
+    "checking",
+    reconnect ? "Retrying Firebase online services" : "Checking Firebase online services",
+  );
+  updateConnectionStage("checking-online");
+  onlineState.transport = BACKEND_MODE_FIREBASE;
+  onlineState.backendHealth = null;
+  updateOnlineUi();
+  const status = await firebaseOnline.init({
+    timeoutMs: ONLINE_HEALTH_TIMEOUT_MS,
+  });
+  syncFirebaseServiceStatus();
+  if (!status.available) {
+    onlineState.transport = "offline";
+    onlineState.backendHealth = {
+      ok: false,
+      service: "firebase",
+      error: status.lastError || "firebase_unavailable",
+      checkedAt: Date.now(),
+    };
+    setOnlineStatus(
+      "unavailable",
+      "Online services are unavailable on this network",
+      describeOnlineError(status.lastError || "firebase_unavailable"),
+    );
+    if (onlineState.pendingStartAfterAuth) {
+      onlineState.pendingStartAfterAuth = false;
+      setOfflineGuestFallbackStatus();
+    }
+    updateOnlineUi();
+    return false;
+  }
+  onlineState.backendHealth = {
+    ok: true,
+    service: "firebase",
+    status: 200,
+    checkedAt: Date.now(),
+  };
+  if (status.authenticated && status.user) {
+    handleOnlineMessage(
+      JSON.stringify({
+        type: "auth.ok",
+        user: status.user,
+        sessionToken: status.uid,
+      }),
+    );
+    await Promise.allSettled([
+      firebaseOnline.subscribeChat(),
+      firebaseOnline.refreshLeaderboard(),
+      firebaseOnline.refreshFriends(),
+    ]);
+    syncFirebaseServiceStatus();
+    setOnlineStatus("authenticated", `Online as ${status.user.username}`);
+  } else {
+    setOnlineStatus(
+      "connected",
+      "Firebase is available",
+      "Sign in, create an account, or continue as guest.",
+    );
+  }
+  updateOnlineUi();
+  return true;
+}
+
 async function connectOnline({ reconnect = false } = {}) {
+  if (isFirebaseBackendMode()) {
+    return connectFirebaseOnline({ reconnect });
+  }
   onlineState.backendUrl = normalizeOnlineBackendUrl(
     onlineBackendUrlInput?.value || onlineState.backendUrl,
   );
@@ -5218,6 +5733,20 @@ async function connectOnline({ reconnect = false } = {}) {
 }
 
 function disconnectOnline({ manual = true, suppressReconnect = false } = {}) {
+  if (isFirebaseBackendMode()) {
+    firebaseOnline.unsubscribeRealtime();
+    onlineState.user = null;
+    onlineState.room = null;
+    onlineState.queue = null;
+    onlineState.transport = "offline";
+    onlineState.connectionStage = "idle";
+    onlineState.remoteSnapshots = [];
+    setRemoteHumanPlayers([]);
+    setOnlineStatus("offline", manual ? "Offline: Firebase disconnected" : "Offline");
+    syncFirebaseServiceStatus();
+    updateOnlineUi();
+    return;
+  }
   if (onlineState.reconnectTimer) clearTimeout(onlineState.reconnectTimer);
   onlineState.reconnectTimer = 0;
   clearOnlineTimers();
@@ -5855,6 +6384,14 @@ function submitReportCommand(username, reason) {
     updateOnlineUi();
     return false;
   }
+  if (isFirebaseBackendMode()) {
+    submitFirebaseReport(cleanUsername, cleanReason || "Chat command report");
+    onlineState.reportUsername = "";
+    onlineState.reportReason = "";
+    onlineState.chatMode = "lobby";
+    updateOnlineUi();
+    return true;
+  }
   const sent = sendOnlineMessage(
     {
       type: "friend.report",
@@ -5879,7 +6416,74 @@ function submitReportCommand(username, reason) {
   return true;
 }
 
+async function submitFirebaseReport(username, reason) {
+  try {
+    await firebaseOnline.submitFeedback({
+      feedbackType: "player_report",
+      message: `Report ${username}: ${reason}`,
+      diagnostics: JSON.parse(window.render_game_to_text()),
+    });
+    pushOnlineChatMessage({
+      from: "Reports",
+      text: `Report for ${username} saved for moderator review.`,
+      quick: true,
+    });
+  } catch (error) {
+    pushOnlineChatMessage({
+      from: "Reports",
+      text: `Report could not save: ${describeOnlineError(error?.message || "")}`,
+      quick: true,
+    });
+  }
+  updateOnlineUi();
+}
+
+async function sendFirebaseChat(text, { quick = false } = {}) {
+  const clean = String(text || "").trim();
+  if (!clean) return false;
+  try {
+    let directTo =
+      onlineState.chatMode === "dm" && onlineState.activeDmUsername
+        ? {
+            uid: onlineState.activeDmUserId,
+            username: onlineState.activeDmUsername,
+          }
+        : null;
+    if (directTo && !directTo.uid) {
+      const target = await firebaseOnline.findUserByUsername(directTo.username);
+      directTo = { uid: target.uid || target.id, username: target.username };
+      onlineState.activeDmUserId = directTo.uid;
+    }
+    await firebaseOnline.sendChat({
+      text: clean,
+      age: onlineState.age,
+      quick,
+      directTo,
+    });
+    onlineState.chatSendStatus = "sent";
+    if (onlineChatInput) onlineChatInput.value = "";
+    if (chatPopoutInput) chatPopoutInput.value = "";
+    syncFirebaseServiceStatus();
+    updateOnlineUi();
+    return true;
+  } catch (error) {
+    onlineState.chatSendStatus = "failed";
+    pushOnlineChatMessage({
+      from: "System",
+      text: `Chat could not send: ${describeOnlineError(error?.message || "")}`,
+      quick: true,
+    });
+    syncFirebaseServiceStatus();
+    updateOnlineUi();
+    return false;
+  }
+}
+
 function sendQuickChat(text) {
+  if (isFirebaseBackendMode()) {
+    sendFirebaseChat(text, { quick: true });
+    return;
+  }
   sendOnlineMessage({ type: "quick.send", text });
 }
 
@@ -5911,6 +6515,10 @@ function sendFreeChat(text) {
       quick: true,
     });
     updateOnlineUi();
+    return;
+  }
+  if (isFirebaseBackendMode()) {
+    sendFirebaseChat(clean);
     return;
   }
   if (onlineState.transport === "http-fallback") {
@@ -6241,6 +6849,53 @@ function renderOnlinePlayerRows(target, rows, emptyText, rightFormatter) {
   });
 }
 
+async function requestFirebaseFriend(username) {
+  try {
+    const result = await firebaseOnline.requestFriend(username);
+    handleOnlineMessage(
+      JSON.stringify({
+        type: "friend.requested",
+        username: result.username,
+        status: result.status,
+      }),
+    );
+    syncFirebaseServiceStatus();
+    updateOnlineUi();
+    return true;
+  } catch (error) {
+    pushOnlineChatMessage({
+      from: "Friends",
+      text: `Friend request failed: ${describeOnlineError(error?.message || "")}`,
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
+}
+
+async function acceptFirebaseFriendRequest(requestId) {
+  try {
+    const result = await firebaseOnline.acceptFriend(requestId);
+    handleOnlineMessage(
+      JSON.stringify({
+        type: "friend.accepted",
+        username: result.username,
+      }),
+    );
+    syncFirebaseServiceStatus();
+    updateOnlineUi();
+    return true;
+  } catch (error) {
+    pushOnlineChatMessage({
+      from: "Friends",
+      text: `Could not accept request: ${describeOnlineError(error?.message || "")}`,
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
+}
+
 function renderFriendRequestRows() {
   if (!onlineFriendRequests) return;
   onlineFriendRequests.replaceChildren();
@@ -6257,7 +6912,7 @@ function renderFriendRequestRows() {
     leftNode.className = "online-player-name";
     renderPlayerNameInline(leftNode, {
       username: request.fromUsername || request.username || "Player",
-      userId: request.fromUserId,
+      userId: request.fromUserId || request.fromUid,
       badge: request.badge,
       moderator: request.moderator,
     });
@@ -6266,7 +6921,8 @@ function renderFriendRequestRows() {
     button.type = "button";
     button.textContent = "Accept";
     bindPressAction(button, () => {
-      sendOnlineMessage({ type: "friend.accept", requestId: request.id });
+      if (isFirebaseBackendMode()) acceptFirebaseFriendRequest(request.id);
+      else sendOnlineMessage({ type: "friend.accept", requestId: request.id });
     });
     item.append(leftNode, button);
     onlineFriendRequests.appendChild(item);
@@ -6278,7 +6934,7 @@ function renderFriendRequestRows() {
     leftNode.className = "online-player-name";
     renderPlayerNameInline(leftNode, {
       username: request.toUsername || request.username || "Player",
-      userId: request.toUserId,
+      userId: request.toUserId || request.toUid,
       badge: request.badge,
       moderator: request.moderator,
     });
@@ -6413,9 +7069,13 @@ function updateProfileUi() {
   if (profileStatusText) {
     profileStatusText.textContent = user
       ? onlineState.guestTemporary
-        ? "Temporary guest profile. Online rooms work, but durable progress requires an account."
-        : "Signed in. Progress, friends, chat, and leaderboard sync use the InfernoDrift4 backend."
-      : "Offline profile. Sign in or play as guest to use online rooms, friends, chat, and leaderboard sync.";
+        ? isFirebaseBackendMode()
+          ? "Firebase guest online. Chat and leaderboard can work; durable progress needs an account."
+          : "Temporary guest profile. Online rooms work, but durable progress requires an account."
+        : isFirebaseBackendMode()
+          ? "Signed in with Firebase. Progress, friends, chat, feedback, and leaderboard sync use Firestore."
+          : "Signed in. Progress, friends, chat, and leaderboard sync use the InfernoDrift4 backend."
+      : "Offline profile. Sign in or play as guest to use online-lite features; local modes keep working offline.";
   }
   if (profileBadges) {
     profileBadges.replaceChildren();
@@ -6446,8 +7106,10 @@ function updateProfileUi() {
   }
   if (profileLeaderboardState) {
     profileLeaderboardState.textContent = onlineState.leaderboardSyncedAt
-      ? "Live XP"
-      : isOnlineSocketOpen()
+      ? isFirebaseBackendMode()
+        ? "Firebase XP"
+        : "Live XP"
+      : isOnlineServiceConnected()
         ? "Refreshing"
         : "Offline";
   }
@@ -6465,7 +7127,8 @@ function updateProfileUi() {
 }
 
 function updateOnlineUi() {
-  const connected = isOnlineSocketOpen();
+  const connected = isOnlineServiceConnected();
+  const firebaseMode = isFirebaseBackendMode();
   const activeTab =
     document.querySelector(".tab-btn.active")?.dataset.tab ?? "";
   if (connected && (activeTab === "leaderboard" || activeTab === "progress")) {
@@ -6497,7 +7160,9 @@ function updateOnlineUi() {
     onlineTestConnection.textContent =
       onlineState.connectionTestStatus === "checking"
         ? "Testing..."
-        : "Test Connection";
+        : isFirebaseBackendMode()
+          ? "Run Firebase Test"
+          : "Test Connection";
   }
   renderConnectionReport();
   renderOnlineDiagnostics();
@@ -6530,9 +7195,10 @@ function updateOnlineUi() {
       : "Quick chat only, /report";
   }
   if (onlineConnect) onlineConnect.disabled = connected;
-  if (onlineDisconnect) onlineDisconnect.disabled = !onlineState.socket;
+  if (onlineDisconnect)
+    onlineDisconnect.disabled = firebaseMode ? !onlineState.user : !onlineState.socket;
   if (onlineClaim) onlineClaim.disabled = false;
-  const roomsNeedLive = onlineState.transport === "http-fallback";
+  const roomsNeedLive = firebaseMode || onlineState.transport === "http-fallback";
   [onlineCreateRoom, onlineJoinRoom, onlineQueue].forEach((node) => {
     if (node) node.disabled = roomsNeedLive || !connected;
   });
@@ -6556,7 +7222,9 @@ function updateOnlineUi() {
       ? `Room ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${room.bots || 0} bots, ${getModeDefinition(room.mode).label}`
       : onlineState.queue
         ? `Queued for ${onlineState.queue.playlist || "casual"} ${onlineState.queue.teamSize || 2}v${onlineState.queue.teamSize || 2}`
-        : roomsNeedLive
+        : firebaseMode
+          ? "Firebase online-lite is active. Server-authoritative rooms are unavailable without a live WebSocket server."
+          : roomsNeedLive
           ? "Rooms need live WebSocket connection. Account, chat, and leaderboard are using HTTPS fallback."
           : "No room joined.";
   }
@@ -6575,7 +7243,7 @@ function updateOnlineUi() {
   renderOnlinePlayerRows(
     onlineFriends,
     onlineState.friends,
-    "No friends from backend yet.",
+    firebaseMode ? "No Firebase friends yet." : "No friends from backend yet.",
     (row) => (row.online ? "Online" : ""),
   );
   renderOnlinePlayerRows(
@@ -6629,7 +7297,9 @@ function openFeedbackModal() {
             emailError: onlineState.lastFeedbackError,
           })
         : onlineState.lastFeedbackError ||
-          "Feedback saves only when a backend endpoint is configured.";
+          (isFirebaseBackendMode()
+            ? "Feedback saves to Firebase when you are signed in or online as guest."
+            : "Feedback saves only when a backend endpoint is configured.");
   }
 }
 
@@ -6663,12 +7333,19 @@ function getFeedbackDeliveryMessage(result = {}) {
   if (delivery === "stored_email_not_configured") {
     return "Feedback saved by the backend. Email delivery is not configured yet.";
   }
+  if (delivery === "stored_firebase") {
+    return "Feedback saved to Firebase for review.";
+  }
   return result.emailConfigured
     ? "Feedback saved by the configured backend."
     : "Feedback saved by the backend. Email delivery is not configured yet.";
 }
 
 async function submitFeedback() {
+  if (isFirebaseBackendMode()) {
+    await submitFirebaseFeedback();
+    return;
+  }
   const configuredUrl =
     onlineState.feedbackUrl || deriveFeedbackUrl(onlineState.backendUrl);
   const message = String(feedbackMessage?.value || "").trim();
@@ -6733,11 +7410,59 @@ async function submitFeedback() {
   }
 }
 
+async function submitFirebaseFeedback() {
+  const message = String(feedbackMessage?.value || "").trim();
+  if (!message) {
+    onlineState.lastFeedbackStatus = "error";
+    onlineState.lastFeedbackError = "Please add a feedback message.";
+    updateFeedbackStatus();
+    return;
+  }
+  if (message.length > FEEDBACK_MESSAGE_LIMIT) {
+    onlineState.lastFeedbackStatus = "error";
+    onlineState.lastFeedbackError = `Feedback is ${message.length - FEEDBACK_MESSAGE_LIMIT} characters too long. Keep it under 2,500 characters.`;
+    updateFeedbackCounter();
+    updateFeedbackStatus();
+    return;
+  }
+  if (!onlineState.user) {
+    onlineState.lastFeedbackStatus = "not_configured";
+    onlineState.lastFeedbackError =
+      "Sign in or continue as guest online before sending Firebase feedback.";
+    updateFeedbackStatus();
+    return;
+  }
+  const age13 = Boolean(feedbackAge13?.checked);
+  try {
+    updateFeedbackStatus("Saving feedback to Firebase...");
+    const result = await firebaseOnline.submitFeedback({
+      feedbackType: feedbackType?.value || "other",
+      message,
+      diagnostics: feedbackDiagnostics?.checked
+        ? JSON.parse(window.render_game_to_text())
+        : null,
+      replyEmail: age13 ? String(feedbackEmail?.value || "").trim() : "",
+      age13OrOlder: age13,
+    });
+    onlineState.lastFeedbackStatus = "saved";
+    onlineState.lastFeedbackDelivery = result.delivery || "stored_firebase";
+    onlineState.feedbackEmailConfigured = false;
+    onlineState.lastFeedbackError = "";
+    if (feedbackMessage) feedbackMessage.value = "";
+    updateFeedbackCounter();
+    updateFeedbackStatus(getFeedbackDeliveryMessage(result));
+  } catch (error) {
+    onlineState.lastFeedbackStatus = "error";
+    onlineState.lastFeedbackDelivery = "error";
+    onlineState.feedbackEmailConfigured = false;
+    onlineState.lastFeedbackError = `Feedback was not saved: ${describeOnlineError(error?.message || "request failed")}`;
+    updateFeedbackStatus();
+  }
+}
+
 function updateFeedbackCounter() {
   if (!feedbackCounter || !feedbackMessage) return;
-  if (feedbackMessage.maxLength !== FEEDBACK_MESSAGE_LIMIT) {
-    feedbackMessage.maxLength = FEEDBACK_MESSAGE_LIMIT;
-  }
+  feedbackMessage.removeAttribute("maxlength");
   const count = feedbackMessage.value.length;
   feedbackCounter.textContent = `${count.toLocaleString()} / ${FEEDBACK_MESSAGE_LIMIT.toLocaleString()}`;
   feedbackCounter.dataset.state =
@@ -6747,15 +7472,9 @@ function updateFeedbackCounter() {
         ? "warn"
         : "";
   if (count > FEEDBACK_MESSAGE_LIMIT) {
-    feedbackMessage.value = feedbackMessage.value.slice(
-      0,
-      FEEDBACK_MESSAGE_LIMIT,
-    );
-    feedbackCounter.textContent = `${FEEDBACK_MESSAGE_LIMIT.toLocaleString()} / ${FEEDBACK_MESSAGE_LIMIT.toLocaleString()}`;
     feedbackCounter.dataset.state = "error";
     onlineState.lastFeedbackStatus = "error";
-    onlineState.lastFeedbackError =
-      "Feedback is limited to 2,500 characters. The extra text was not added.";
+    onlineState.lastFeedbackError = `Feedback is ${count - FEEDBACK_MESSAGE_LIMIT} characters too long. Keep it under 2,500 characters.`;
     updateFeedbackStatus();
   }
 }
@@ -6766,7 +7485,9 @@ function updateFeedbackStatus(text = "") {
   feedbackStatus.textContent =
     text ||
     onlineState.lastFeedbackError ||
-    "Feedback saves only when a backend endpoint is configured.";
+    (isFirebaseBackendMode()
+      ? "Feedback saves to Firebase when you are signed in or online as guest."
+      : "Feedback saves only when a backend endpoint is configured.");
 }
 
 function refreshDevModeUi() {
@@ -17848,7 +18569,8 @@ bindPressAction(onlineAddFriend, () => {
     onlineFriendName?.value || "",
   );
   if (!username) return;
-  sendOnlineMessage({ type: "friend.request", username });
+  if (isFirebaseBackendMode()) requestFirebaseFriend(username);
+  else sendOnlineMessage({ type: "friend.request", username });
   if (onlineFriendName) onlineFriendName.value = "";
 });
 bindPressAction(feedbackClose, () => closeFeedbackModal());
@@ -18740,14 +19462,18 @@ window.render_game_to_text = () => {
       rewardLog: state.progressionV2.rewardLog.slice(-6),
     },
     online: {
+      backendMode: onlineState.backendMode,
       status: onlineState.status,
       connectionStage: onlineState.connectionStage,
       transport: onlineState.transport,
+      firebase: onlineState.firebase,
       backendHealth: onlineState.backendHealth,
       lastCloseCode: onlineState.lastCloseCode,
       timeoutReason: onlineState.timeoutReason,
       chatSendStatus: onlineState.chatSendStatus,
-      configured: Boolean(onlineState.backendUrl),
+      configured: isFirebaseBackendMode()
+        ? Boolean(onlineState.firebase.configured)
+        : Boolean(onlineState.backendUrl),
       backendUrl: onlineState.backendUrl,
       backupBackendUrls: onlineState.backupBackendUrls,
       connectionTest: {
@@ -18755,9 +19481,11 @@ window.render_game_to_text = () => {
         lastRunAt: onlineState.lastConnectionTestAt,
         report: onlineState.connectionReport,
       },
-      feedbackConfigured: Boolean(
-        onlineState.feedbackUrl || deriveFeedbackUrl(onlineState.backendUrl),
-      ),
+      feedbackConfigured: isFirebaseBackendMode()
+        ? Boolean(onlineState.user)
+        : Boolean(
+            onlineState.feedbackUrl || deriveFeedbackUrl(onlineState.backendUrl),
+          ),
       feedbackStatus: onlineState.lastFeedbackStatus,
       feedback: {
         popupVisible: Boolean(feedbackModal?.classList.contains("show")),
@@ -18870,9 +19598,11 @@ window.render_game_to_text = () => {
         pendingMessages: onlineState.pending.length,
       },
       lastError: onlineState.lastError,
-      note: onlineState.backendUrl
-        ? "Static client keeps offline play stable and uses configured backend for online rooms."
-        : "Static client is playable offline; live rooms require a configured backend URL.",
+      note: isFirebaseBackendMode()
+        ? "Firebase is the primary online-lite backend; authoritative live rooms need a separate server and stay unavailable here."
+        : onlineState.backendUrl
+          ? "Static client keeps offline play stable and uses configured backend for online rooms."
+          : "Static client is playable offline; live rooms require a configured backend URL.",
     },
   };
   return JSON.stringify(payload);
@@ -19107,13 +19837,18 @@ window.__infernodriftTestApi = {
     refreshGamesUi();
     return structuredClone(state.progressionV2);
   },
-  configureOnlineForTest: ({
-    backendUrl = "",
-    backupBackendUrls = [],
-    username = "SmokeHost",
-    age = 13,
-  } = {}) => {
-    onlineState.backendUrl = normalizeOnlineBackendUrl(backendUrl);
+	  configureOnlineForTest: ({
+	    backendMode = onlineState.backendMode,
+	    backendUrl = "",
+	    backupBackendUrls = [],
+	    username = "SmokeHost",
+	    age = 13,
+	  } = {}) => {
+	    onlineState.backendMode =
+	      String(backendMode).toLowerCase() === BACKEND_MODE_WEBSOCKET
+	        ? BACKEND_MODE_WEBSOCKET
+	        : BACKEND_MODE_FIREBASE;
+	    onlineState.backendUrl = normalizeOnlineBackendUrl(backendUrl);
     onlineState.backupBackendUrls = parseBackendUrlList(backupBackendUrls);
     onlineState.username = sanitizeRemoteUsername(username);
     onlineState.age = Number.isFinite(Number(age)) ? Number(age) : null;
@@ -19180,9 +19915,11 @@ window.__infernodriftTestApi = {
     return window.__infernodriftTestApi.getOnlineDiagnostics();
   },
   getOnlineDiagnostics: () => ({
+    backendMode: onlineState.backendMode,
     status: onlineState.status,
     connectionStage: onlineState.connectionStage,
     transport: onlineState.transport,
+    firebase: onlineState.firebase,
     backendHealth: onlineState.backendHealth,
     backupBackendUrls: onlineState.backupBackendUrls,
     connectionTestStatus: onlineState.connectionTestStatus,
@@ -19273,16 +20010,20 @@ window.__infernodriftTestApi = {
       { length: Math.max(0, Math.min(5000, Number(count) || 0)) },
       () => rollDailyGiftAmount(),
     ),
-  getOnlineState: () => ({
-    status: onlineState.status,
+	  getOnlineState: () => ({
+	    backendMode: onlineState.backendMode,
+	    status: onlineState.status,
     connectionStage: onlineState.connectionStage,
     transport: onlineState.transport,
+    firebase: onlineState.firebase,
     backendHealth: onlineState.backendHealth,
     lastCloseCode: onlineState.lastCloseCode,
-    timeoutReason: onlineState.timeoutReason,
-    chatSendStatus: onlineState.chatSendStatus,
-    configured: Boolean(onlineState.backendUrl),
-    authenticated: Boolean(onlineState.user),
+	    timeoutReason: onlineState.timeoutReason,
+	    chatSendStatus: onlineState.chatSendStatus,
+	    configured: isFirebaseBackendMode()
+	      ? Boolean(onlineState.firebase.configured)
+	      : Boolean(onlineState.backendUrl),
+	    authenticated: Boolean(onlineState.user),
     username: onlineState.user?.username || onlineState.username,
     badge: onlineState.user?.badge || "",
     moderator: isCurrentOnlineModerator(),

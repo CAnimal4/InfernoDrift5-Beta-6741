@@ -59,19 +59,14 @@ const DEFAULT_INPUT: InputFrame = {
   backflip: false,
 };
 const ONLINE_CONNECT_TIMEOUT_MS = 8000;
-const REPLIT_PRODUCTION_BACKEND_URL =
-  "wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws";
-const REPLIT_PAID_DEPLOYMENT_BACKEND_URL =
-  "wss://infernodrift4-online.replit.app/ws";
-const WORKER_FALLBACK_BACKEND_URL =
+const WORKER_LEGACY_BACKEND_URL =
   "wss://infernodrift4-online.clarkbythebay.workers.dev/ws";
 const LEGACY_PRODUCTION_BACKEND_URLS = new Set([
-  REPLIT_PAID_DEPLOYMENT_BACKEND_URL,
-  WORKER_FALLBACK_BACKEND_URL,
+  WORKER_LEGACY_BACKEND_URL,
   "wss://infernodrift4-online.clarkbythebay.workers.dev/ws?room=global-v2",
   "wss://infernodrift4-online.clarkbythebay.workers.dev/ws?room=global-v3",
 ]);
-const DEFAULT_BACKUP_SERVER_URLS = [WORKER_FALLBACK_BACKEND_URL];
+const DEFAULT_BACKUP_SERVER_URLS: string[] = [];
 
 interface OnlineState {
   status: "offline" | "connecting" | "live" | "error";
@@ -456,9 +451,7 @@ export function App() {
         };
         connectTimer = window.setTimeout(() => {
           if (wsRef.current !== ws || authenticated) return;
-          if (
-            tryFallback("Primary backend failed; trying fallback backend.")
-          ) {
+          if (tryFallback("Primary backend failed; trying fallback backend.")) {
             return;
           }
           wsRef.current = null;
@@ -1168,7 +1161,7 @@ export function App() {
                       {online.error ||
                         (online.status === "live"
                           ? `Room ${online.roomCode ?? "lobby"} synced. Quick chat and 13+ moderated lobby chat are active.`
-                          : "Replit is the primary backend; Worker fallback and Guest Offline stay available if the network blocks it.")}
+                          : "Firebase is the primary backend in the static game. This React preview uses Guest Offline unless a legacy WebSocket server is configured manually.")}
                     </span>
                   </div>
                 </div>
@@ -1621,9 +1614,7 @@ function normalizeWsUrl(value: string): string {
 function canonicalOnlineServerUrl(value: string): string {
   const normalized = normalizeWsUrl(value);
   if (!normalized) return "";
-  return LEGACY_PRODUCTION_BACKEND_URLS.has(normalized)
-    ? REPLIT_PRODUCTION_BACKEND_URL
-    : normalized;
+  return LEGACY_PRODUCTION_BACKEND_URLS.has(normalized) ? "" : normalized;
 }
 
 function parseServerUrlList(value: unknown): string[] {
@@ -1639,9 +1630,7 @@ function parseServerUrlList(value: unknown): string[] {
 function uniqueServerUrls(urls: string[]): string[] {
   return Array.from(
     new Set(
-      urls.map(normalizeWsUrl).filter((url): url is string =>
-        Boolean(url),
-      ),
+      urls.map(normalizeWsUrl).filter((url): url is string => Boolean(url)),
     ),
   );
 }
@@ -1658,7 +1647,7 @@ function getDefaultOnlineServerUrl(): string {
     window.INFERNO_SERVER_URL ||
       window.INFERNO_ONLINE_URL ||
       localStorage.getItem("infernoDrift4.serverUrl") ||
-      REPLIT_PRODUCTION_BACKEND_URL,
+      "",
   );
 }
 

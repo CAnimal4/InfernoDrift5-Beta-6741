@@ -26,6 +26,7 @@ await page.goto(smokeUrl, { waitUntil: "commit", timeout: 45000 });
 await waitForGameHook(page);
 await page.evaluate((username) => {
   window.__infernodriftTestApi.configureOnlineForTest({
+    backendMode: "websocket",
     backendUrl: "",
     username,
     age: 13,
@@ -157,7 +158,7 @@ await page.locator('[data-tab="online"]').click({ force: true });
 await page.waitForTimeout(150);
 assert.match(
   (await page.locator("#online-status").textContent()) ?? "",
-  /online|connected|backend/i,
+  /online|connected|backend|firebase/i,
 );
 await page.locator("#online-username").fill(smokeUsername);
 await page.locator("#online-age").fill("12");
@@ -242,8 +243,10 @@ const feedbackLimitProbe = await page.evaluate(() => {
   return { atLimit, overLimit };
 });
 assert.equal(feedbackLimitProbe.atLimit.count, 2500);
-assert.equal(feedbackLimitProbe.overLimit.count, 2500);
-assert.match(feedbackLimitProbe.overLimit.counter, /2,500/);
+assert.equal(feedbackLimitProbe.overLimit.count, 2600);
+assert.equal(feedbackLimitProbe.overLimit.tooLong, true);
+assert.match(feedbackLimitProbe.overLimit.counter, /2,600 \/ 2,500/);
+assert.match(feedbackLimitProbe.overLimit.error, /100 characters too long/);
 await page.locator("#feedback-message").fill("Smoke feedback message");
 await page.locator("#feedback-submit").click({ force: true });
 await page.waitForTimeout(180);
@@ -739,10 +742,7 @@ assert.ok(
 assert.ok(sharedXpProgress.leaderboard.length > 1);
 const leaderboardTiers = sharedXpProgress.leaderboard.map((row) => row.tier);
 assert.equal(leaderboardTiers[0], "Inferno");
-assert.equal(
-  leaderboardTiers.filter((tier) => tier === "Inferno").length,
-  1,
-);
+assert.equal(leaderboardTiers.filter((tier) => tier === "Inferno").length, 1);
 assert.equal(leaderboardTiers[1], "Platinum");
 assert.equal(leaderboardTiers[2], "Platinum");
 assert.equal(leaderboardTiers[3], "Gold");
