@@ -143,6 +143,11 @@ const touchControlsRoot = document.getElementById("touch-controls");
 const touchSteerPad = document.getElementById("touch-steer-pad");
 const touchSteerKnob = document.getElementById("touch-steer-knob");
 const onlineBackendUrlInput = document.getElementById("online-backend-url");
+const onlineBackupUrlsInput = document.getElementById("online-backup-urls");
+const onlineTestConnection = document.getElementById("online-test-connection");
+const onlineConnectionReport = document.getElementById(
+  "online-connection-report",
+);
 const onlineStatus = document.getElementById("online-status");
 const onlineConnect = document.getElementById("online-connect");
 const onlineDisconnect = document.getElementById("online-disconnect");
@@ -314,6 +319,7 @@ const ONLINE_PROGRESS_SYNC_INTERVAL_MS = 30_000;
 const ONLINE_HEALTH_TIMEOUT_MS = 6000;
 const ONLINE_CONNECT_TIMEOUT_MS = 8000;
 const ONLINE_AUTH_TIMEOUT_MS = 10000;
+const ONLINE_WS_PROBE_TIMEOUT_MS = 4500;
 const FEEDBACK_MESSAGE_LIMIT = 2500;
 const DAILY_GIFT_MIN_XP = 100;
 const DAILY_GIFT_MAX_XP = 1000;
@@ -326,6 +332,7 @@ const LEGACY_PRODUCTION_BACKEND_URLS = new Set([
 const DEFAULT_PRODUCTION_BACKEND_URL =
   "wss://infernodrift4-online.clarkbythebay.workers.dev/ws?room=global-v3";
 const DEFAULT_LOCAL_BACKEND_URL = "ws://127.0.0.1:8787/ws";
+const DEFAULT_BACKUP_BACKEND_URLS = [];
 const QUICK_CHAT_MESSAGES = [
   "Nice drift!",
   "Defending",
@@ -2076,6 +2083,10 @@ const onlineState = {
   connectionStage: "idle",
   transport: "offline",
   backendHealth: null,
+  backupBackendUrls: [],
+  connectionReport: [],
+  connectionTestStatus: "idle",
+  lastConnectionTestAt: 0,
   lastCloseCode: 0,
   timeoutReason: "",
   chatSendStatus: "idle",
@@ -3958,6 +3969,52 @@ function normalizeOnlineBackendUrl(value) {
   return raw;
 }
 
+function uniqueStrings(values) {
+  const seen = new Set();
+  return values.filter((value) => {
+    const key = String(value || "").trim();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function parseBackendUrlList(value) {
+  const rawValues = Array.isArray(value)
+    ? value
+    : String(value ?? "")
+        .split(/[\n,]+/)
+        .map((entry) => entry.trim());
+  return uniqueStrings(
+    rawValues
+      .map((entry) => normalizeOnlineBackendUrl(entry))
+      .filter((entry) => {
+        if (!entry) return false;
+        try {
+          const url = new URL(entry);
+          return url.protocol === "wss:" || url.protocol === "ws:";
+        } catch {
+          return false;
+        }
+      }),
+  );
+}
+
+function getWindowBackupBackendUrls() {
+  const configured = window.INFERNO_BACKUP_ONLINE_URLS;
+  if (Array.isArray(configured)) return parseBackendUrlList(configured);
+  if (typeof configured === "string") return parseBackendUrlList(configured);
+  return [];
+}
+
+function getCandidateBackendUrls() {
+  return uniqueStrings([
+    onlineState.backendUrl,
+    ...onlineState.backupBackendUrls,
+    ...DEFAULT_BACKUP_BACKEND_URLS,
+  ]).filter(Boolean);
+}
+
 function getDefaultOnlineBackendUrl() {
   const configured =
     getRuntimeParam("online", "onlineUrl", "ws") || window.INFERNO_ONLINE_URL;
@@ -4018,6 +4075,127 @@ function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
   );
 }
 
+async function checkBackendHealthForUrl(
+  backendUrl,
+  timeoutMs = ONLINE_HEALTH_TIMEOUT_MS,
+) {
+  const baseUrl = deriveHttpBaseUrl(backendUrl);
+  if (!baseUrl) return { ok: false, error: "missing_backend_url" };
+  const healthUrl = `${baseUrl}/health`;
+  try {
+    const response = await fetchWithTimeout(
+      healthUrl,
+      { headers: { accept: "application/json" } },
+      timeoutMs,
+    );
+    const body = await response.json().catch(() => ({}));
+    return {
+      ok: response.ok && body.ok !== false,
+      status: response.status,
+      body,
+      checkedAt: Date.now(),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error?.name === "AbortError" ? "health_timeout" : "health_failed",
+      detail: error?.message || "",
+      checkedAt: Date.now(),
+    };
+  }
+}
+
+function probeWebSocketUrl(backendUrl, timeoutMs = ONLINE_WS_PROBE_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    if (!backendUrl || isUnsafeWebSocketUrl(backendUrl)) {
+      resolve({ ok: false, error: "mixed_content_blocked" });
+      return;
+    }
+    let settled = false;
+    let socket = null;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      try {
+        socket?.close(1000, "probe_complete");
+      } catch {
+        // Ignore close races.
+      }
+      resolve(result);
+    };
+    const timer = window.setTimeout(
+      () => finish({ ok: false, error: "websocket_timeout" }),
+      timeoutMs,
+    );
+    try {
+      socket = new WebSocket(backendUrl);
+      socket.addEventListener("open", () => finish({ ok: true }));
+      socket.addEventListener("error", () =>
+        finish({ ok: false, error: "websocket_error" }),
+      );
+      socket.addEventListener("close", (event) => {
+        if (!settled) {
+          finish({
+            ok: false,
+            error: "websocket_closed",
+            code: event.code || 0,
+          });
+        }
+      });
+    } catch (error) {
+      finish({ ok: false, error: error?.message || "websocket_failed" });
+    }
+  });
+}
+
+async function testHttpFallbackApisForUrl(backendUrl) {
+  const baseUrl = deriveHttpBaseUrl(backendUrl);
+  if (!baseUrl) return { ok: false, error: "missing_backend_url" };
+  if (!onlineState.sessionToken) {
+    return {
+      ok: false,
+      error: "sign_in_required",
+      note: "Sign in to test account, leaderboard, and chat-history HTTPS fallback.",
+    };
+  }
+  const headers = {
+    accept: "application/json",
+    authorization: `Bearer ${onlineState.sessionToken}`,
+  };
+  const endpoints = [
+    ["account", "/api/profile"],
+    ["leaderboard", "/api/leaderboard"],
+    ["chatHistory", "/api/chat/history"],
+  ];
+  const results = {};
+  for (const [key, path] of endpoints) {
+    try {
+      const response = await fetchWithTimeout(
+        `${baseUrl}${path}`,
+        { headers },
+        ONLINE_HEALTH_TIMEOUT_MS,
+      );
+      const body = await response.json().catch(() => ({}));
+      results[key] = {
+        ok: response.ok && body.ok !== false,
+        status: response.status,
+        error: body.error || "",
+      };
+    } catch (error) {
+      results[key] = {
+        ok: false,
+        error:
+          error?.name === "AbortError" ? "health_timeout" : "health_failed",
+      };
+    }
+  }
+  return {
+    ok: endpoints.every(([key]) => results[key]?.ok),
+    ...results,
+  };
+}
+
 function clearOnlineTimers() {
   ["healthTimer", "connectTimer", "authTimer"].forEach((key) => {
     if (onlineState[key]) clearTimeout(onlineState[key]);
@@ -4042,28 +4220,146 @@ async function checkOnlineHealth(timeoutMs = ONLINE_HEALTH_TIMEOUT_MS) {
     url: healthUrl,
     origin: window.location.origin,
   });
-  try {
-    const response = await fetchWithTimeout(
-      healthUrl,
-      { headers: { accept: "application/json" } },
-      timeoutMs,
-    );
-    const body = await response.json().catch(() => ({}));
-    onlineState.backendHealth = {
-      ok: response.ok && body.ok !== false,
-      status: response.status,
-      body,
-      checkedAt: Date.now(),
-    };
-  } catch (error) {
-    onlineState.backendHealth = {
-      ok: false,
-      error: error?.name === "AbortError" ? "health_timeout" : "health_failed",
-      detail: error?.message || "",
-      checkedAt: Date.now(),
-    };
-  }
+  onlineState.backendHealth = await checkBackendHealthForUrl(
+    onlineState.backendUrl,
+    timeoutMs,
+  );
   return onlineState.backendHealth;
+}
+
+async function selectReachableBackendUrl() {
+  const candidates = getCandidateBackendUrls().filter(
+    (url) => !isUnsafeWebSocketUrl(url),
+  );
+  if (!candidates.length) return false;
+  const startingUrl = onlineState.backendUrl;
+  for (const candidate of candidates) {
+    onlineState.backendUrl = candidate;
+    const health = await checkOnlineHealth();
+    if (health.ok) {
+      if (candidate !== startingUrl) {
+        setOnlineStatus(
+          "checking",
+          "Using backup backend",
+          candidate.replace(/^wss?:\/\//, ""),
+        );
+        saveOnlineConfig();
+      }
+      return true;
+    }
+  }
+  onlineState.backendUrl = startingUrl;
+  await checkOnlineHealth();
+  return false;
+}
+
+function renderConnectionReport() {
+  if (!onlineConnectionReport) return;
+  const rows = onlineState.connectionReport;
+  onlineConnectionReport.dataset.state =
+    onlineState.connectionTestStatus === "ok"
+      ? "connected"
+      : onlineState.connectionTestStatus === "failed"
+        ? "error"
+        : "offline";
+  if (!rows.length) {
+    onlineConnectionReport.textContent = "No connection test run yet.";
+    return;
+  }
+  const summary = rows
+    .map((row, index) => {
+      const label = index === 0 ? "Primary" : `Backup ${index}`;
+      const health = row.health?.ok
+        ? "HTTPS ok"
+        : `HTTPS ${describeOnlineError(row.health?.error || "health_failed")}`;
+      const account =
+        row.httpFallback?.ok === true
+          ? "account/chat fallback ok"
+          : row.httpFallback?.error === "sign_in_required"
+            ? "sign in to test account/chat fallback"
+            : row.httpFallback
+              ? `account/chat fallback ${describeOnlineError(row.httpFallback.error || "health_failed")}`
+              : "account/chat fallback not tested";
+      const live = row.websocket?.ok
+        ? "live rooms ok"
+        : `live rooms ${describeOnlineError(row.websocket?.error || "websocket_timeout")}`;
+      return `${label}: ${health}; ${account}; ${live}`;
+    })
+    .join(" · ");
+  onlineConnectionReport.textContent = summary;
+}
+
+async function runOnlineConnectionTest({ applyHealthy = true } = {}) {
+  onlineState.backendUrl = normalizeOnlineBackendUrl(
+    onlineBackendUrlInput?.value || onlineState.backendUrl,
+  );
+  onlineState.backupBackendUrls = parseBackendUrlList(
+    onlineBackupUrlsInput?.value || onlineState.backupBackendUrls,
+  ).filter((url) => url !== onlineState.backendUrl);
+  saveOnlineConfig();
+  const candidates = getCandidateBackendUrls();
+  onlineState.connectionReport = [];
+  onlineState.connectionTestStatus = "checking";
+  onlineState.lastConnectionTestAt = Date.now();
+  setOnlineStatus("checking", "Testing online connection");
+  renderConnectionReport();
+  updateOnlineUi();
+  for (const url of candidates) {
+    const health = isUnsafeWebSocketUrl(url)
+      ? { ok: false, error: "mixed_content_blocked" }
+      : await checkBackendHealthForUrl(url);
+    const websocket = health.ok
+      ? await probeWebSocketUrl(url)
+      : { ok: false, error: "health_failed" };
+    const httpFallback = health.ok
+      ? await testHttpFallbackApisForUrl(url)
+      : { ok: false, error: "health_failed" };
+    onlineState.connectionReport.push({ url, health, httpFallback, websocket });
+    renderConnectionReport();
+  }
+  const websocketReady = onlineState.connectionReport.find(
+    (row) => row.health?.ok && row.websocket?.ok,
+  );
+  const httpsReady = onlineState.connectionReport.find((row) => row.health?.ok);
+  if (applyHealthy && (websocketReady || httpsReady)) {
+    onlineState.backendUrl = (websocketReady || httpsReady).url;
+    if (onlineBackendUrlInput)
+      onlineBackendUrlInput.value = onlineState.backendUrl;
+    saveOnlineConfig();
+  }
+  onlineState.connectionTestStatus = websocketReady
+    ? "ok"
+    : httpsReady
+      ? "fallback"
+      : "failed";
+  if (websocketReady) {
+    setOnlineStatus(
+      "connected",
+      "Connection test passed",
+      "Accounts, chat, leaderboard, and live rooms should work.",
+    );
+  } else if (httpsReady) {
+    onlineState.transport = "http-fallback";
+    setOnlineStatus(
+      "failed",
+      "Partial connection available",
+      "HTTPS works, but live room WebSockets appear blocked.",
+    );
+  } else {
+    onlineState.transport = "offline";
+    setOnlineStatus(
+      "unavailable",
+      "Online services unavailable",
+      "This network may be blocking the backend.",
+    );
+  }
+  renderConnectionReport();
+  updateOnlineUi();
+  return {
+    status: onlineState.connectionTestStatus,
+    activeBackendUrl: onlineState.backendUrl,
+    report: onlineState.connectionReport,
+  };
 }
 
 function loadOnlineConfig() {
@@ -4074,11 +4370,18 @@ function loadOnlineConfig() {
     window.INFERNO_ONLINE_URL ||
     onlinePrefs.backendUrl ||
     "";
+  const backupRuntime =
+    getRuntimeParam("onlineBackup", "backupOnline", "backupWs") ||
+    onlinePrefs.backupBackendUrls ||
+    getWindowBackupBackendUrls();
   const configuredBackend = explicitBackend || getDefaultOnlineBackendUrl();
   const normalizedBackend = normalizeOnlineBackendUrl(configuredBackend);
   onlineState.backendUrl = LEGACY_PRODUCTION_BACKEND_URLS.has(normalizedBackend)
     ? DEFAULT_PRODUCTION_BACKEND_URL
     : normalizedBackend;
+  onlineState.backupBackendUrls = parseBackendUrlList(backupRuntime).filter(
+    (url) => url !== onlineState.backendUrl,
+  );
   onlineState.backendDefaulted = !explicitBackend;
   onlineState.feedbackUrl =
     getRuntimeParam("feedback", "feedbackUrl") ||
@@ -4096,6 +4399,8 @@ function loadOnlineConfig() {
     : null;
   if (onlineBackendUrlInput)
     onlineBackendUrlInput.value = onlineState.backendUrl;
+  if (onlineBackupUrlsInput)
+    onlineBackupUrlsInput.value = onlineState.backupBackendUrls.join("\n");
   if (onlineState.backendUrl && onlineState.status === "offline") {
     onlineState.statusText = `Backend ready: ${onlineState.backendUrl}`;
   }
@@ -4107,6 +4412,7 @@ function loadOnlineConfig() {
 function saveOnlineConfig() {
   const payload = {
     backendUrl: onlineState.backendUrl,
+    backupBackendUrls: onlineState.backupBackendUrls,
     age: onlineState.age,
     profileMode: onlineState.profileMode,
   };
@@ -4539,6 +4845,10 @@ function describeOnlineError(error = "") {
     room_full: "That room is full.",
     account_banned:
       "This account or device is temporarily banned from online play.",
+    sign_in_required:
+      "Sign in first to test account, chat, and leaderboard fallback.",
+    mixed_content_blocked:
+      "This page is secure, so online must use a secure wss:// backend.",
     feedback_too_long: "Feedback must be 2,500 characters or fewer.",
     feedback_rejected:
       "Feedback was blocked by the safety filter. Try shorter, school-appropriate wording.",
@@ -4629,6 +4939,9 @@ async function connectOnline({ reconnect = false } = {}) {
   onlineState.backendUrl = normalizeOnlineBackendUrl(
     onlineBackendUrlInput?.value || onlineState.backendUrl,
   );
+  onlineState.backupBackendUrls = parseBackendUrlList(
+    onlineBackupUrlsInput?.value || onlineState.backupBackendUrls,
+  ).filter((url) => url !== onlineState.backendUrl);
   saveOnlineConfig();
   if (!onlineState.backendUrl) {
     setOnlineStatus("not_configured", "Offline: no backend configured");
@@ -4647,9 +4960,11 @@ async function connectOnline({ reconnect = false } = {}) {
   try {
     if (onlineState.socket) onlineState.socket.close();
     clearOnlineTimers();
-    const health = await checkOnlineHealth();
-    if (!health.ok) {
-      const error = health.error || `health_${health.status || "failed"}`;
+    const hasReachableBackend = await selectReachableBackendUrl();
+    if (!hasReachableBackend) {
+      const error =
+        onlineState.backendHealth?.error ||
+        `health_${onlineState.backendHealth?.status || "failed"}`;
       onlineState.transport = "offline";
       onlineState.timeoutReason = error;
       setOnlineStatus(
@@ -5712,6 +6027,21 @@ function updateOnlineUi() {
   ) {
     onlineBackendUrlInput.value = onlineState.backendUrl;
   }
+  if (
+    onlineBackupUrlsInput &&
+    document.activeElement !== onlineBackupUrlsInput
+  ) {
+    onlineBackupUrlsInput.value = onlineState.backupBackendUrls.join("\n");
+  }
+  if (onlineTestConnection) {
+    onlineTestConnection.disabled =
+      onlineState.connectionTestStatus === "checking";
+    onlineTestConnection.textContent =
+      onlineState.connectionTestStatus === "checking"
+        ? "Testing..."
+        : "Test Connection";
+  }
+  renderConnectionReport();
   if (onlineUsernameInput && document.activeElement !== onlineUsernameInput) {
     onlineUsernameInput.value = onlineState.username;
   }
@@ -17054,6 +17384,18 @@ onlineBackendUrlInput?.addEventListener("change", () => {
   updateOnlineUi();
 });
 
+onlineBackupUrlsInput?.addEventListener("change", () => {
+  onlineState.backupBackendUrls = parseBackendUrlList(
+    onlineBackupUrlsInput.value,
+  ).filter((url) => url !== onlineState.backendUrl);
+  saveOnlineConfig();
+  updateOnlineUi();
+});
+
+bindPressAction(onlineTestConnection, () => {
+  runOnlineConnectionTest();
+});
+
 bindPressAction(garageZoomIn, () => {
   initGaragePreview();
   garageState.preview.zoom = THREE.MathUtils.clamp(
@@ -17914,6 +18256,12 @@ window.render_game_to_text = () => {
       chatSendStatus: onlineState.chatSendStatus,
       configured: Boolean(onlineState.backendUrl),
       backendUrl: onlineState.backendUrl,
+      backupBackendUrls: onlineState.backupBackendUrls,
+      connectionTest: {
+        status: onlineState.connectionTestStatus,
+        lastRunAt: onlineState.lastConnectionTestAt,
+        report: onlineState.connectionReport,
+      },
       feedbackConfigured: Boolean(
         onlineState.feedbackUrl || deriveFeedbackUrl(onlineState.backendUrl),
       ),
@@ -18258,14 +18606,18 @@ window.__infernodriftTestApi = {
   },
   configureOnlineForTest: ({
     backendUrl = "",
+    backupBackendUrls = [],
     username = "SmokeHost",
     age = 13,
   } = {}) => {
     onlineState.backendUrl = normalizeOnlineBackendUrl(backendUrl);
+    onlineState.backupBackendUrls = parseBackendUrlList(backupBackendUrls);
     onlineState.username = sanitizeRemoteUsername(username);
     onlineState.age = Number.isFinite(Number(age)) ? Number(age) : null;
     if (onlineBackendUrlInput)
       onlineBackendUrlInput.value = onlineState.backendUrl;
+    if (onlineBackupUrlsInput)
+      onlineBackupUrlsInput.value = onlineState.backupBackendUrls.join("\n");
     if (onlineUsernameInput) onlineUsernameInput.value = onlineState.username;
     if (onlineAgeInput)
       onlineAgeInput.value =
@@ -18274,6 +18626,7 @@ window.__infernodriftTestApi = {
     updateOnlineUi();
     return {
       backendUrl: onlineState.backendUrl,
+      backupBackendUrls: onlineState.backupBackendUrls,
       username: onlineState.username,
       age: onlineState.age,
     };
@@ -18328,11 +18681,15 @@ window.__infernodriftTestApi = {
     connectionStage: onlineState.connectionStage,
     transport: onlineState.transport,
     backendHealth: onlineState.backendHealth,
+    backupBackendUrls: onlineState.backupBackendUrls,
+    connectionTestStatus: onlineState.connectionTestStatus,
+    connectionReport: onlineState.connectionReport,
     lastCloseCode: onlineState.lastCloseCode,
     timeoutReason: onlineState.timeoutReason,
     chatSendStatus: onlineState.chatSendStatus,
     backendUrl: onlineState.backendUrl,
   }),
+  runConnectionTest: () => runOnlineConnectionTest(),
   setBattleFlagCarrier: (team = "red", carrier = "player") => {
     const flag = getBattleFlag(team);
     const car =

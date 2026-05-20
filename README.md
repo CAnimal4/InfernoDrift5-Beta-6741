@@ -86,3 +86,10 @@ GitHub Pages hosts only the static client. Cloudflare Workers + Durable Objects 
 - Worker secrets such as `RESEND_API_KEY` and a production session secret are configured when those features are claimed live.
 - A concrete `wss://.../ws` Worker endpoint passes `INFERNO_ONLINE_SMOKE_URL=wss://.../ws node smoke_online_local.mjs`.
 - The deployed Pages game is tested with that endpoint in a two-client browser flow.
+
+School-network hardening:
+
+- Prefer a normal custom Worker domain, such as `wss://online.<owned-domain>/ws`, when the project has a Cloudflare-managed domain available. A `workers.dev` URL may be blocked by some school filters.
+- The Online tab includes a **Test Connection** button that checks HTTPS backend health, signed-in account/leaderboard/chat-history fallback, and live WebSocket room reachability.
+- Backup backend URLs can be entered in the Online tab or provided through `window.INFERNO_BACKUP_ONLINE_URLS`; the client tries healthy backups automatically.
+- If WebSockets are blocked but HTTPS works, account/chat/leaderboard use HTTPS fallback and live rooms show a clear blocked-state message.

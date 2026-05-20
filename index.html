@@ -364,7 +364,15 @@
                       <span>Backend URL</span>
                       <input id="online-backend-url" type="url" placeholder="ws://127.0.0.1:8787/ws" autocomplete="url" />
                     </label>
-                    <p class="hint">Local testing uses ws://127.0.0.1:8787/ws automatically. Hosted online appears here after Cloudflare is verified.</p>
+                    <label class="field">
+                      <span>Backup Backend URLs</span>
+                      <textarea id="online-backup-urls" maxlength="600" placeholder="One backup backend URL per line"></textarea>
+                    </label>
+                    <div class="cta-row compact-actions">
+                      <button class="ghost" id="online-test-connection" type="button">Test Connection</button>
+                    </div>
+                    <div class="online-room-card connection-report" id="online-connection-report">No connection test run yet.</div>
+                    <p class="hint">Hosted online uses secure HTTPS/WSS. If a school blocks the main backend, InfernoDrift4 tries healthy backup URLs and falls back to HTTPS for accounts, chat, and leaderboard when live rooms are blocked.</p>
                   </details>
                 </div>
                 <div class="online-panel">

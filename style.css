@@ -1138,15 +1138,23 @@ body:has(#school-gate.show) #overlay {
 }
 
 .online-status[data-state="connected"],
+.connection-report[data-state="connected"],
 .feedback-status[data-state="saved"] {
   border-color: rgba(74, 255, 166, 0.32);
   color: #d7ffe9;
 }
 
 .online-status[data-state="error"],
+.connection-report[data-state="error"],
 .feedback-status[data-state="error"] {
   border-color: rgba(255, 101, 64, 0.45);
   color: #ffd9cf;
+}
+
+.connection-report {
+  max-height: 8.5rem;
+  overflow: auto;
+  font-size: 0.78rem;
 }
 
 .feedback-counter {

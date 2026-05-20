@@ -76,8 +76,17 @@ Set the Online tab server URL to one of:
 
 - `ws://127.0.0.1:8787/ws`
 - `wss://<worker-name>.<account>.workers.dev/ws`
+- `wss://online.<your-domain>/ws` once a Cloudflare custom domain is attached to the Worker.
 
 Bare host URLs are normalized to `/ws` by the client. If no server is configured, the UI shows backend-offline status and the game keeps all offline/bot modes available.
+
+The Online tab also supports backup backend URLs. Add one URL per line in **Server settings -> Backup Backend URLs**, or set `window.INFERNO_BACKUP_ONLINE_URLS` to an array/string before `script.js` loads. On connect, the client tests the primary backend first and then each backup. If HTTPS health works but WebSockets are blocked, accounts, chat history, and leaderboard can still use HTTPS fallback while live rooms stay disabled with a clear message.
+
+Use **Test Connection** in the Online tab to diagnose school-network blocking. It checks backend health, signed-in HTTPS account/leaderboard/chat-history fallback, and live room WebSocket reachability. If no account is signed in, the HTTPS account/chat fallback part reports that sign-in is required instead of creating a test account or posting fake chat.
+
+## Custom Worker Domain
+
+The least-blocked production shape is a normal subdomain such as `online.example.com` routed to the Worker. A `workers.dev` hostname works technically, but some school filters block that entire domain. Cloudflare can attach a custom domain when the domain is in the Cloudflare account. Without a domain or subdomain that the project owns, there is no reliable free custom URL that can be guaranteed unblocked.
 
 ## Production Notes
 
