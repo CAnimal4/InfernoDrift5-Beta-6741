@@ -5,10 +5,13 @@ import {
   FIREBASE_CHAT_LIMIT,
   FIREBASE_FEEDBACK_LIMIT,
   FIREBASE_LEADERBOARD_MODE,
+  createFirebaseLobbyCode,
   getFirebaseBadges,
   mapFirebaseError,
+  normalizeFirebaseLobbyCode,
   normalizeFirebaseUsernameKey,
   sanitizeFirebaseText,
+  validateFirebaseLobbyCode,
   usernameToFirebaseEmail,
   validateFirebaseFeedback,
   validateFirebaseScore,
@@ -71,6 +74,21 @@ test("Firebase leaderboard checks stay conservative", () => {
     validateFirebaseScore({ score: 100, mode: "Max Arena!" }).mode,
     "max-arena-",
   );
+});
+
+test("Firebase lobby code helpers create joinable room codes", () => {
+  const deterministic = {
+    getRandomValues(bytes) {
+      bytes.set([0, 1, 2, 3, 4]);
+      return bytes;
+    },
+  };
+  const code = createFirebaseLobbyCode({ random: deterministic });
+  assert.equal(code, "ABCDE");
+  assert.equal(validateFirebaseLobbyCode(code).ok, true);
+  assert.equal(normalizeFirebaseLobbyCode(" ab-c 12 "), "ABC12");
+  assert.equal(validateFirebaseLobbyCode("abc").error, "room_not_found");
+  assert.equal(validateFirebaseLobbyCode("ABC12345").ok, true);
 });
 
 test("Firebase error mapping feeds the offline fallback state machine", () => {

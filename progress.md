@@ -4,6 +4,15 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 
 - Confirmed `InfernoDrift` and `InfernoDrift4` use the shared peer-sync GitHub Actions workflow so ID4 updates can propagate between both repos while preserving repo-specific Pages URLs.
 
+2026-05-20 Firebase lobby/progress preservation pass:
+
+- Made Firebase the default production online backend for accounts, chat, leaderboard, friends, feedback, progress, and online-lite lobbies while keeping the old Worker backend as a legacy fallback/import reference only.
+- Added Firebase lobby create/join/share support so private room codes work in Firebase mode for social grouping and chat invites; live server-authoritative racing remains honestly marked as requiring a trusted WebSocket server.
+- Added a legacy Worker progress import bridge that detects an existing old Worker session token, fetches the old `/api/profile` save bundle, compares total XP, and syncs the higher-progress save into Firestore so existing players do not lose XP when moving to Firebase.
+- Hardened Firebase progress sync so login/auth no longer overwrites a higher Firestore save with a lower local save.
+- Published updated Firestore rules in the Firebase console for lobby docs and room-invite chat payloads after CLI auth was unavailable locally.
+- Validation passed for this pass: `node --check script.js`, `node --check firebase-online.js`, `node --test tests/firebase-online.test.mjs`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke:firebase-live`, `npm run smoke:firebase`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run worker:check`, `npm run worker:types`, and the develop-web-game Playwright client against local `http://127.0.0.1:4173/index.html`.
+
 2026-05-13:
 
 - Started from `main` at `bc965cf`; current worktree was clean.

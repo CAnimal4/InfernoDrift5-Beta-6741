@@ -162,6 +162,50 @@ try {
   assert.deepEqual(state.online.backupBackendUrls, []);
 
   await page.evaluate(() => window.__infernodriftTestApi.openMenuTab("online"));
+  await page.waitForFunction(() =>
+    /Create Firebase Lobby/i.test(
+      document.querySelector("#online-create-room")?.textContent || "",
+    ),
+  );
+  await page.locator("#online-create-room").click({ force: true });
+  await page.waitForFunction(() => {
+    const state = JSON.parse(window.render_game_to_text());
+    return (
+      state.online.room?.firebaseLobby === true &&
+      /^[A-Z0-9]{4,8}$/.test(state.online.room.code || "")
+    );
+  });
+  let lobbyState = JSON.parse(
+    await page.evaluate(() => window.render_game_to_text()),
+  );
+  const lobbyCode = lobbyState.online.room.code;
+  assert.match(
+    (await page.locator("#online-room-state").textContent()) ?? "",
+    /Firebase lobby .*Chat and invites are active/i,
+  );
+  assert.equal(await page.locator("#online-queue").isDisabled(), true);
+  await page.locator("#online-share-room").click({ force: true });
+  await page.waitForFunction(() => {
+    const state = JSON.parse(window.render_game_to_text());
+    return (
+      state.online.room?.shared === true &&
+      state.online.chat.lastMessage?.roomInvite?.code ===
+        state.online.room.code
+    );
+  });
+  await page.locator("#online-room-code").fill(lobbyCode);
+  await page.locator("#online-join-room").click({ force: true });
+  await page.waitForFunction((code) => {
+    const state = JSON.parse(window.render_game_to_text());
+    return state.online.room?.code === code;
+  }, lobbyCode);
+  lobbyState = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  assert.equal(lobbyState.online.room.firebaseLobby, true);
+  assert.equal(lobbyState.online.room.live, false);
+  assert.doesNotMatch(
+    lobbyState.online.chat.lastMessage?.text || "",
+    /Server-authoritative rooms are unavailable/i,
+  );
   await page
     .locator(".advanced-online-settings summary")
     .click({ force: true });
@@ -184,6 +228,7 @@ try {
         firebaseDefault: state.online.backendMode,
         projectId: state.online.firebase.projectId,
         account: accountUsername,
+        lobby: lobbyCode,
         diagnostics: state.online.firebase.diagnosticsStatus,
         transport: state.online.transport,
         websocket: result.report[0]?.websocket?.error,

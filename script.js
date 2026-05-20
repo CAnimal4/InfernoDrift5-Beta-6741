@@ -324,6 +324,8 @@ const ONLINE_HEALTH_TIMEOUT_MS = 6000;
 const ONLINE_CONNECT_TIMEOUT_MS = 8000;
 const ONLINE_AUTH_TIMEOUT_MS = 8000;
 const ONLINE_WS_PROBE_TIMEOUT_MS = 4500;
+const LEGACY_IMPORT_TIMEOUT_MS = 4500;
+const LEGACY_IMPORT_STORAGE_PREFIX = "infernoDrift4.legacyImport.v1:";
 const FEEDBACK_MESSAGE_LIMIT = 2500;
 const DAILY_GIFT_MIN_XP = 100;
 const DAILY_GIFT_MAX_XP = 1000;
@@ -2157,6 +2159,10 @@ const onlineState = {
   lastFeedbackError: "",
   lastFeedbackDelivery: "not_configured",
   feedbackEmailConfigured: false,
+  legacyImportStatus: "idle",
+  legacyImportError: "",
+  legacyImportXp: 0,
+  legacySessionToken: "",
   chatNoticeTimer: 0,
   lastSystemMessageText: "",
   lastSystemMessageAt: 0,
@@ -3711,6 +3717,22 @@ function buildPersistentSavePayload() {
   };
 }
 
+function getSavePayloadTotalXp(payload = {}) {
+  return Math.max(
+    0,
+    Math.floor(
+      Number(payload?.progressionV2?.totalXp ?? payload?.progressionV2?.xp) ||
+        0,
+    ),
+  );
+}
+
+function chooseBestSavePayload(...payloads) {
+  return payloads
+    .filter((payload) => payload && typeof payload === "object")
+    .sort((a, b) => getSavePayloadTotalXp(b) - getSavePayloadTotalXp(a))[0];
+}
+
 function buildFreshAccountSavePayload() {
   return {
     worldIndex: 0,
@@ -4116,6 +4138,144 @@ function getCandidateBackendUrls() {
   ]).filter(Boolean);
 }
 
+function getLegacyImportMarkerKey(username = onlineState.username) {
+  const key = claimKeyClient(username).replace(/[^a-z0-9_-]/g, "");
+  return key ? `${LEGACY_IMPORT_STORAGE_PREFIX}${key}` : "";
+}
+
+async function fetchLegacyAccountBundle(authPayload) {
+  const candidates = uniqueStrings([
+    WORKER_FALLBACK_BACKEND_URL,
+    ...DEFAULT_BACKUP_BACKEND_URLS,
+  ]);
+  for (const backendUrl of candidates) {
+    const baseUrl = deriveHttpBaseUrl(backendUrl);
+    if (!baseUrl) continue;
+    try {
+      if (onlineState.legacySessionToken) {
+        const url = new URL(`${baseUrl}/api/profile`);
+        url.searchParams.set("sessionToken", onlineState.legacySessionToken);
+        const response = await fetchWithTimeout(
+          url.toString(),
+          {},
+          LEGACY_IMPORT_TIMEOUT_MS,
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.ok === false) {
+          throw new Error(payload.error || `legacy_${response.status}`);
+        }
+        return {
+          ok: true,
+          backendUrl,
+          save: payload.save || null,
+          user: payload.user || null,
+          profile: payload.profile || payload,
+          leaderboard: payload.leaderboard || null,
+        };
+      }
+      const response = await fetchWithTimeout(
+        `${baseUrl}/api/auth/account`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            type: "auth.account",
+            version: ONLINE_PROTOCOL_VERSION,
+            mode: "login",
+            username: authPayload.username,
+            password: authPayload.password,
+            age: authPayload.age,
+            deviceId: navigator.userAgent.slice(0, 90),
+          }),
+        },
+        LEGACY_IMPORT_TIMEOUT_MS,
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.ok === false) {
+        throw new Error(payload.error || `legacy_${response.status}`);
+      }
+      return {
+        ok: true,
+        backendUrl,
+        save: payload.save || null,
+        user: payload.user || null,
+        profile: payload.profile || null,
+        leaderboard: payload.leaderboard || null,
+      };
+    } catch (error) {
+      if (/invalid_credentials|account_not_found/i.test(String(error?.message))) {
+        throw error;
+      }
+      onlineState.legacyImportError = error?.message || "legacy_unavailable";
+    }
+  }
+  return { ok: false, error: onlineState.legacyImportError || "legacy_unavailable" };
+}
+
+async function importLegacyProgressForFirebaseAccount(authPayload) {
+  if (!isFirebaseBackendMode() || !onlineState.user?.account) return false;
+  if (!onlineState.legacySessionToken) {
+    onlineState.legacyImportStatus = "skipped-no-legacy-session";
+    return false;
+  }
+  const markerKey = getLegacyImportMarkerKey(authPayload?.username);
+  const localPayload = buildPersistentSavePayload();
+  const localXp = getSavePayloadTotalXp(localPayload);
+  onlineState.legacyImportStatus = "checking";
+  onlineState.legacyImportError = "";
+  updateOnlineUi();
+  try {
+    const bundle = await fetchLegacyAccountBundle(authPayload);
+    if (!bundle.ok) {
+      onlineState.legacyImportStatus = "unavailable";
+      onlineState.legacyImportError = bundle.error || "legacy_unavailable";
+      return false;
+    }
+    const legacyPayload = bundle.save?.payload || null;
+    const legacyXp = getSavePayloadTotalXp(legacyPayload);
+    onlineState.legacyImportXp = legacyXp;
+    if (!legacyPayload || legacyXp <= localXp) {
+      onlineState.legacyImportStatus = "already-current";
+      if (markerKey) {
+        writeLocalJson(markerKey, {
+          status: "already-current",
+          legacyXp,
+          localXp,
+          at: Date.now(),
+        });
+      }
+      return false;
+    }
+    const bestPayload = chooseBestSavePayload(legacyPayload, localPayload);
+    applyServerSave({ payload: bestPayload }, { force: true });
+    await firebaseOnline.syncProgress(bestPayload);
+    onlineState.legacyImportStatus = "imported";
+    onlineState.legacyImportXp = getSavePayloadTotalXp(bestPayload);
+    onlineState.profileActionStatus = `Imported ${onlineState.legacyImportXp.toLocaleString()} XP from the legacy online backend into Firebase.`;
+    pushOnlineChatMessage({
+      from: "System",
+      text: onlineState.profileActionStatus,
+      quick: true,
+    });
+    if (markerKey) {
+      writeLocalJson(markerKey, {
+        status: "imported",
+        legacyXp,
+        importedXp: onlineState.legacyImportXp,
+        at: Date.now(),
+      });
+    }
+    requestOnlineLeaderboard({ force: true });
+    return true;
+  } catch (error) {
+    onlineState.legacyImportStatus = "failed";
+    onlineState.legacyImportError = error?.message || "legacy_import_failed";
+    return false;
+  } finally {
+    updateOnlineUi();
+  }
+}
+
 function getDefaultOnlineBackendUrl() {
   const configured =
     getRuntimeParam("online", "onlineUrl", "ws") || window.INFERNO_ONLINE_URL;
@@ -4422,6 +4582,7 @@ function renderOnlineDiagnostics() {
       `Chat ${onlineState.firebase.chatStatus}${onlineState.firebase.chatListenerActive ? " listener-on" : ""}`,
       `Leaderboard ${onlineState.firebase.leaderboardStatus}`,
       `Diagnostics ${onlineState.firebase.diagnosticsStatus}`,
+      `Legacy import ${onlineState.legacyImportStatus}${onlineState.legacyImportXp ? ` (${onlineState.legacyImportXp} XP)` : ""}${onlineState.legacySessionToken ? " old-session-detected" : ""}`,
       `Realtime DB not used`,
       `Last error ${onlineState.firebase.lastError || onlineState.lastError || "none"}`,
       `Offline fallback ${onlineState.profileMode === "guest" && !onlineState.user ? "yes" : "no"}`,
@@ -4605,6 +4766,14 @@ async function runOnlineConnectionTest({ applyHealthy = true } = {}) {
 function loadOnlineConfig() {
   const onlinePrefs = readLocalJson(ONLINE_STORAGE_KEY, {});
   const feedbackPrefs = readLocalJson(FEEDBACK_STORAGE_KEY, {});
+  const savedBackendUrl = normalizeOnlineBackendUrl(onlinePrefs.backendUrl || "");
+  if (
+    onlinePrefs.sessionToken &&
+    (LEGACY_PRODUCTION_BACKEND_URLS.has(savedBackendUrl) ||
+      savedBackendUrl === WORKER_FALLBACK_BACKEND_URL)
+  ) {
+    onlineState.legacySessionToken = String(onlinePrefs.sessionToken || "");
+  }
   const runtimeMode =
     getRuntimeParam("backendMode", "backend", "onlineMode") ||
     window.INFERNO_BACKEND_MODE ||
@@ -4739,10 +4908,16 @@ function isOnlineServiceConnected() {
 
 function sendOnlineMessage(payload, { queue = true } = {}) {
   if (isFirebaseBackendMode()) {
+    const type = String(payload?.type || "");
+    const text =
+      type.startsWith("queue.") || type === "input.frame"
+        ? "Live matchmaking and server-authoritative racing need the legacy WebSocket server. Firebase lobbies, chat, progress, friends, feedback, and leaderboard are active."
+        : type.startsWith("room.")
+          ? "Use the Firebase lobby buttons for lobby chat/invites. Live race rooms still need the legacy WebSocket server."
+          : "That live-server action is unavailable in Firebase mode.";
     pushOnlineChatMessage({
       from: "System",
-      text:
-        "Live rooms and authoritative multiplayer need a server backend. Firebase is handling accounts, chat, leaderboard, friends, feedback, and progress.",
+      text,
       quick: true,
     });
     updateOnlineUi();
@@ -4931,6 +5106,11 @@ async function submitFirebaseStartAccount() {
     });
     syncFirebaseServiceStatus();
     await completeFirebaseAuth(result, { guest: false });
+    importLegacyProgressForFirebaseAccount(payload).catch((error) => {
+      onlineState.legacyImportStatus = "failed";
+      onlineState.legacyImportError = error?.message || "legacy_import_failed";
+      updateOnlineUi();
+    });
     if (onlineState.pendingStartAfterAuth) {
       onlineState.pendingStartAfterAuth = false;
       if (overlay.classList.contains("show")) startRun(true);
@@ -5889,7 +6069,11 @@ function handleOnlineMessage(raw) {
       onlineState.roomShared = false;
       onlineState.roomSharePending = false;
     }
-    if (onlineState.room?.mode && MODE_BY_ID[onlineState.room.mode]) {
+    if (
+      onlineState.room?.mode &&
+      MODE_BY_ID[onlineState.room.mode] &&
+      !onlineState.room.firebaseLobby
+    ) {
       const joinedNewRoom = Boolean(
         onlineState.room.code && onlineState.room.code !== previousCode,
       );
@@ -6285,6 +6469,124 @@ function normalizeRoomInvite(message = {}) {
   };
 }
 
+function isFirebaseLobbyRoom(room = onlineState.room) {
+  return Boolean(room?.firebaseLobby);
+}
+
+async function createFirebaseLobbyRoom() {
+  if (!onlineState.user) {
+    pushOnlineChatMessage({
+      from: "System",
+      text: "Sign in or continue as a Firebase guest before creating a lobby.",
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
+  try {
+    onlineState.roomSharePending = false;
+    onlineState.roomShared = false;
+    const room = await firebaseOnline.createLobby(getOnlineRoomOptions());
+    handleOnlineMessage(JSON.stringify({ type: "room.snapshot", room }));
+    pushOnlineChatMessage({
+      from: "System",
+      text: `Firebase lobby ${room.code} created. Chat and invites work here; live racing still needs the legacy WebSocket server.`,
+      quick: true,
+      roomInvite: {
+        code: room.code,
+        mode: room.mode,
+        playlist: room.playlist,
+        teamSize: room.teamSize,
+        size: room.size,
+        firebaseLobby: true,
+      },
+    });
+    return true;
+  } catch (error) {
+    pushOnlineChatMessage({
+      from: "System",
+      text: `Firebase lobby could not be created: ${describeOnlineError(error?.message || "")}`,
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
+}
+
+async function joinFirebaseLobbyByCode(code, { source = "manual" } = {}) {
+  if (!onlineState.user) {
+    pushOnlineChatMessage({
+      from: "System",
+      text: "Sign in or continue as a Firebase guest before joining a lobby.",
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
+  try {
+    const room = await firebaseOnline.joinLobby(code);
+    handleOnlineMessage(JSON.stringify({ type: "room.snapshot", room }));
+    if (source === "invite") {
+      pushOnlineChatMessage({
+        from: "System",
+        text: `Joined Firebase lobby ${room.code}.`,
+        quick: true,
+      });
+    }
+    return true;
+  } catch (error) {
+    pushOnlineChatMessage({
+      from: "System",
+      text: `Could not join Firebase lobby: ${describeOnlineError(error?.message || "")}`,
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
+}
+
+async function shareFirebaseLobby() {
+  const room = onlineState.room;
+  if (!room?.code) {
+    pushOnlineChatMessage({
+      from: "System",
+      text: "Create or join a lobby before sharing a code.",
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
+  onlineState.roomSharePending = true;
+  updateOnlineUi();
+  try {
+    await firebaseOnline.sendChat({
+      text: `Room code ${room.code}`,
+      quick: true,
+      roomInvite: {
+        code: room.code,
+        mode: room.mode,
+        playlist: room.playlist,
+        teamSize: room.teamSize,
+        size: room.size,
+        firebaseLobby: true,
+      },
+    });
+    onlineState.roomShared = true;
+    onlineState.roomSharePending = false;
+    updateOnlineUi();
+    return true;
+  } catch (error) {
+    onlineState.roomSharePending = false;
+    pushOnlineChatMessage({
+      from: "System",
+      text: `Lobby invite could not send: ${describeOnlineError(error?.message || "")}`,
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
+}
+
 function joinRoomByCode(code, { source = "manual" } = {}) {
   const cleanCode = String(code || "")
     .trim()
@@ -6293,6 +6595,10 @@ function joinRoomByCode(code, { source = "manual" } = {}) {
     .slice(0, 10);
   if (!cleanCode) return false;
   if (onlineRoomCode) onlineRoomCode.value = cleanCode;
+  if (isFirebaseBackendMode()) {
+    joinFirebaseLobbyByCode(cleanCode, { source });
+    return true;
+  }
   if (onlineState.transport === "http-fallback" || !isOnlineSocketOpen()) {
     pushOnlineChatMessage({
       from: "System",
@@ -7198,10 +7504,19 @@ function updateOnlineUi() {
   if (onlineDisconnect)
     onlineDisconnect.disabled = firebaseMode ? !onlineState.user : !onlineState.socket;
   if (onlineClaim) onlineClaim.disabled = false;
-  const roomsNeedLive = firebaseMode || onlineState.transport === "http-fallback";
-  [onlineCreateRoom, onlineJoinRoom, onlineQueue].forEach((node) => {
-    if (node) node.disabled = roomsNeedLive || !connected;
+  const roomsNeedLive = onlineState.transport === "http-fallback";
+  [onlineCreateRoom, onlineJoinRoom].forEach((node) => {
+    if (node) node.disabled = !connected || roomsNeedLive;
   });
+  if (onlineCreateRoom) {
+    onlineCreateRoom.textContent = firebaseMode
+      ? "Create Firebase Lobby"
+      : "Create Private Room";
+  }
+  if (onlineQueue) {
+    onlineQueue.disabled = firebaseMode || roomsNeedLive || !connected;
+    onlineQueue.textContent = firebaseMode ? "Live Queue Unavailable" : "Find Match";
+  }
   if (onlineRoomMode && document.activeElement !== onlineRoomMode) {
     onlineRoomMode.value = onlineState.room?.mode || settings.activeGameMode;
   }
@@ -7219,11 +7534,13 @@ function updateOnlineUi() {
   if (onlineRoomState) {
     const room = onlineState.room;
     onlineRoomState.textContent = room
-      ? `Room ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${room.bots || 0} bots, ${getModeDefinition(room.mode).label}`
+      ? room.firebaseLobby
+        ? `Firebase lobby ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${getModeDefinition(room.mode).label}. Chat and invites are active; live racing needs the legacy WebSocket server.`
+        : `Room ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${room.bots || 0} bots, ${getModeDefinition(room.mode).label}`
       : onlineState.queue
         ? `Queued for ${onlineState.queue.playlist || "casual"} ${onlineState.queue.teamSize || 2}v${onlineState.queue.teamSize || 2}`
         : firebaseMode
-          ? "Firebase online-lite is active. Server-authoritative rooms are unavailable without a live WebSocket server."
+          ? "Firebase lobby mode is active. Create a lobby for chat/invites; live racing uses the legacy WebSocket server when available."
           : roomsNeedLive
           ? "Rooms need live WebSocket connection. Account, chat, and leaderboard are using HTTPS fallback."
           : "No room joined.";
@@ -18505,6 +18822,10 @@ bindPressAction(profileRefresh, () => {
 bindPressAction(profileLogout, () => logoutOnlineProfile());
 bindPressAction(profileDelete, () => deleteOnlineProfile());
 bindPressAction(onlineCreateRoom, () => {
+  if (isFirebaseBackendMode()) {
+    createFirebaseLobbyRoom();
+    return;
+  }
   const options = getOnlineRoomOptions();
   sendOnlineMessage({
     type: "room.create",
@@ -18528,6 +18849,10 @@ bindPressAction(onlineJoinRoom, () => {
   joinRoomByCode(code);
 });
 bindPressAction(onlineShareRoom, () => {
+  if (isFirebaseBackendMode() || isFirebaseLobbyRoom()) {
+    shareFirebaseLobby();
+    return;
+  }
   if (!onlineState.room?.code) {
     pushOnlineChatMessage({
       from: "System",
@@ -19517,6 +19842,12 @@ window.render_game_to_text = () => {
         leaderboardSyncedAt: onlineState.leaderboardSyncedAt,
         restrictedUntil: onlineState.onlineRestrictedUntil,
       },
+      legacyImport: {
+        status: onlineState.legacyImportStatus,
+        error: onlineState.legacyImportError,
+        xp: onlineState.legacyImportXp,
+        oldSessionDetected: Boolean(onlineState.legacySessionToken),
+      },
       authenticated: Boolean(onlineState.user),
       profileMode: onlineState.profileMode,
       guestTemporary: Boolean(onlineState.guestTemporary),
@@ -19567,6 +19898,8 @@ window.render_game_to_text = () => {
             sharePending: Boolean(onlineState.roomSharePending),
             sharedBy: onlineState.room.sharedBy || [],
             routingId: onlineState.room.routingId || onlineState.room.id,
+            firebaseLobby: Boolean(onlineState.room.firebaseLobby),
+            live: onlineState.room.live !== false,
             size: onlineState.room.size,
             members: onlineState.room.players || [],
             players: onlineState.room.players?.length ?? 0,

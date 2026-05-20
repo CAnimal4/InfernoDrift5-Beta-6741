@@ -2,13 +2,16 @@ import {
   FIREBASE_BACKEND_MODE,
   FIREBASE_CHAT_LIMIT,
   FIREBASE_LEADERBOARD_MODE,
+  createFirebaseLobbyCode,
   getFirebaseBadges,
   mapFirebaseError,
+  normalizeFirebaseLobbyCode,
   normalizeFirebaseUsername,
   normalizeFirebaseUsernameKey,
   sanitizeFirebaseText,
   usernameToFirebaseEmail,
   validateFirebaseFeedback,
+  validateFirebaseLobbyCode,
   validateFirebaseScore,
   validateFirebaseUsername,
 } from "./firebase-online-core.js";
@@ -16,10 +19,12 @@ import {
 const FIREBASE_SDK_VERSION = "10.13.2";
 const FIREBASE_SDK_BASE = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}`;
 const CHAT_ROOM_ID = "lobby";
+const LOBBY_COLLECTION_ID = "lobbies";
 const DIAGNOSTICS_DOC_ID = "client-smoke";
 const CHAT_HISTORY_LIMIT = 40;
 const FRIEND_QUERY_LIMIT = 50;
 const CHAT_COOLDOWN_MS = 1700;
+const FIREBASE_LOBBY_MAX_PLAYERS = 8;
 
 let sdkPromise = null;
 
@@ -75,9 +80,36 @@ function makeUserPayload(uid, profile = {}) {
   };
 }
 
+function getSavePayloadXp(payload = {}) {
+  return Math.max(
+    0,
+    Math.floor(
+      Number(payload?.progressionV2?.totalXp ?? payload?.progressionV2?.xp) ||
+        0,
+    ),
+  );
+}
+
+function chooseBestSavePayload(...payloads) {
+  return payloads
+    .filter((payload) => payload && typeof payload === "object")
+    .sort((a, b) => getSavePayloadXp(b) - getSavePayloadXp(a))[0];
+}
+
 function mapChatDoc(snapshot) {
   const data = snapshot.data() || {};
   const createdAt = data.createdAt?.toDate?.();
+  const roomInvite =
+    data.roomInvite && typeof data.roomInvite === "object"
+      ? {
+          code: normalizeFirebaseLobbyCode(data.roomInvite.code),
+          mode: data.roomInvite.mode || "",
+          playlist: data.roomInvite.playlist || "",
+          teamSize: Number(data.roomInvite.teamSize) || 0,
+          size: Number(data.roomInvite.size) || 0,
+          firebaseLobby: Boolean(data.roomInvite.firebaseLobby),
+        }
+      : null;
   return {
     id: snapshot.id,
     from: data.username || "Player",
@@ -90,6 +122,9 @@ function mapChatDoc(snapshot) {
     direct: data.type === "direct",
     toUserId: data.toUid || "",
     toUsername: data.toUsername || "",
+    roomInvite,
+    roomCode: roomInvite?.code || "",
+    roomMode: roomInvite?.mode || "",
     at: createdAt ? createdAt.toISOString() : data.createdAtClient || nowIso(),
   };
 }
@@ -113,6 +148,38 @@ function mapLeaderboardDoc(snapshot) {
 
 function requestKey(fromUid, toUid) {
   return [String(fromUid || ""), String(toUid || "")].sort().join("_");
+}
+
+function mapLobbyDoc(snapshot) {
+  const data = snapshot.data() || {};
+  const players = Array.isArray(data.players)
+    ? data.players.slice(0, FIREBASE_LOBBY_MAX_PLAYERS).map((player) => ({
+        id: player.uid || player.id || "",
+        uid: player.uid || player.id || "",
+        username: player.username || "Player",
+        badge: Array.isArray(player.badges) ? player.badges[0] || "" : "",
+        badges: Array.isArray(player.badges) ? player.badges : [],
+        host: player.uid === data.hostUid || player.id === data.hostUid,
+        firebaseLobby: true,
+      }))
+    : [];
+  return {
+    id: snapshot.id,
+    code: data.code || snapshot.id,
+    mode: data.mode || "max-arena",
+    playlist: data.playlist || "firebase-lobby",
+    teamSize: Number(data.teamSize) || 2,
+    size: Number(data.size) || FIREBASE_LOBBY_MAX_PLAYERS,
+    botFill: data.botFill !== false,
+    bots: 0,
+    private: true,
+    live: false,
+    firebaseLobby: true,
+    backendMode: FIREBASE_BACKEND_MODE,
+    hostUid: data.hostUid || "",
+    hostUsername: data.hostUsername || "",
+    players,
+  };
 }
 
 export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
@@ -324,6 +391,11 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       }
       const userRef = firestore.doc(internals.db, "users", user.uid);
       const progressRef = firestore.doc(internals.db, "progress", user.uid);
+      const progressDoc = await transaction.get(progressRef);
+      const existingPayload = progressDoc.exists()
+        ? progressDoc.data()?.payload
+        : null;
+      const bestPayload = chooseBestSavePayload(existingPayload, savePayload);
       const baseProfile = {
         uid: user.uid,
         username: validation.username,
@@ -338,7 +410,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
         settings: {},
         cosmetics: {},
         loadouts: {},
-        progress: savePayload?.progressionV2 || {},
+        progress: bestPayload?.progressionV2 || {},
       };
       if (!usernameDoc.exists()) {
         transaction.set(
@@ -353,13 +425,13 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
         );
       }
       transaction.set(userRef, baseProfile, { merge: true });
-      if (savePayload) {
+      if (bestPayload) {
         transaction.set(
           progressRef,
           {
             uid: user.uid,
             username: validation.username,
-            payload: savePayload,
+            payload: bestPayload,
             updatedAt: firestore.serverTimestamp(),
           },
           { merge: true },
@@ -372,7 +444,6 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     await loadUserProfile(user.uid);
     state.authStatus = "signed-in";
     const progress = await getProgress();
-    await syncProgress(savePayload, { silent: true }).catch(() => undefined);
     return {
       user: makeUserPayload(user.uid, internals.userProfile),
       sessionToken: user.uid,
@@ -591,6 +662,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     age = null,
     quick = false,
     directTo = null,
+    roomInvite = null,
   } = {}) {
     requireReady();
     if (!state.uid) throw new Error("sign_in_required");
@@ -607,6 +679,19 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     const roomId = directTo?.uid
       ? `dm-${requestKey(state.uid, directTo.uid)}`
       : CHAT_ROOM_ID;
+    const cleanInvite = roomInvite?.code
+      ? {
+          code: normalizeFirebaseLobbyCode(roomInvite.code),
+          mode: String(roomInvite.mode || "").slice(0, 40),
+          playlist: String(roomInvite.playlist || "").slice(0, 40),
+          teamSize: Math.max(0, Math.min(3, Number(roomInvite.teamSize) || 0)),
+          size: Math.max(
+            0,
+            Math.min(FIREBASE_LOBBY_MAX_PLAYERS, Number(roomInvite.size) || 0),
+          ),
+          firebaseLobby: true,
+        }
+      : null;
     await firestore.addDoc(
       firestore.collection(internals.db, "chatRooms", roomId, "messages"),
       {
@@ -621,11 +706,98 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
         moderationFlags: [],
         createdAt: firestore.serverTimestamp(),
         createdAtClient: nowIso(),
+        ...(cleanInvite ? { roomInvite: cleanInvite } : {}),
       },
     );
     internals.lastChatAt = now;
     state.chatStatus = "sent";
     return true;
+  }
+
+  async function createLobby(options = {}) {
+    requireReady();
+    if (!state.uid) throw new Error("sign_in_required");
+    const { firestore } = internals.sdk;
+    const player = {
+      uid: state.uid,
+      username: state.username || "Player",
+      badges: internals.userProfile?.badges || [],
+    };
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const code = createFirebaseLobbyCode();
+      const ref = firestore.doc(internals.db, LOBBY_COLLECTION_ID, code);
+      const existing = await firestore.getDoc(ref);
+      if (existing.exists()) continue;
+      const lobby = {
+        code,
+        hostUid: state.uid,
+        hostUsername: state.username || "Player",
+        mode: String(options.mode || "max-arena").slice(0, 40),
+        playlist: String(options.playlist || "firebase-lobby").slice(0, 40),
+        teamSize: Math.max(1, Math.min(3, Number(options.teamSize) || 2)),
+        size: FIREBASE_LOBBY_MAX_PLAYERS,
+        botFill: options.botFill !== false,
+        private: true,
+        live: false,
+        backendMode: FIREBASE_BACKEND_MODE,
+        players: [player],
+        createdAt: firestore.serverTimestamp(),
+        updatedAt: firestore.serverTimestamp(),
+      };
+      await firestore.setDoc(ref, lobby, { merge: false });
+      const room = mapLobbyDoc({ id: code, data: () => lobby });
+      emit("room.snapshot", { room });
+      return room;
+    }
+    throw new Error("room_create_failed");
+  }
+
+  async function joinLobby(code) {
+    requireReady();
+    if (!state.uid) throw new Error("sign_in_required");
+    const validation = validateFirebaseLobbyCode(code);
+    if (!validation.ok) throw new Error(validation.error);
+    const { firestore } = internals.sdk;
+    const ref = firestore.doc(
+      internals.db,
+      LOBBY_COLLECTION_ID,
+      validation.code,
+    );
+    let joinedRoom = null;
+    await firestore.runTransaction(internals.db, async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists()) throw new Error("room_not_found");
+      const data = snapshot.data() || {};
+      const players = Array.isArray(data.players) ? data.players : [];
+      const existing = players.find((player) => player.uid === state.uid);
+      const nextPlayers = existing
+        ? players
+        : [
+            ...players,
+            {
+              uid: state.uid,
+              username: state.username || "Player",
+              badges: internals.userProfile?.badges || [],
+            },
+          ];
+      if (nextPlayers.length > FIREBASE_LOBBY_MAX_PLAYERS) {
+        throw new Error("room_full");
+      }
+      transaction.set(
+        ref,
+        {
+          players: nextPlayers,
+          updatedAt: firestore.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      joinedRoom = mapLobbyDoc({
+        id: snapshot.id,
+        data: () => ({ ...data, players: nextPlayers }),
+      });
+    });
+    emit("room.snapshot", { room: joinedRoom });
+    return joinedRoom;
   }
 
   async function submitFeedback(payload = {}) {
@@ -867,6 +1039,8 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     syncProgress,
     refreshLeaderboard,
     submitLeaderboard,
+    createLobby,
+    joinLobby,
     subscribeChat,
     unsubscribeRealtime,
     sendChat,

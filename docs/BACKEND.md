@@ -2,11 +2,11 @@
 
 InfernoDrift4 now has three backend tracks:
 
-- Firebase online-lite: production default for accounts, anonymous guests, usernames, progress, leaderboard, chat, friends, feedback, and diagnostics.
+- Firebase online-lite: production default for accounts, anonymous guests, usernames, progress, leaderboard, Firebase lobby rooms, chat, friends, feedback, and diagnostics.
 - `apps/server`: local Node/WebSocket backend for legacy room-server development and smoke tests.
 - `apps/worker`: Cloudflare Worker + Durable Object backend retained as legacy fallback/reference for authoritative rooms.
 
-The root static client remains playable offline. Firebase is not a trusted realtime physics server, so Firebase mode disables live rooms/queues and keeps local/bot play available.
+The root static client remains playable offline. Firebase is not a trusted realtime physics server, so Firebase mode offers lobby/chat/invite rooms but keeps authoritative live racing queues on the legacy WebSocket path only.
 
 ## Firebase Backend
 
@@ -20,7 +20,7 @@ Client files:
 Firebase services:
 
 - Authentication: Email/Password and Anonymous.
-- Firestore: `users`, `usernames`, `progress`, `leaderboards`, `chatRooms`, `feedback`, `friendRequests`, `friends`, and `diagnostics`.
+- Firestore: `users`, `usernames`, `progress`, `leaderboards`, `lobbies`, `chatRooms`, `feedback`, `friendRequests`, `friends`, and `diagnostics`.
 - Realtime Database: not used yet.
 - Analytics: not used.
 

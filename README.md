@@ -80,7 +80,7 @@ GitHub Pages deploys the `dist/` artifact produced by `npm run build:web`.
 
 ## Online Status
 
-GitHub Pages hosts only the static client. Production defaults to `BACKEND_MODE=firebase`. Firebase Auth and Firestore are the primary no-cost backend for accounts, anonymous guests, usernames, progress, leaderboard, lobby chat, friends, feedback, and diagnostics.
+GitHub Pages hosts only the static client. Production defaults to `BACKEND_MODE=firebase`. Firebase Auth and Firestore are the primary no-cost backend for accounts, anonymous guests, usernames, progress, leaderboard, Firebase lobby rooms, lobby chat, friends, feedback, and diagnostics.
 
 Replit publish is not required and Replit dev links must not be used for production. The old Worker URL `wss://infernodrift4-online.clarkbythebay.workers.dev/ws` stays only as a manual legacy fallback/reference while Firebase is the default for school-network users.
 
@@ -89,17 +89,18 @@ Firebase launch requirements:
 - Create a Firebase project on the Spark/free plan.
 - Enable Authentication providers: Email/Password and Anonymous.
 - Enable Firestore and publish `firestore.rules`.
+- Keep `firebase.json` / `.firebaserc` pointed at project `infernodrift4-online` and deploy rule changes with `firebase deploy --only firestore:rules` when Firebase CLI auth is available.
 - Fill the public web config in `firebase-config.js` or provide `window.INFERNO_FIREBASE_CONFIG` before `script.js`.
 - Use the Online tab **Run Firebase Test** button to verify Auth plus Firestore read/write from the deployed Pages site.
 
 Firebase limitations:
 
 - Firestore leaderboards are client-submitted and not cheat-proof without a trusted server or Cloud Functions.
-- Firebase is not an authoritative physics/multiplayer server. Live rooms/queues remain disabled in Firebase mode.
+- Firebase is not an authoritative physics/multiplayer server. Firebase lobby rooms support chat/invites; live racing queues/authoritative race rooms need the legacy WebSocket server if that path is explicitly selected and reachable.
 - If Firebase is unavailable, the game falls back to Guest Offline and local saves/bots remain usable.
 
 Legacy fallback remains available only when explicitly selected:
 
 - Set `window.INFERNO_BACKEND_MODE = "websocket"` or `?backendMode=websocket`.
 - Then enter a local server, Worker, or other trusted WebSocket URL in the Online tab.
-- Do not sync Cloudflare/Replit and Firebase state automatically; future backend work should target Firebase unless the project owner explicitly asks for a legacy server deployment.
+- Do not make Cloudflare/Replit primary. The client may attempt a one-time legacy Worker progress import for signed-in accounts so old XP/saves can be preserved in Firebase; future backend work should still target Firebase unless the project owner explicitly asks for a legacy server deployment.

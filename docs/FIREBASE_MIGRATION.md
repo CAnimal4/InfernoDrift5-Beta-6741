@@ -50,10 +50,10 @@ Firebase is the primary production online backend path. Replit publish is not ne
 
 ## Firebase Console Status
 
-The free Firebase project is set up and the checked-in public web config points at it. Keep `firestore.rules` synchronized with the Firebase Console before launch. Open the deployed Pages game and use Online -> Server settings -> Run Firebase Test after each deploy.
+The free Firebase project is set up and the checked-in public web config points at it. Keep `firestore.rules` synchronized with the Firebase Console before launch, or use `firebase deploy --only firestore:rules` when the Firebase CLI is authenticated. Open the deployed Pages game and use Online -> Server settings -> Run Firebase Test after each deploy.
 
 Do not add billing, Blaze, Admin SDK keys, service-account JSON, private API keys, or paid extensions.
 
 ## Future Codex Rule
 
-Future Codex backend prompts for InfernoDrift4 should publish/update Firebase config and Firestore rules, not Replit or Cloudflare. Do not "sync" Cloudflare/Replit data with Firebase unless the project owner explicitly asks for a one-time migration. Cloudflare and the local Node server are legacy room-server references only.
+Future Codex backend prompts for InfernoDrift4 should publish/update Firebase config and Firestore rules, not Replit or Cloudflare. Do not make Cloudflare/Replit primary again. The current client may attempt a one-time old Worker account-save import so player XP/progress can be preserved in Firebase, but Cloudflare and the local Node server remain legacy room-server references only.

@@ -4,6 +4,8 @@ export const FIREBASE_FEEDBACK_LIMIT = 2500;
 export const FIREBASE_SCORE_LIMIT = 1_000_000;
 export const FIREBASE_LEADERBOARD_MODE = "all-modes";
 export const FIREBASE_BACKEND_MODE = "firebase";
+export const FIREBASE_LOBBY_CODE_PATTERN = /^[A-Z0-9]{4,8}$/;
+const FIREBASE_LOBBY_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const BLOCKED_TERMS = [
   /(?:n|ñ|m)[\W_]*[i1!l|][\W_]*g[\W_]*g[\W_]*(?:e|3)[\W_]*r/i,
@@ -127,6 +129,41 @@ export function validateFirebaseFeedback(message = "") {
   const clean = sanitizeFirebaseText(text, FIREBASE_FEEDBACK_LIMIT);
   if (!clean.ok) return { ok: false, error: "feedback_rejected" };
   return { ok: true, text: clean.text };
+}
+
+export function normalizeFirebaseLobbyCode(value = "") {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 8);
+}
+
+export function validateFirebaseLobbyCode(value = "") {
+  const code = normalizeFirebaseLobbyCode(value);
+  if (!FIREBASE_LOBBY_CODE_PATTERN.test(code)) {
+    return { ok: false, error: "room_not_found", code };
+  }
+  return { ok: true, code };
+}
+
+export function createFirebaseLobbyCode({
+  random = globalThis.crypto,
+  length = 5,
+} = {}) {
+  const size = Math.max(4, Math.min(8, Math.floor(Number(length) || 5)));
+  const bytes = new Uint8Array(size);
+  if (random?.getRandomValues) random.getRandomValues(bytes);
+  else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  return Array.from(bytes, (byte) => {
+    return FIREBASE_LOBBY_CODE_ALPHABET[
+      byte % FIREBASE_LOBBY_CODE_ALPHABET.length
+    ];
+  }).join("");
 }
 
 export function mapFirebaseError(error) {
