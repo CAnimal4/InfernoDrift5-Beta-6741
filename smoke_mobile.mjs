@@ -52,21 +52,6 @@ const touchUserSelect = await page
     return `${style.userSelect}/${style.webkitUserSelect}`;
   });
 
-assert.equal(state.mode, "campaign-survival");
-assert.equal(state.running, true);
-assert.equal(state.player.demolished, false);
-assert.equal(overlayClass, "overlay");
-assert.ok(hudBox && hudBox.height < 150);
-assert.ok(radarBox && radarBox.width <= 280 && radarBox.height <= 280);
-assert.ok(touchBox && touchBox.y > 150);
-assert.match(touchUserSelect, /none/);
-
-await page.screenshot({
-  path: "output/playwright/mobile-landscape-smoke.png",
-  fullPage: false,
-  timeout: 30000,
-});
-
 console.log(
   JSON.stringify(
     {
@@ -83,6 +68,21 @@ console.log(
     2,
   ),
 );
+
+await page.screenshot({
+  path: "output/playwright/mobile-landscape-smoke.png",
+  fullPage: false,
+  timeout: 30000,
+});
+
+assert.equal(state.mode, "campaign-survival");
+assert.equal(state.running, true);
+assert.equal(state.player.demolished, false);
+assert.equal(overlayClass, "overlay");
+assert.ok(hudBox && hudBox.height < 150);
+assert.ok(radarBox && radarBox.width <= 280 && radarBox.height <= 280);
+assert.ok(touchBox && touchBox.y > 150);
+assert.match(touchUserSelect, /none/);
 
 await browser.close();
 

@@ -11,6 +11,7 @@ const messageTitle = document.getElementById("message-title");
 const messageBody = document.getElementById("message-body");
 const messageStats = document.getElementById("message-stats");
 const startBtn = document.getElementById("start-btn");
+const startHereBtn = document.getElementById("start-here-btn");
 const startAccountUsername = document.getElementById("start-account-username");
 const startAccountPassword = document.getElementById("start-account-password");
 const startAccountAge = document.getElementById("start-account-age");
@@ -214,6 +215,7 @@ const feedbackDiagnostics = document.getElementById("feedback-diagnostics");
 const feedbackAge13 = document.getElementById("feedback-age-13");
 const feedbackEmail = document.getElementById("feedback-email");
 const feedbackStatus = document.getElementById("feedback-status");
+const feedbackCounter = document.getElementById("feedback-counter");
 const gameWrap = document.getElementById("game-wrap");
 const remoteNameLayer = document.createElement("div");
 remoteNameLayer.className = "remote-name-layer";
@@ -305,9 +307,14 @@ const ACCOUNT_SAVE_STORAGE_PREFIX = "infernoDrift4.accountSave.v1:";
 const LEGACY_SAVE_STORAGE_KEYS = ["infernoDrift3.save.v1"];
 const ONLINE_STORAGE_KEY = "infernoDrift4.online.v1";
 const FEEDBACK_STORAGE_KEY = "infernoDrift4.feedback.v1";
+const ONBOARDING_STORAGE_KEY = "infernoDrift4.onboarding.v1";
 const EXIT_LINK_DEFAULT_URL = "https://lbusd.instructure.com/?login_success=1";
 const EXIT_LINK_KEY_CODE = "KeyQ";
 const ONLINE_PROGRESS_SYNC_INTERVAL_MS = 30_000;
+const ONLINE_HEALTH_TIMEOUT_MS = 6000;
+const ONLINE_CONNECT_TIMEOUT_MS = 8000;
+const ONLINE_AUTH_TIMEOUT_MS = 10000;
+const FEEDBACK_MESSAGE_LIMIT = 2500;
 const DAILY_GIFT_MIN_XP = 100;
 const DAILY_GIFT_MAX_XP = 1000;
 const DAILY_GIFT_STEP_XP = 25;
@@ -655,6 +662,7 @@ const BATTLE_RULES = {
   playerSteerFilterMult: 0.72,
   botSpeedMult: 0.82,
   coverCollisionSkin: 1.25,
+  returnPadRadius: 22,
 };
 const HUNTER_BOT_COLOR = 0x39ff8a;
 const BOWLING_RULES = {
@@ -727,13 +735,13 @@ const MODE_CATALOG = [
     category: "speed",
     base: "campaign",
     scene: "track",
-    time: 115,
-    target: 8,
-    botCount: 4,
-    botSpeed: 38,
-    card: "Winding road course, guardrails, checkpoints, rivals.",
+    time: 120,
+    target: 10,
+    botCount: 3,
+    botSpeed: 46,
+    card: "Wide asphalt road course, checkpoints, bumping rivals.",
     objective:
-      "Race the winding course. Rivals bump like arcade racers, not hunters.",
+      "Race the wide road course. Rivals bump like arcade racers, not hunters.",
     reward: "Speed class XP + ghost sample",
     medal: { bronze: 900, silver: 1500, gold: 2300, inferno: 3300 },
   },
@@ -743,12 +751,12 @@ const MODE_CATALOG = [
     category: "speed",
     base: "campaign",
     scene: "track",
-    time: 75,
-    target: 8,
+    time: 80,
+    target: 10,
     botCount: 0,
     botSpeed: 0,
-    card: "Solo winding track, clean restart, personal best ghost.",
-    objective: "Beat the track quickly without rivals and set a cleaner ghost.",
+    card: "Solo asphalt time attack, clean gates, personal best ghost.",
+    objective: "Beat the road course without rivals and set a cleaner ghost.",
     reward: "Chrono trail preview",
     medal: { bronze: 800, silver: 1500, gold: 2400, inferno: 3600 },
   },
@@ -2065,6 +2073,15 @@ const onlineState = {
   feedbackUrl: "",
   status: "offline",
   statusText: "Offline: no backend configured",
+  connectionStage: "idle",
+  transport: "offline",
+  backendHealth: null,
+  lastCloseCode: 0,
+  timeoutReason: "",
+  chatSendStatus: "idle",
+  healthTimer: 0,
+  connectTimer: 0,
+  authTimer: 0,
   socket: null,
   reconnectTimer: 0,
   reconnectAttempts: 0,
@@ -2338,6 +2355,7 @@ function createModeRunState() {
       blueFlagCarrier: "",
       redFlagCarrier: "",
       flagMessage: "",
+      lastFlagEvent: "",
     },
     bowling: {
       frame: 1,
@@ -2459,6 +2477,11 @@ const state = {
   remapStatus: "",
   modeHelpOpen: false,
   modeHelpWasRunning: false,
+  onboarding: {
+    firstVisit: false,
+    recommendedMode: GAME_MODE_RACE,
+    tipsVisible: false,
+  },
   schoolGate: {
     active: false,
     dismissed: false,
@@ -2494,6 +2517,8 @@ const maxMode = {
   replayFrameTimer: 0,
   replayMeta: "",
   pendingKickoff: null,
+  lastCtrlTarget: "",
+  lastBallImpulse: 0,
   riskMemory: {
     blueConceded: 0,
     redConceded: 0,
@@ -3951,6 +3976,93 @@ function deriveFeedbackUrl(backendUrl) {
   }
 }
 
+function deriveHttpBaseUrl(backendUrl) {
+  try {
+    if (!backendUrl) return "";
+    const url = new URL(backendUrl);
+    if (url.protocol === "wss:") url.protocol = "https:";
+    else if (url.protocol === "ws:") url.protocol = "http:";
+    url.pathname = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return "";
+  }
+}
+
+function isUnsafeWebSocketUrl(backendUrl) {
+  try {
+    const url = new URL(backendUrl);
+    const localHost = /^(localhost|127\.0\.0\.1|\[?::1\]?)$/i.test(
+      url.hostname,
+    );
+    return (
+      window.location.protocol === "https:" &&
+      url.protocol === "ws:" &&
+      !localHost
+    );
+  } catch {
+    return false;
+  }
+}
+
+function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() =>
+    clearTimeout(timer),
+  );
+}
+
+function clearOnlineTimers() {
+  ["healthTimer", "connectTimer", "authTimer"].forEach((key) => {
+    if (onlineState[key]) clearTimeout(onlineState[key]);
+    onlineState[key] = 0;
+  });
+}
+
+function updateConnectionStage(stage, detail = "") {
+  onlineState.connectionStage = stage;
+  if (detail) onlineState.timeoutReason = detail;
+}
+
+async function checkOnlineHealth(timeoutMs = ONLINE_HEALTH_TIMEOUT_MS) {
+  const baseUrl = deriveHttpBaseUrl(onlineState.backendUrl);
+  if (!baseUrl) {
+    onlineState.backendHealth = { ok: false, error: "missing_backend_url" };
+    return onlineState.backendHealth;
+  }
+  const healthUrl = `${baseUrl}/health`;
+  updateConnectionStage("checking");
+  console.info("[InfernoDrift4 online] health preflight", {
+    url: healthUrl,
+    origin: window.location.origin,
+  });
+  try {
+    const response = await fetchWithTimeout(
+      healthUrl,
+      { headers: { accept: "application/json" } },
+      timeoutMs,
+    );
+    const body = await response.json().catch(() => ({}));
+    onlineState.backendHealth = {
+      ok: response.ok && body.ok !== false,
+      status: response.status,
+      body,
+      checkedAt: Date.now(),
+    };
+  } catch (error) {
+    onlineState.backendHealth = {
+      ok: false,
+      error: error?.name === "AbortError" ? "health_timeout" : "health_failed",
+      detail: error?.message || "",
+      checkedAt: Date.now(),
+    };
+  }
+  return onlineState.backendHealth;
+}
+
 function loadOnlineConfig() {
   const onlinePrefs = readLocalJson(ONLINE_STORAGE_KEY, {});
   const feedbackPrefs = readLocalJson(FEEDBACK_STORAGE_KEY, {});
@@ -3964,8 +4076,7 @@ function loadOnlineConfig() {
   onlineState.backendUrl = LEGACY_PRODUCTION_BACKEND_URLS.has(normalizedBackend)
     ? DEFAULT_PRODUCTION_BACKEND_URL
     : normalizedBackend;
-  onlineState.backendDefaulted =
-    !explicitBackend && onlineState.backendUrl === DEFAULT_LOCAL_BACKEND_URL;
+  onlineState.backendDefaulted = !explicitBackend;
   onlineState.feedbackUrl =
     getRuntimeParam("feedback", "feedbackUrl") ||
     window.INFERNO_FEEDBACK_URL ||
@@ -4016,11 +4127,30 @@ function setOnlineStatus(status, text, detail = "") {
   onlineState.status = status;
   onlineState.statusText = text;
   onlineState.lastError = detail || "";
+  if (
+    [
+      "idle",
+      "checking",
+      "connecting",
+      "authenticating",
+      "connected",
+      "authenticated",
+      "failed",
+      "unavailable",
+      "retrying",
+    ].includes(status)
+  ) {
+    onlineState.connectionStage =
+      status === "authenticated" ? "connected" : status;
+  }
   if (onlineStatus) {
     onlineStatus.dataset.state =
       status === "connected" || status === "authenticated"
         ? "connected"
-        : status === "error" || status === "not_configured"
+        : status === "error" ||
+            status === "failed" ||
+            status === "unavailable" ||
+            status === "not_configured"
           ? "error"
           : "offline";
     onlineStatus.textContent = detail ? `${text}: ${detail}` : text;
@@ -4036,7 +4166,13 @@ function sendOnlineMessage(payload, { queue = true } = {}) {
     onlineState.socket.send(JSON.stringify(payload));
     return true;
   }
-  if (queue) onlineState.pending.push(payload);
+  const queueAllowed = ["auth.account", "auth.guest", "reconnect"].includes(
+    payload?.type,
+  );
+  if (queue && queueAllowed) onlineState.pending.push(payload);
+  else if (payload?.type?.includes?.("chat")) {
+    onlineState.chatSendStatus = "offline";
+  }
   updateOnlineUi();
   return false;
 }
@@ -4188,7 +4324,7 @@ function claimOnlineGuest() {
   };
   if (onlineState.age !== null) payload.age = onlineState.age;
   if (onlineState.sessionToken) payload.sessionToken = onlineState.sessionToken;
-  sendOnlineMessage(payload);
+  sendOnlineMessage(payload, { queue: isOnlineSocketOpen() });
   onlineState.authRequired = true;
   setOnlineStatus(
     isOnlineSocketOpen() ? "connected" : "offline",
@@ -4223,10 +4359,46 @@ function claimOnlineUsername() {
 }
 
 function requestOnlineProfile() {
+  if (onlineState.transport === "http-fallback") {
+    requestHttpProfile();
+    return;
+  }
   sendOnlineMessage({ type: "profile.get" }, { queue: false });
 }
 
+async function requestHttpProfile() {
+  const baseUrl = deriveHttpBaseUrl(onlineState.backendUrl);
+  if (!baseUrl || !onlineState.sessionToken) return false;
+  try {
+    const url = new URL(`${baseUrl}/api/profile`);
+    url.searchParams.set("sessionToken", onlineState.sessionToken);
+    const response = await fetchWithTimeout(url.toString(), {}, 7000);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      throw new Error(payload.error || `profile_${response.status}`);
+    }
+    handleOnlineMessage(
+      JSON.stringify({
+        type: "profile.snapshot",
+        user: payload.user || null,
+        save: payload.save || null,
+        leaderboardRow: payload.leaderboardRow || null,
+        restrictions: payload.restrictions || {},
+      }),
+    );
+    return true;
+  } catch (error) {
+    onlineState.profileActionStatus = describeOnlineError(error?.message || "");
+    updateOnlineUi();
+    return false;
+  }
+}
+
 function requestOnlineLeaderboard({ force = false } = {}) {
+  if (onlineState.transport === "http-fallback") {
+    requestHttpLeaderboard({ force });
+    return true;
+  }
   if (!isOnlineSocketOpen()) return false;
   const now = performance.now();
   if (!force && now - onlineState.leaderboardSyncedAt < 12000) return false;
@@ -4235,6 +4407,36 @@ function requestOnlineLeaderboard({ force = false } = {}) {
     { type: "leaderboard.get", playlist: "casual" },
     { queue: false },
   );
+}
+
+async function requestHttpLeaderboard({ force = false } = {}) {
+  const now = performance.now();
+  if (!force && now - onlineState.leaderboardSyncedAt < 12000) return false;
+  const baseUrl = deriveHttpBaseUrl(onlineState.backendUrl);
+  if (!baseUrl || !onlineState.sessionToken) return false;
+  onlineState.leaderboardSyncStatus = "syncing";
+  try {
+    const url = new URL(`${baseUrl}/api/leaderboard`);
+    url.searchParams.set("sessionToken", onlineState.sessionToken);
+    const response = await fetchWithTimeout(url.toString(), {}, 7000);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      throw new Error(payload.error || `leaderboard_${response.status}`);
+    }
+    handleOnlineMessage(
+      JSON.stringify({
+        type: "leaderboard.snapshot",
+        leaderboard: payload.leaderboard || [],
+        playerRow: payload.playerRow || null,
+      }),
+    );
+    return true;
+  } catch (error) {
+    onlineState.leaderboardSyncStatus = "http-fallback-error";
+    onlineState.lastError = describeOnlineError(error?.message || "");
+    updateOnlineUi();
+    return false;
+  }
 }
 
 function logoutOnlineProfile() {
@@ -4334,11 +4536,93 @@ function describeOnlineError(error = "") {
     room_full: "That room is full.",
     account_banned:
       "This account or device is temporarily banned from online play.",
+    feedback_too_long: "Feedback must be 2,500 characters or fewer.",
+    feedback_rejected:
+      "Feedback was blocked by the safety filter. Try shorter, school-appropriate wording.",
+    health_timeout:
+      "The online backend did not answer quickly. A school network may be blocking it.",
+    health_failed: "The online backend could not be reached from this browser.",
+    websocket_timeout: "Live rooms are blocked or too slow on this network.",
+    auth_timeout: "Account sign-in took too long and was cancelled.",
+    mixed_content:
+      "This page is secure, so online must use a secure wss:// backend.",
+    not_found: "That online endpoint was not found.",
   };
   return labels[code] || code.replace(/_/g, " ");
 }
 
-function connectOnline({ reconnect = false } = {}) {
+async function handleHttpFallbackAuth(authPayload) {
+  const baseUrl = deriveHttpBaseUrl(onlineState.backendUrl);
+  if (!baseUrl || !authPayload) return false;
+  updateConnectionStage("authenticating", "http_fallback");
+  onlineState.transport = "http-fallback";
+  try {
+    const response = await fetchWithTimeout(
+      `${baseUrl}/api/auth/account`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(authPayload),
+      },
+      ONLINE_AUTH_TIMEOUT_MS,
+    );
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+      throw new Error(result.error || `auth_${response.status}`);
+    }
+    onlineState.pendingAuth = null;
+    handleOnlineMessage(
+      JSON.stringify({
+        type: "auth.ok",
+        user: result.user,
+        sessionToken: result.sessionToken,
+        save: result.save || null,
+      }),
+    );
+    if (result.profile) {
+      handleOnlineMessage(
+        JSON.stringify({ type: "profile.snapshot", ...result.profile }),
+      );
+    }
+    if (result.leaderboard) {
+      handleOnlineMessage(
+        JSON.stringify({
+          type: "leaderboard.snapshot",
+          leaderboard: result.leaderboard,
+          playerRow: result.playerRow || null,
+        }),
+      );
+    }
+    if (result.chat) {
+      handleOnlineMessage(JSON.stringify(result.chat));
+    }
+    onlineState.transport = "http-fallback";
+    setOnlineStatus(
+      "connected",
+      `Online as ${result.user?.username || authPayload.username}`,
+      "HTTPS fallback active; live rooms need WebSocket.",
+    );
+    return true;
+  } catch (error) {
+    onlineState.pendingAuth = null;
+    onlineState.pendingStartAfterAuth = false;
+    onlineState.transport = "offline";
+    onlineState.timeoutReason = error?.message || "auth_failed";
+    setStartAccountStatus(
+      `Account error: ${describeOnlineError(error?.message || "auth_failed")}`,
+      "error",
+    );
+    setOnlineStatus(
+      "failed",
+      "Account connection failed",
+      describeOnlineError(error?.message || "auth_failed"),
+    );
+    updateOnlineUi();
+    return false;
+  }
+}
+
+async function connectOnline({ reconnect = false } = {}) {
   onlineState.backendUrl = normalizeOnlineBackendUrl(
     onlineBackendUrlInput?.value || onlineState.backendUrl,
   );
@@ -4348,16 +4632,76 @@ function connectOnline({ reconnect = false } = {}) {
     updateOnlineUi();
     return false;
   }
+  if (isUnsafeWebSocketUrl(onlineState.backendUrl)) {
+    setOnlineStatus(
+      "failed",
+      "Online backend URL is blocked",
+      "HTTPS pages require a wss:// backend URL.",
+    );
+    return false;
+  }
   if (isOnlineSocketOpen()) return true;
   try {
     if (onlineState.socket) onlineState.socket.close();
+    clearOnlineTimers();
+    const health = await checkOnlineHealth();
+    if (!health.ok) {
+      const error = health.error || `health_${health.status || "failed"}`;
+      onlineState.transport = "offline";
+      onlineState.timeoutReason = error;
+      setOnlineStatus(
+        "unavailable",
+        "Online services unavailable",
+        describeOnlineError(error),
+      );
+      if (onlineState.pendingStartAfterAuth) {
+        onlineState.pendingStartAfterAuth = false;
+        setStartAccountStatus(
+          "Online services are unavailable right now. You can still play as a local guest.",
+          "error",
+        );
+      }
+      updateOnlineUi();
+      return false;
+    }
     setOnlineStatus(
       "connecting",
       reconnect ? "Reconnecting to backend" : "Connecting to backend",
     );
+    updateConnectionStage("connecting");
+    console.info("[InfernoDrift4 online] websocket connect", {
+      url: onlineState.backendUrl,
+      protocol: new URL(onlineState.backendUrl).protocol,
+      origin: window.location.origin,
+    });
     const socket = new WebSocket(onlineState.backendUrl);
     onlineState.socket = socket;
+    onlineState.connectTimer = window.setTimeout(() => {
+      if (onlineState.socket !== socket || socket.readyState === WebSocket.OPEN)
+        return;
+      onlineState.timeoutReason = "websocket_timeout";
+      onlineState.lastCloseCode = 0;
+      try {
+        socket.close(4000, "connect_timeout");
+      } catch {
+        // Ignore close races.
+      }
+      onlineState.socket = null;
+      setOnlineStatus(
+        "failed",
+        "Live connection timed out",
+        "WebSocket blocked or too slow. Account/chat will try HTTPS fallback.",
+      );
+      if (onlineState.pendingAuth) {
+        handleHttpFallbackAuth(onlineState.pendingAuth);
+      }
+      updateOnlineUi();
+    }, ONLINE_CONNECT_TIMEOUT_MS);
     socket.addEventListener("open", () => {
+      if (onlineState.connectTimer) clearTimeout(onlineState.connectTimer);
+      onlineState.connectTimer = 0;
+      onlineState.transport = "websocket";
+      updateConnectionStage("authenticating");
       onlineState.reconnectAttempts = 0;
       const pendingAuth = onlineState.pendingAuth;
       setOnlineStatus(
@@ -4371,6 +4715,26 @@ function connectOnline({ reconnect = false } = {}) {
       if (pendingAuth) {
         onlineState.pendingAuth = null;
         sendOnlineMessage(pendingAuth, { queue: false });
+        onlineState.authTimer = window.setTimeout(() => {
+          onlineState.timeoutReason = "auth_timeout";
+          onlineState.pendingStartAfterAuth = false;
+          setStartAccountStatus(
+            "Account sign-in timed out. Try again, or play as a local guest.",
+            "error",
+          );
+          setOnlineStatus(
+            "failed",
+            "Account connection timed out",
+            "The backend did not finish sign-in.",
+          );
+          if (onlineState.socket === socket) onlineState.socket = null;
+          try {
+            socket.close(4001, "auth_timeout");
+          } catch {
+            // Ignore close races.
+          }
+          handleHttpFallbackAuth(pendingAuth);
+        }, ONLINE_AUTH_TIMEOUT_MS);
       } else if (onlineState.sessionToken) {
         sendOnlineMessage({
           type: "reconnect",
@@ -4391,6 +4755,14 @@ function connectOnline({ reconnect = false } = {}) {
     });
     socket.addEventListener("close", (event) => {
       if (onlineState.socket !== socket) return;
+      if (onlineState.connectTimer) clearTimeout(onlineState.connectTimer);
+      onlineState.connectTimer = 0;
+      onlineState.lastCloseCode = event.code || 0;
+      console.info("[InfernoDrift4 online] websocket close", {
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+      });
       if (event.code === 4002 || event.code === 4003) {
         const banned = event.code === 4003;
         forceOnlineRemoval(
@@ -4403,16 +4775,42 @@ function connectOnline({ reconnect = false } = {}) {
         );
         return;
       }
+      if (
+        onlineState.pendingAuth &&
+        onlineState.backendHealth?.ok &&
+        onlineState.connectionStage !== "connected"
+      ) {
+        onlineState.transport = "http-fallback";
+        const pendingAuth = onlineState.pendingAuth;
+        onlineState.socket = null;
+        handleHttpFallbackAuth(pendingAuth);
+        return;
+      }
       onlineState.socket = null;
       onlineState.user = null;
       onlineState.room = null;
       onlineState.remoteSnapshots = [];
       setRemoteHumanPlayers([]);
-      setOnlineStatus("offline", "Offline: backend disconnected");
-      if (!onlineState.onlineRestrictedUntil) scheduleOnlineReconnect();
+      if (onlineState.timeoutReason === "websocket_timeout") {
+        onlineState.transport = "http-fallback";
+        setOnlineStatus(
+          "failed",
+          "Live rooms unavailable",
+          "WebSocket appears blocked; account/chat can use HTTPS fallback.",
+        );
+      } else {
+        onlineState.transport = "offline";
+        setOnlineStatus("offline", "Offline: backend disconnected");
+        if (!onlineState.onlineRestrictedUntil) scheduleOnlineReconnect();
+      }
       updateOnlineUi();
     });
     socket.addEventListener("error", () => {
+      console.info("[InfernoDrift4 online] websocket error", {
+        url: onlineState.backendUrl,
+        origin: window.location.origin,
+      });
+      onlineState.lastCloseCode = 0;
       setOnlineStatus("error", "Online backend error");
       updateOnlineUi();
     });
@@ -4427,6 +4825,7 @@ function connectOnline({ reconnect = false } = {}) {
 function disconnectOnline({ manual = true, suppressReconnect = false } = {}) {
   if (onlineState.reconnectTimer) clearTimeout(onlineState.reconnectTimer);
   onlineState.reconnectTimer = 0;
+  clearOnlineTimers();
   onlineState.pending = [];
   if (onlineState.socket) {
     const socket = onlineState.socket;
@@ -4436,6 +4835,8 @@ function disconnectOnline({ manual = true, suppressReconnect = false } = {}) {
   onlineState.user = null;
   onlineState.room = null;
   onlineState.queue = null;
+  onlineState.transport = "offline";
+  onlineState.connectionStage = "idle";
   onlineState.remoteSnapshots = [];
   setRemoteHumanPlayers([]);
   setOnlineStatus("offline", manual ? "Offline: disconnected" : "Offline");
@@ -4447,6 +4848,10 @@ function scheduleOnlineReconnect() {
   if (!onlineState.backendUrl || onlineState.reconnectTimer) return;
   onlineState.reconnectAttempts += 1;
   const delay = Math.min(12000, 1800 * onlineState.reconnectAttempts);
+  setOnlineStatus(
+    "retrying",
+    `Retrying online in ${Math.round(delay / 1000)}s`,
+  );
   onlineState.reconnectTimer = window.setTimeout(() => {
     onlineState.reconnectTimer = 0;
     connectOnline({ reconnect: true });
@@ -4464,6 +4869,9 @@ function handleOnlineMessage(raw) {
   if (message.type === "hello") {
     onlineState.serverId = message.id || "";
   } else if (message.type === "auth.ok" || message.type === "reconnect.ok") {
+    if (onlineState.authTimer) clearTimeout(onlineState.authTimer);
+    onlineState.authTimer = 0;
+    onlineState.timeoutReason = "";
     onlineState.user = message.user || null;
     onlineState.sessionToken = message.sessionToken || onlineState.sessionToken;
     if (onlineState.user?.username)
@@ -4877,14 +5285,81 @@ function sendFreeChat(text) {
     updateOnlineUi();
     return;
   }
-  sendOnlineMessage({
-    type: "chat.send",
-    text: clean,
-    age: onlineState.age,
-    channel: "lobby",
-  });
+  if (onlineState.transport === "http-fallback") {
+    sendHttpChat(clean);
+    return;
+  }
+  const sent = sendOnlineMessage(
+    {
+      type: "chat.send",
+      text: clean,
+      age: onlineState.age,
+      channel: "lobby",
+    },
+    { queue: false },
+  );
+  if (!sent) {
+    onlineState.chatSendStatus = "offline";
+    pushOnlineChatMessage({
+      from: "System",
+      text: "Chat is offline. Reconnect online first.",
+      quick: true,
+    });
+    updateOnlineUi();
+    return;
+  }
+  onlineState.chatSendStatus = "sent";
   if (onlineChatInput) onlineChatInput.value = "";
   if (chatPopoutInput) chatPopoutInput.value = "";
+}
+
+async function sendHttpChat(text) {
+  const baseUrl = deriveHttpBaseUrl(onlineState.backendUrl);
+  if (!baseUrl || !onlineState.sessionToken) {
+    onlineState.chatSendStatus = "offline";
+    pushOnlineChatMessage({
+      from: "System",
+      text: "Chat is offline. Reconnect online first.",
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
+  try {
+    const response = await fetchWithTimeout(
+      `${baseUrl}/api/chat/send`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sessionToken: onlineState.sessionToken,
+          text,
+          age: onlineState.age,
+        }),
+      },
+      7000,
+    );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      throw new Error(payload.error || `chat_${response.status}`);
+    }
+    if (payload.message) {
+      handleOnlineMessage(JSON.stringify(payload.message));
+    }
+    if (onlineChatInput) onlineChatInput.value = "";
+    if (chatPopoutInput) chatPopoutInput.value = "";
+    onlineState.chatSendStatus = "sent";
+    return true;
+  } catch (error) {
+    onlineState.chatSendStatus = "failed";
+    pushOnlineChatMessage({
+      from: "System",
+      text: `Chat could not send: ${describeOnlineError(error?.message || "")}`,
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
 }
 
 function renderChatLog(target) {
@@ -5239,6 +5714,10 @@ function updateOnlineUi() {
   if (onlineConnect) onlineConnect.disabled = connected;
   if (onlineDisconnect) onlineDisconnect.disabled = !onlineState.socket;
   if (onlineClaim) onlineClaim.disabled = false;
+  const roomsNeedLive = onlineState.transport === "http-fallback";
+  [onlineCreateRoom, onlineJoinRoom, onlineQueue].forEach((node) => {
+    if (node) node.disabled = roomsNeedLive || !connected;
+  });
   if (onlineRoomMode && document.activeElement !== onlineRoomMode) {
     onlineRoomMode.value = onlineState.room?.mode || settings.activeGameMode;
   }
@@ -5255,7 +5734,9 @@ function updateOnlineUi() {
       ? `Room ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${room.bots || 0} bots, ${getModeDefinition(room.mode).label}`
       : onlineState.queue
         ? `Queued for ${onlineState.queue.playlist || "casual"} ${onlineState.queue.teamSize || 2}v${onlineState.queue.teamSize || 2}`
-        : "No room joined.";
+        : roomsNeedLive
+          ? "Rooms need live WebSocket connection. Account, chat, and leaderboard are using HTTPS fallback."
+          : "No room joined.";
   }
   renderChatLog(onlineChatLog);
   renderChatLog(chatPopoutLog);
@@ -5286,6 +5767,20 @@ function updateOnlineUi() {
 function setChatPopoutOpen(open) {
   onlineState.chatOpen = open;
   if (open) hideChatNotice();
+  if (open && !onlineState.user) {
+    pushOnlineChatMessage(
+      {
+        from: "System",
+        text:
+          onlineState.status === "failed" ||
+          onlineState.status === "unavailable"
+            ? "Chat is offline because online services are unavailable."
+            : "Sign in or connect online before using live chat.",
+        quick: true,
+      },
+      { notify: false },
+    );
+  }
   if (!open) returnFocusToGame();
   updateOnlineUi();
 }
@@ -5294,6 +5789,7 @@ function openFeedbackModal() {
   onlineState.feedbackReturnToMenu = isMenuOpen();
   onlineState.chatOpen = false;
   if (onlineState.feedbackReturnToMenu) setMenuOpen(false);
+  updateFeedbackCounter();
   if (feedbackModal) {
     feedbackModal.classList.add("show");
     feedbackModal.style.transition = "none";
@@ -5351,14 +5847,18 @@ function getFeedbackDeliveryMessage(result = {}) {
 
 async function submitFeedback() {
   const configuredUrl =
-    onlineState.feedbackUrl ||
-    (!onlineState.backendDefaulted || isOnlineSocketOpen()
-      ? deriveFeedbackUrl(onlineState.backendUrl)
-      : "");
+    onlineState.feedbackUrl || deriveFeedbackUrl(onlineState.backendUrl);
   const message = String(feedbackMessage?.value || "").trim();
   if (!message) {
     onlineState.lastFeedbackStatus = "error";
     onlineState.lastFeedbackError = "Please add a feedback message.";
+    updateFeedbackStatus();
+    return;
+  }
+  if (message.length > FEEDBACK_MESSAGE_LIMIT) {
+    onlineState.lastFeedbackStatus = "error";
+    onlineState.lastFeedbackError = `Feedback is ${message.length - FEEDBACK_MESSAGE_LIMIT} characters too long. Keep it under 2,500 characters.`;
+    updateFeedbackCounter();
     updateFeedbackStatus();
     return;
   }
@@ -5388,10 +5888,10 @@ async function submitFeedback() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (!response.ok) {
-      throw new Error(`backend returned ${response.status}`);
-    }
     const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || `backend returned ${response.status}`);
+    }
     onlineState.feedbackUrl = configuredUrl;
     onlineState.lastFeedbackStatus = "saved";
     onlineState.lastFeedbackDelivery = result.delivery || "stored";
@@ -5399,12 +5899,40 @@ async function submitFeedback() {
     onlineState.lastFeedbackError = result.emailError || "";
     saveOnlineConfig();
     if (feedbackMessage) feedbackMessage.value = "";
+    updateFeedbackCounter();
     updateFeedbackStatus(getFeedbackDeliveryMessage(result));
   } catch (error) {
     onlineState.lastFeedbackStatus = "error";
     onlineState.lastFeedbackDelivery = "error";
     onlineState.feedbackEmailConfigured = false;
     onlineState.lastFeedbackError = `Feedback was not saved: ${error?.message || "request failed"}`;
+    updateFeedbackStatus();
+  }
+}
+
+function updateFeedbackCounter() {
+  if (!feedbackCounter || !feedbackMessage) return;
+  if (feedbackMessage.maxLength !== FEEDBACK_MESSAGE_LIMIT) {
+    feedbackMessage.maxLength = FEEDBACK_MESSAGE_LIMIT;
+  }
+  const count = feedbackMessage.value.length;
+  feedbackCounter.textContent = `${count.toLocaleString()} / ${FEEDBACK_MESSAGE_LIMIT.toLocaleString()}`;
+  feedbackCounter.dataset.state =
+    count > FEEDBACK_MESSAGE_LIMIT
+      ? "error"
+      : count >= FEEDBACK_MESSAGE_LIMIT - 200
+        ? "warn"
+        : "";
+  if (count > FEEDBACK_MESSAGE_LIMIT) {
+    feedbackMessage.value = feedbackMessage.value.slice(
+      0,
+      FEEDBACK_MESSAGE_LIMIT,
+    );
+    feedbackCounter.textContent = `${FEEDBACK_MESSAGE_LIMIT.toLocaleString()} / ${FEEDBACK_MESSAGE_LIMIT.toLocaleString()}`;
+    feedbackCounter.dataset.state = "error";
+    onlineState.lastFeedbackStatus = "error";
+    onlineState.lastFeedbackError =
+      "Feedback is limited to 2,500 characters. The extra text was not added.";
     updateFeedbackStatus();
   }
 }
@@ -5593,9 +6121,28 @@ function performMaxBallLunge(actor = player) {
   actor.heading = Math.atan2(toBall.x, toBall.z);
   actor.moveHeading = actor.heading;
   actor.maxBallLungeTimer = 0.18;
+  const dims = getMaxArenaDimensions();
+  const attackGoalZ = actor.team === "red" ? -dims.goalLineZ : dims.goalLineZ;
+  const goal = new THREE.Vector3(0, 0, attackGoalZ);
+  const kickDir = goal.sub(maxMode.ball.position);
+  kickDir.y = 0;
+  if (kickDir.lengthSq() < 0.001) kickDir.copy(toBall);
+  kickDir.normalize();
+  const impulse = THREE.MathUtils.clamp(58 - flatDistance * 0.85, 28, 48);
+  maxMode.ballVelocity.addScaledVector(kickDir, impulse);
+  maxMode.ballVelocity.addScaledVector(toBall, 12);
+  maxMode.ballVelocity.y = Math.max(maxMode.ballVelocity.y, 2.5);
+  maxMode.lastCtrlTarget = "ball";
+  maxMode.lastBallImpulse = impulse;
   if (actor === player) {
     state.ballLungeCooldown = MAX_BALL_LUNGE_COOLDOWN;
-    setEffectToast("Arena Lunge");
+    setEffectToast("Ball Lunge - Shot!", { pulse: 0.24, shake: 0.08 });
+    spawnBurst(maxMode.ball.position.clone(), 0x8bd8ff, 18, {
+      scale: 0.48,
+      life: 0.32,
+      force: 5,
+      lift: 1.6,
+    });
   }
   return true;
 }
@@ -5641,6 +6188,8 @@ function performMaxBotLunge(actor = player, explicitTarget = null) {
   actor.maxBotLungeTimer = 0.2;
   if (actor === player) {
     state.botLungeCooldown = MAX_BOT_LUNGE_COOLDOWN;
+    maxMode.lastCtrlTarget = target.role || "rival";
+    maxMode.lastBallImpulse = 0;
     setEffectToast("Target Lunge");
   }
   return true;
@@ -6152,6 +6701,7 @@ const modeMarkers = [];
 const modeDecor = [];
 const battlePickups = [];
 const battleFlags = [];
+const battleReturnPads = [];
 const boostPads = [];
 const bots = [];
 
@@ -7802,6 +8352,7 @@ function clearModeObjects() {
   battlePickups.splice(0, battlePickups.length);
   battleFlags.forEach((flag) => disposeModeObject(flag.group));
   battleFlags.splice(0, battleFlags.length);
+  battleReturnPads.splice(0, battleReturnPads.length);
 }
 
 function makeModeMarker({
@@ -8140,6 +8691,52 @@ function makeBattleFlag(team, x, z) {
   return flagState;
 }
 
+function makeBattleReturnPad(team, x, z) {
+  const color = team === "blue" ? 0x56e9ff : 0xff6666;
+  const group = new THREE.Group();
+  const disk = new THREE.Mesh(
+    new THREE.CylinderGeometry(
+      BATTLE_RULES.returnPadRadius,
+      BATTLE_RULES.returnPadRadius,
+      0.2,
+      40,
+    ),
+    new THREE.MeshStandardMaterial({
+      color: team === "blue" ? 0x12364e : 0x4d151b,
+      emissive: color,
+      emissiveIntensity: 0.28,
+      roughness: 0.55,
+      transparent: true,
+      opacity: 0.72,
+    }),
+  );
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(BATTLE_RULES.returnPadRadius * 0.78, 0.55, 10, 48),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.75,
+      roughness: 0.25,
+    }),
+  );
+  disk.position.y = 0.09;
+  ring.position.y = 0.28;
+  ring.rotation.x = Math.PI / 2;
+  group.add(disk, ring);
+  group.position.set(x, 0.02, z);
+  group.userData.team = team;
+  scene.add(group);
+  modeDecor.push(group);
+  const pad = {
+    team,
+    group,
+    position: new THREE.Vector3(x, 0, z),
+    radius: BATTLE_RULES.returnPadRadius,
+  };
+  battleReturnPads.push(pad);
+  return pad;
+}
+
 function trackPoints(count = 8, radiusX = 138, radiusZ = 116, startAngle = 0) {
   return Array.from({ length: count }, (_, index) => {
     const angle = startAngle + (index / count) * Math.PI * 2;
@@ -8150,50 +8747,96 @@ function trackPoints(count = 8, radiusX = 138, radiusZ = 116, startAngle = 0) {
   });
 }
 
-function getRaceTrackPoints(mode) {
-  const race = [
-    { x: 0, z: -184 },
-    { x: -72, z: -174 },
-    { x: -152, z: -120 },
-    { x: -164, z: -46 },
-    { x: -98, z: 12 },
-    { x: -132, z: 84 },
-    { x: -46, z: 154 },
-    { x: 44, z: 158 },
-    { x: 130, z: 104 },
-    { x: 162, z: 28 },
-    { x: 86, z: -22 },
-    { x: 148, z: -98 },
-    { x: 74, z: -166 },
-  ];
-  const trial = [
-    { x: 0, z: -188 },
-    { x: -92, z: -154 },
-    { x: -154, z: -76 },
-    { x: -118, z: -8 },
-    { x: -42, z: 34 },
-    { x: -104, z: 112 },
-    { x: -16, z: 166 },
-    { x: 82, z: 132 },
-    { x: 132, z: 54 },
-    { x: 72, z: -14 },
-    { x: 152, z: -94 },
-    { x: 74, z: -166 },
-  ];
-  return mode.id === GAME_MODE_TIME_TRIAL ? trial : race;
+const RACE_TRACK_BLUEPRINTS = {
+  [GAME_MODE_RACE]: {
+    width: 56,
+    samples: 44,
+    controls: [
+      { x: -14, z: -190 },
+      { x: -94, z: -172 },
+      { x: -164, z: -100 },
+      { x: -148, z: -8 },
+      { x: -42, z: 38 },
+      { x: -112, z: 118 },
+      { x: -28, z: 188 },
+      { x: 92, z: 158 },
+      { x: 168, z: 58 },
+      { x: 110, z: -18 },
+      { x: 178, z: -108 },
+      { x: 92, z: -180 },
+    ],
+  },
+  [GAME_MODE_TIME_TRIAL]: {
+    width: 52,
+    samples: 42,
+    controls: [
+      { x: -12, z: -188 },
+      { x: -98, z: -154 },
+      { x: -156, z: -66 },
+      { x: -88, z: 18 },
+      { x: -24, z: 58 },
+      { x: -86, z: 136 },
+      { x: 8, z: 184 },
+      { x: 112, z: 130 },
+      { x: 152, z: 34 },
+      { x: 72, z: -34 },
+      { x: 156, z: -112 },
+      { x: 82, z: -176 },
+    ],
+  },
+};
+
+function createClosedTrackCurve(controls) {
+  return new THREE.CatmullRomCurve3(
+    controls.map((point) => new THREE.Vector3(point.x, 0, point.z)),
+    true,
+    "catmullrom",
+    0.42,
+  );
 }
 
-function makeTrackSegment(a, b, width = 28, color = 0x56e9ff) {
+function pointFromTrackVector(vector) {
+  return { x: vector.x, z: vector.z };
+}
+
+function getRaceTrackLayout(mode = getModeDefinition()) {
+  const blueprint =
+    RACE_TRACK_BLUEPRINTS[mode.id] ?? RACE_TRACK_BLUEPRINTS[GAME_MODE_RACE];
+  const curve = createClosedTrackCurve(blueprint.controls);
+  const samples = Math.max(24, blueprint.samples ?? 40);
+  const path = Array.from({ length: samples }, (_, index) =>
+    pointFromTrackVector(curve.getPoint(index / samples)),
+  );
+  const checkpointCount = Math.max(1, mode.target || 8);
+  const checkpoints = Array.from({ length: checkpointCount }, (_, index) =>
+    pointFromTrackVector(curve.getPoint(index / checkpointCount)),
+  );
+  const start = path[0];
+  const next = path[1] ?? { x: start.x, z: start.z + 1 };
+  return {
+    path,
+    checkpoints,
+    width: blueprint.width,
+    start,
+    heading: Math.atan2(next.x - start.x, next.z - start.z),
+  };
+}
+
+function getRaceTrackPoints(mode) {
+  return getRaceTrackLayout(mode).path;
+}
+
+function makeTrackSegment(a, b, width = 28, color = 0x56e9ff, index = 0) {
   const dx = b.x - a.x;
   const dz = b.z - a.z;
   const length = Math.max(1, Math.hypot(dx, dz));
   const segment = new THREE.Mesh(
     new THREE.BoxGeometry(width, 0.08, length),
     new THREE.MeshStandardMaterial({
-      color: 0x242b30,
-      emissive: color,
-      emissiveIntensity: 0.04,
-      roughness: 0.86,
+      color: 0x24282b,
+      emissive: 0x050607,
+      emissiveIntensity: 0.03,
+      roughness: 0.92,
       transparent: false,
       opacity: 1,
     }),
@@ -8202,44 +8845,144 @@ function makeTrackSegment(a, b, width = 28, color = 0x56e9ff) {
   segment.rotation.y = Math.atan2(dx, dz);
   scene.add(segment);
   modeDecor.push(segment);
-  const stripe = new THREE.Mesh(
-    new THREE.BoxGeometry(1.6, 0.1, length),
-    new THREE.MeshStandardMaterial({
-      color,
-      emissive: color,
-      emissiveIntensity: 0.34,
-      roughness: 0.4,
-      transparent: true,
-      opacity: 0.56,
-    }),
-  );
-  stripe.position.copy(segment.position);
-  stripe.position.y = 0.11;
-  stripe.rotation.y = segment.rotation.y;
-  scene.add(stripe);
-  modeDecor.push(stripe);
-  const edgeMat = new THREE.MeshStandardMaterial({
-    color,
-    emissive: color,
-    emissiveIntensity: 0.42,
-    roughness: 0.38,
+  const stripeMat = new THREE.MeshStandardMaterial({
+    color: 0xfff1bb,
+    emissive: 0xffc96a,
+    emissiveIntensity: 0.16,
+    roughness: 0.48,
     transparent: true,
     opacity: 0.78,
   });
+  const dashCount = Math.max(1, Math.floor(length / 24));
+  const dashLength = Math.min(8, Math.max(4, length / (dashCount * 2.8)));
+  for (let dashIndex = 0; dashIndex < dashCount; dashIndex += 1) {
+    const t = (dashIndex + 0.5) / dashCount - 0.5;
+    const stripe = new THREE.Mesh(
+      new THREE.BoxGeometry(1.35, 0.1, dashLength),
+      stripeMat,
+    );
+    stripe.position.copy(segment.position);
+    stripe.position.x += Math.sin(segment.rotation.y) * length * t;
+    stripe.position.z += Math.cos(segment.rotation.y) * length * t;
+    stripe.position.y = 0.11;
+    stripe.rotation.y = segment.rotation.y;
+    scene.add(stripe);
+    modeDecor.push(stripe);
+  }
+  const shoulderMat = new THREE.MeshStandardMaterial({
+    color: 0x47515a,
+    emissive: color,
+    emissiveIntensity: 0.08,
+    roughness: 0.68,
+  });
+  const curbMat = new THREE.MeshStandardMaterial({
+    color: index % 2 === 0 ? 0xffffff : 0xff5d54,
+    emissive: index % 2 === 0 ? 0xb6ecff : 0xff5d54,
+    emissiveIntensity: 0.18,
+    roughness: 0.44,
+  });
+  [-1, 1].forEach((side) => {
+    const shoulder = new THREE.Mesh(
+      new THREE.BoxGeometry(1.7, 0.09, length),
+      shoulderMat,
+    );
+    shoulder.position.copy(segment.position);
+    shoulder.position.x += Math.cos(segment.rotation.y) * width * 0.45 * side;
+    shoulder.position.z += -Math.sin(segment.rotation.y) * width * 0.45 * side;
+    shoulder.position.y = 0.105;
+    shoulder.rotation.y = segment.rotation.y;
+    scene.add(shoulder);
+    modeDecor.push(shoulder);
+    const curb = new THREE.Mesh(
+      new THREE.BoxGeometry(0.72, 0.16, length),
+      curbMat,
+    );
+    curb.position.copy(segment.position);
+    curb.position.x += Math.cos(segment.rotation.y) * width * 0.49 * side;
+    curb.position.z += -Math.sin(segment.rotation.y) * width * 0.49 * side;
+    curb.position.y = 0.17;
+    curb.rotation.y = segment.rotation.y;
+    scene.add(curb);
+    modeDecor.push(curb);
+  });
+  const edgeMat = new THREE.MeshStandardMaterial({
+    color: 0x131a21,
+    emissive: color,
+    emissiveIntensity: 0.08,
+    roughness: 0.58,
+    transparent: true,
+    opacity: 0.92,
+  });
   [-1, 1].forEach((side) => {
     const edge = new THREE.Mesh(
-      new THREE.BoxGeometry(1.1, 0.11, length),
+      new THREE.BoxGeometry(1.05, 0.24, length),
       edgeMat,
     );
     edge.position.copy(segment.position);
-    edge.position.x += Math.cos(segment.rotation.y) * width * 0.43 * side;
-    edge.position.z += -Math.sin(segment.rotation.y) * width * 0.43 * side;
-    edge.position.y = 0.12;
+    edge.position.x += Math.cos(segment.rotation.y) * width * 0.54 * side;
+    edge.position.z += -Math.sin(segment.rotation.y) * width * 0.54 * side;
+    edge.position.y = 0.22;
     edge.rotation.y = segment.rotation.y;
     scene.add(edge);
     modeDecor.push(edge);
   });
   return segment;
+}
+
+function makeTrackDirectionArrow(x, z, heading, color = 0xffd074) {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({
+    color,
+    emissive: color,
+    emissiveIntensity: 0.18,
+    roughness: 0.36,
+    transparent: true,
+    opacity: 0.72,
+  });
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, 4.6), mat);
+  const leftWing = new THREE.Mesh(new THREE.BoxGeometry(1, 0.08, 3.6), mat);
+  const rightWing = new THREE.Mesh(new THREE.BoxGeometry(1, 0.08, 3.6), mat);
+  shaft.position.z = -1;
+  leftWing.position.set(-1.25, 0, 1.25);
+  rightWing.position.set(1.25, 0, 1.25);
+  leftWing.rotation.y = -0.62;
+  rightWing.rotation.y = 0.62;
+  group.add(shaft, leftWing, rightWing);
+  group.position.set(x, 0.16, z);
+  group.rotation.y = heading;
+  scene.add(group);
+  modeDecor.push(group);
+  return group;
+}
+
+function makeTrackStartLine(x, z, heading, width, color = 0xffffff) {
+  const group = new THREE.Group();
+  const matWhite = new THREE.MeshStandardMaterial({
+    color: 0xf4fbff,
+    emissive: 0xb6ecff,
+    emissiveIntensity: 0.14,
+    roughness: 0.42,
+  });
+  const matAccent = new THREE.MeshStandardMaterial({
+    color,
+    emissive: color,
+    emissiveIntensity: 0.18,
+    roughness: 0.42,
+  });
+  const stripeCount = 12;
+  for (let i = 0; i < stripeCount; i += 1) {
+    const stripe = new THREE.Mesh(
+      new THREE.BoxGeometry(width / stripeCount + 0.18, 0.1, 3.1),
+      i % 2 === 0 ? matWhite : matAccent,
+    );
+    stripe.position.x = (i - (stripeCount - 1) * 0.5) * (width / stripeCount);
+    group.add(stripe);
+  }
+  group.position.set(x, 0.16, z);
+  group.rotation.y = heading;
+  scene.add(group);
+  modeDecor.push(group);
+  return group;
 }
 
 function makeModeBumper(x, z, radius = 5, color = 0xffc457) {
@@ -8304,9 +9047,11 @@ function setupModeSceneObjects() {
   const [primary, secondary] = getWorld().accents;
 
   if (mode.scene === "track") {
-    const points = getRaceTrackPoints(mode);
+    const layout = getRaceTrackLayout(mode);
+    const points = layout.path;
+    const checkpoints = layout.checkpoints;
     state.modeRun.trackPath = points.map((point) => ({ ...point }));
-    state.modeRun.trackWidth = mode.id === GAME_MODE_TIME_TRIAL ? 24 : 28;
+    state.modeRun.trackWidth = layout.width;
     points.forEach((point, index) => {
       const next = points[(index + 1) % points.length];
       makeTrackSegment(
@@ -8314,6 +9059,7 @@ function setupModeSceneObjects() {
         next,
         state.modeRun.trackWidth,
         index % 2 ? secondary : primary,
+        index,
       );
       const dx = next.x - point.x;
       const dz = next.z - point.z;
@@ -8324,8 +9070,8 @@ function setupModeSceneObjects() {
       const midZ = (point.z + next.z) * 0.5;
       const angle = Math.atan2(dx, dz);
       [-1, 1].forEach((side) => {
-        const railX = midX + nx * state.modeRun.trackWidth * 0.58 * side;
-        const railZ = midZ + nz * state.modeRun.trackWidth * 0.58 * side;
+        const railX = midX + nx * state.modeRun.trackWidth * 0.61 * side;
+        const railZ = midZ + nz * state.modeRun.trackWidth * 0.61 * side;
         const rail = makeModeBarrier(
           railX,
           railZ,
@@ -8336,28 +9082,26 @@ function setupModeSceneObjects() {
           false,
         );
         rail.rotation.y = angle;
-        const curb = makeModeRail(
-          midX + nx * state.modeRun.trackWidth * 0.5 * side,
-          midZ + nz * state.modeRun.trackWidth * 0.5 * side,
-          0.62,
-          len,
-          side > 0 ? primary : secondary,
-        );
-        curb.rotation.y = angle;
-        curb.position.y = 0.18;
       });
     });
-    points.forEach((point, index) => {
+    checkpoints.forEach((point, index) => {
       makeModeMarker({
         id: `${mode.id}-checkpoint-${index + 1}`,
-        label: `Gate ${index + 1}`,
+        label: index === 0 ? "Start / Finish" : `Gate ${index + 1}`,
         kind: "checkpoint",
         x: point.x,
         z: point.z,
-        radius: mode.id === GAME_MODE_TIME_TRIAL ? 11 : 14,
+        radius: mode.id === GAME_MODE_TIME_TRIAL ? 17 : 19,
         color: index === 0 ? secondary : primary,
         active: index === 0,
       });
+      const next = checkpoints[(index + 1) % checkpoints.length] ?? point;
+      makeTrackDirectionArrow(
+        point.x,
+        point.z,
+        Math.atan2(next.x - point.x, next.z - point.z),
+        index % 2 === 0 ? secondary : primary,
+      );
     });
     const start = points[0];
     const startNext = points[1] ?? { x: start.x, z: start.z + 1 };
@@ -8365,28 +9109,14 @@ function setupModeSceneObjects() {
     const startDz = startNext.z - start.z;
     const startLen = Math.max(1, Math.hypot(startDx, startDz));
     const startForward = { x: startDx / startLen, z: startDz / startLen };
-    const startRight = { x: startForward.z, z: -startForward.x };
     const startAngle = Math.atan2(startDx, startDz);
-    const startGate = makeModeBarrier(
+    makeTrackStartLine(
       start.x - startForward.x * 8,
       start.z - startForward.z * 8,
-      88,
-      2.4,
+      startAngle,
+      state.modeRun.trackWidth + 26,
       secondary,
-      1.2,
-      false,
     );
-    startGate.rotation.y = startAngle;
-    [-18, 0, 18].forEach((x) => {
-      const rail = makeModeRail(
-        start.x - startForward.x * 2 + startRight.x * x,
-        start.z - startForward.z * 2 + startRight.z * x,
-        2,
-        18,
-        0xffffff,
-      );
-      rail.rotation.y = startAngle;
-    });
     return;
   }
 
@@ -8574,6 +9304,8 @@ function setupModeSceneObjects() {
         true,
       ),
     );
+    makeBattleReturnPad("blue", 0, -half + 34);
+    makeBattleReturnPad("red", 0, half - 34);
     makeBattleFlag("blue", 0, -half + 34);
     makeBattleFlag("red", 0, half - 34);
     [
@@ -9455,9 +10187,21 @@ function getModeSpawn() {
     return { x, y: getMaxSurfaceHeight(x, z), z, heading: 0 };
   }
   const mode = getModeDefinition();
+  if (mode.id === GAME_MODE_RACE || mode.id === GAME_MODE_TIME_TRIAL) {
+    const layout = getRaceTrackLayout(mode);
+    const start = layout.start;
+    const next = layout.path[1] ?? { x: start.x, z: start.z + 1 };
+    const dx = next.x - start.x;
+    const dz = next.z - start.z;
+    const len = Math.max(1, Math.hypot(dx, dz));
+    return {
+      x: start.x - (dx / len) * 14,
+      y: 0,
+      z: start.z - (dz / len) * 14,
+      heading: layout.heading,
+    };
+  }
   const spawns = {
-    [GAME_MODE_RACE]: { x: -8, z: -183, heading: -1.43 },
-    [GAME_MODE_TIME_TRIAL]: { x: -10, z: -184, heading: -1.22 },
     [GAME_MODE_STUNT]: { x: -118, z: -118, heading: Math.PI * 0.22 },
     [GAME_MODE_RAMP_RUSH]: { x: -118, z: -118, heading: Math.PI * 0.22 },
     [GAME_MODE_BOOST_BOWLING]: { x: 0, z: -142, heading: 0 },
@@ -10088,20 +10832,44 @@ function spawnBots() {
     HALF_WORLD - 84,
     72,
   );
+  const raceLayout =
+    mode.id === GAME_MODE_RACE ? getRaceTrackLayout(mode) : null;
+  const raceGridPoints = raceLayout ? raceLayout.path.slice(0, 2) : null;
   for (let i = 0; i < botCount; i += 1) {
     const bot = makeBot(palette[i % palette.length]);
-    const point = spawnPoints[i] ?? {
-      x: THREE.MathUtils.randFloatSpread(HALF_WORLD * 1.1),
-      z: THREE.MathUtils.randFloatSpread(HALF_WORLD * 1.1),
-    };
+    const point = raceGridPoints
+      ? (() => {
+          const [start, next] = raceGridPoints;
+          const dx = next.x - start.x;
+          const dz = next.z - start.z;
+          const len = Math.max(1, Math.hypot(dx, dz));
+          const forward = { x: dx / len, z: dz / len };
+          const right = { x: forward.z, z: -forward.x };
+          const lane = i - (botCount - 1) * 0.5;
+          return {
+            x: start.x - forward.x * (14 + i * 8) + right.x * lane * 9,
+            z: start.z - forward.z * (14 + i * 8) + right.z * lane * 9,
+            heading: Math.atan2(forward.x, forward.z),
+          };
+        })()
+      : (spawnPoints[i] ?? {
+          x: THREE.MathUtils.randFloatSpread(HALF_WORLD * 1.1),
+          z: THREE.MathUtils.randFloatSpread(HALF_WORLD * 1.1),
+        });
     const safeZ =
-      Math.sign(point.z || 1) *
-      Math.max(Math.abs(point.z), Math.abs(PLAYER_SPAWN_Z) + 34 + i * 6);
+      mode.id === GAME_MODE_RACE
+        ? point.z
+        : Math.sign(point.z || 1) *
+          Math.max(Math.abs(point.z), Math.abs(PLAYER_SPAWN_Z) + 34 + i * 6);
     bot.setPosition(
       point.x,
       0,
       THREE.MathUtils.clamp(safeZ, -HALF_WORLD + 46, HALF_WORLD - 46),
     );
+    if (mode.id === GAME_MODE_RACE && Number.isFinite(point.heading)) {
+      bot.heading = point.heading;
+      bot.moveHeading = point.heading;
+    }
     bot.maxSpeed =
       (Number.isFinite(mode.botSpeed) ? mode.botSpeed : level.botSpeed) *
       Math.max(0.55, difficultyScale || 1) *
@@ -10109,6 +10877,7 @@ function spawnBots() {
     bot.accel = (18 + level.bots * difficultyScale) * profile.botSkill;
     bot.turnRate = 2.1 * profile.botSkill;
     bot.aiBurstCooldown = Math.random() * 1.2;
+    bot.raceMarkerIndex = i % Math.max(1, mode.target || 1);
     bot.lastRampTime = 0;
     bot.role =
       mode.id === GAME_MODE_BOSS && i === 0
@@ -10565,13 +11334,18 @@ function updatePlayer(dt) {
   }
   const maxProfile = isMaxMode() ? getMaxDifficultyProfile() : null;
   const battleModeActive = isBattleMode();
+  const raceModeActive = isTrackMode();
   const inputSteer = getSteer() * (settings.invertSteer ? -1 : 1);
   const steerFilterBase = maxProfile
     ? maxProfile.player.steerFilter
     : DRIVING_TUNING.grounded.steerFilter;
   const steerFilter =
     (input.drift ? DRIVING_TUNING.grounded.driftSteerFilter : steerFilterBase) *
-    (battleModeActive ? BATTLE_RULES.playerSteerFilterMult : 1);
+    (battleModeActive
+      ? BATTLE_RULES.playerSteerFilterMult
+      : raceModeActive
+        ? 0.62
+        : 1);
   state.steerSmoothed += (inputSteer - state.steerSmoothed) * dt * steerFilter;
   const steer = state.steerSmoothed;
   const airborne = isCarAirborne(player);
@@ -10626,6 +11400,22 @@ function updatePlayer(dt) {
   }
   const padMult = state.padSpeedTimer > 0 ? state.padSpeedMult : 1;
 
+  if (battleModeActive && !airborne) {
+    const stopped = Math.abs(player.speed) < 3.2;
+    if (stopped && (throttle || brake)) {
+      player.speed += (throttle ? 8.5 : -6.5) * dt;
+    }
+    if (stopped && Math.abs(steer) > 0.05) {
+      player.heading += steer * dt * 1.9;
+      player.moveHeading = THREE.MathUtils.lerp(
+        player.moveHeading,
+        player.heading,
+        Math.min(1, dt * 8),
+      );
+    }
+    if (!throttle && !brake && Math.abs(player.speed) < 0.7) player.speed = 0;
+  }
+
   const speedAbs = Math.abs(player.speed);
   const speedRatio = THREE.MathUtils.clamp(speedAbs / player.maxSpeed, 0, 1);
   const maxModeActive = isMaxMode();
@@ -10633,12 +11423,16 @@ function updatePlayer(dt) {
     ? DRIVING_TUNING.maxMode.speedMult * maxProfile.player.speedMult
     : battleModeActive
       ? BATTLE_RULES.playerSpeedMult
-      : 1;
+      : raceModeActive
+        ? 1.08
+        : 1;
   const modeTurnMult = maxModeActive
     ? DRIVING_TUNING.maxMode.turnMult * maxProfile.player.turnMult
     : battleModeActive
       ? BATTLE_RULES.playerTurnMult
-      : 1;
+      : raceModeActive
+        ? 0.68
+        : 1;
   const maxModeCap = maxModeActive ? DRIVING_TUNING.maxMode.capMult : 1;
   const throttleResponse = THREE.MathUtils.lerp(
     maxModeActive ? 1.12 : 1.18,
@@ -10653,7 +11447,9 @@ function updatePlayer(dt) {
       ? maxProfile.player.accelMult
       : battleModeActive
         ? BATTLE_RULES.playerAccelMult
-        : 1) *
+        : raceModeActive
+          ? 0.94
+          : 1) *
     worldRule.boostMult *
     boostResponse *
     padMult;
@@ -10737,7 +11533,13 @@ function updatePlayer(dt) {
     }
   }
 
-  const steerInputDamp = maxModeActive ? 0.66 : battleModeActive ? 0.72 : 1;
+  const steerInputDamp = maxModeActive
+    ? 0.66
+    : battleModeActive
+      ? 0.72
+      : raceModeActive
+        ? 0.64
+        : 1;
   const maxSteer = steer * steerInputDamp;
   const turnAssist =
     (maxModeActive
@@ -10767,7 +11569,9 @@ function updatePlayer(dt) {
       ? player.driftGrip * worldRule.gripMult
       : maxModeActive
         ? player.normalGrip * 1.12 * worldRule.gripMult
-        : player.normalGrip * worldRule.gripMult;
+        : raceModeActive
+          ? player.normalGrip * 1.18 * worldRule.gripMult
+          : player.normalGrip * worldRule.gripMult;
   const slipAmount = airborne
     ? 0.055
     : drift
@@ -10776,7 +11580,9 @@ function updatePlayer(dt) {
         ? loadoutStats.roadSlip *
           DRIVING_TUNING.maxMode.roadSlipMult *
           worldRule.driftSlipMult
-        : loadoutStats.roadSlip * worldRule.driftSlipMult;
+        : raceModeActive
+          ? loadoutStats.roadSlip * 0.68 * worldRule.driftSlipMult
+          : loadoutStats.roadSlip * worldRule.driftSlipMult;
   player.moveHeading = THREE.MathUtils.lerp(
     player.moveHeading,
     player.heading,
@@ -12302,14 +13108,35 @@ function updateBots(dt) {
         (riskAiActive ? state.campaignRisk.recentEscapes * 2.4 : 0),
     );
     if (raceModeActive && modeMarkers.length > 0) {
-      const marker =
+      const currentRaceIndex =
+        Number.isInteger(bot.raceMarkerIndex) && bot.raceMarkerIndex >= 0
+          ? bot.raceMarkerIndex % modeMarkers.length
+          : (state.modeRun.markerIndex + index + 1) % modeMarkers.length;
+      let marker = modeMarkers[currentRaceIndex];
+      const markerDistance = marker
+        ? bot.position.distanceTo(marker.group.position)
+        : Infinity;
+      if (marker && markerDistance < 24) {
+        bot.raceMarkerIndex = (currentRaceIndex + 1) % modeMarkers.length;
+        marker = modeMarkers[bot.raceMarkerIndex];
+      }
+      const nextMarker =
         modeMarkers[
-          (state.modeRun.markerIndex + index + 1) % modeMarkers.length
-        ];
+          ((bot.raceMarkerIndex ?? currentRaceIndex) + 1) % modeMarkers.length
+        ] ?? marker;
+      const toNextX = nextMarker
+        ? nextMarker.group.position.x - marker.group.position.x
+        : Math.sin(bot.heading);
+      const toNextZ = nextMarker
+        ? nextMarker.group.position.z - marker.group.position.z
+        : Math.cos(bot.heading);
+      const laneLen = Math.max(1, Math.hypot(toNextX, toNextZ));
+      const laneRight = { x: toNextZ / laneLen, z: -toNextX / laneLen };
+      const laneOffset = (index - (bots.length - 1) * 0.5) * 7.5;
       roleTarget.set(
-        marker.group.position.x + (index % 2 === 0 ? -11 : 11),
+        marker.group.position.x + laneRight.x * laneOffset,
         0,
-        marker.group.position.z + (index % 3 === 0 ? 7 : -7),
+        marker.group.position.z + laneRight.z * laneOffset,
       );
     } else {
       if (role === "intercept")
@@ -12421,6 +13248,13 @@ function updateBots(dt) {
       0.18,
       1.28,
     );
+    if (raceModeActive) {
+      throttleFactor = THREE.MathUtils.clamp(
+        rangeError / 36 + 0.82,
+        0.42,
+        1.18,
+      );
+    }
     if (distance < desiredRange * 0.8) throttleFactor *= 0.62;
     if (nearestBotDistance < 7) throttleFactor *= 0.7;
 
@@ -12441,8 +13275,9 @@ function updateBots(dt) {
     if (distance < desiredRange * 0.65) {
       bot.speed *= 1 - dt * 0.9;
     }
-    const roleCap =
-      role === "cutoff"
+    const roleCap = raceModeActive
+      ? 1.03
+      : role === "cutoff"
         ? 1.2
         : role === "left_flank" || role === "right_flank"
           ? 1.12
@@ -12547,11 +13382,61 @@ function updateBots(dt) {
   });
 }
 
+function resolveObstacleCollision2D(entity, obstacle) {
+  const size = obstacle.size;
+  const mesh = obstacle.mesh;
+  const radius = entity.collisionRadius ?? CAR_RADIUS;
+  const skin = isBattleMode() ? BATTLE_RULES.coverCollisionSkin : 0.25;
+  const halfX = size.x * 0.5 + radius + skin;
+  const halfZ = size.z * 0.5 + radius + skin;
+  const angle = mesh.rotation?.y || 0;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const dx = entity.position.x - mesh.position.x;
+  const dz = entity.position.z - mesh.position.z;
+  const localX = dx * cos - dz * sin;
+  const localZ = dx * sin + dz * cos;
+  if (Math.abs(localX) >= halfX || Math.abs(localZ) >= halfZ) return false;
+
+  const overlapX = halfX - Math.abs(localX);
+  const overlapZ = halfZ - Math.abs(localZ);
+  const pushLocalX = overlapX < overlapZ ? Math.sign(localX || 1) : 0;
+  const pushLocalZ = overlapX < overlapZ ? 0 : Math.sign(localZ || 1);
+  const overlap = Math.min(overlapX, overlapZ) + 0.04;
+  const resolvedLocalX = localX + pushLocalX * overlap;
+  const resolvedLocalZ = localZ + pushLocalZ * overlap;
+  entity.position.x =
+    mesh.position.x + resolvedLocalX * cos + resolvedLocalZ * sin;
+  entity.position.z =
+    mesh.position.z - resolvedLocalX * sin + resolvedLocalZ * cos;
+
+  const normal = new THREE.Vector3(
+    pushLocalX * cos + pushLocalZ * sin,
+    0,
+    -pushLocalX * sin + pushLocalZ * cos,
+  );
+  const normalSpeed = entity.velocity.dot(normal);
+  if (normalSpeed < 0) entity.velocity.addScaledVector(normal, -normalSpeed);
+  const tangent = new THREE.Vector3(normal.z, 0, -normal.x);
+  const tangentSpeed = Math.abs(entity.velocity.dot(tangent));
+  const damping = isBattleMode() ? 0.34 : 0.66;
+  entity.speed =
+    Math.sign(entity.speed || 1) *
+    Math.min(
+      Math.abs(entity.speed) * damping,
+      tangentSpeed + (isBattleMode() ? 5 : 10),
+    );
+  if (Math.abs(entity.speed) < 1.2) entity.speed = 0;
+  entity.verticalVel = Math.min(entity.verticalVel ?? 0, 0);
+  entity.prevPosition?.copy(entity.position);
+  entity.group?.position.copy(entity.position);
+  return true;
+}
+
 function updateObstacles(entity) {
   obstacles.forEach((obstacle) => {
     const size = obstacle.size;
     const mesh = obstacle.mesh;
-    const radius = entity.collisionRadius ?? CAR_RADIUS;
     const topY = mesh.position.y + size.y * 0.5;
     if (
       obstacle.standable &&
@@ -12560,70 +13445,7 @@ function updateObstacles(entity) {
     ) {
       return;
     }
-    if (
-      isBattleMode() &&
-      obstacle.blocksLasers !== false &&
-      entity.prevPosition
-    ) {
-      const travelX = entity.position.x - entity.prevPosition.x;
-      const travelZ = entity.position.z - entity.prevPosition.z;
-      const travel = Math.hypot(travelX, travelZ);
-      if (travel > 0.001) {
-        const skin = BATTLE_RULES.coverCollisionSkin;
-        const along = rayAabbDistance2D(
-          entity.prevPosition,
-          { x: travelX / travel, z: travelZ / travel },
-          mesh.position,
-          size.x * 0.5 + radius + skin,
-          size.z * 0.5 + radius + skin,
-          travel,
-        );
-        if (Number.isFinite(along) && along <= travel) {
-          const safeAlong = Math.max(0, along - 0.1);
-          entity.position.x =
-            entity.prevPosition.x + (travelX / travel) * safeAlong;
-          entity.position.z =
-            entity.prevPosition.z + (travelZ / travel) * safeAlong;
-          const normal = new THREE.Vector3(
-            -travelX / travel,
-            0,
-            -travelZ / travel,
-          );
-          const normalSpeed = entity.velocity.dot(normal);
-          if (normalSpeed < 0)
-            entity.velocity.addScaledVector(normal, -normalSpeed);
-          entity.speed = Math.min(entity.speed * 0.34, 18);
-        }
-      }
-    }
-    if (
-      Math.abs(entity.position.x - mesh.position.x) < size.x / 2 + radius &&
-      Math.abs(entity.position.z - mesh.position.z) < size.z / 2 + radius
-    ) {
-      const pushX = entity.position.x - mesh.position.x;
-      const pushZ = entity.position.z - mesh.position.z;
-      const overlapX = size.x / 2 + radius - Math.abs(pushX);
-      const overlapZ = size.z / 2 + radius - Math.abs(pushZ);
-      const push =
-        overlapX < overlapZ
-          ? new THREE.Vector3(Math.sign(pushX || 1), 0, 0)
-          : new THREE.Vector3(0, 0, Math.sign(pushZ || 1));
-      const overlap = Math.min(overlapX, overlapZ);
-      entity.position.addScaledVector(push, overlap + 0.04);
-      const normalSpeed = entity.velocity.dot(push);
-      if (normalSpeed < 0) entity.velocity.addScaledVector(push, -normalSpeed);
-      const tangent =
-        Math.abs(push.x) > 0
-          ? new THREE.Vector3(0, 0, Math.sign(entity.velocity.z || 1))
-          : new THREE.Vector3(Math.sign(entity.velocity.x || 1), 0, 0);
-      const tangentSpeed = Math.abs(entity.velocity.dot(tangent));
-      entity.speed = isBattleMode()
-        ? Math.min(entity.speed * 0.42, tangentSpeed + 4)
-        : Math.min(entity.speed * 0.72, tangentSpeed + 8);
-      entity.verticalVel = Math.min(entity.verticalVel ?? 0, 0);
-      entity.prevPosition?.copy(entity.position);
-      entity.group?.position.copy(entity.position);
-    }
+    resolveObstacleCollision2D(entity, obstacle);
   });
 
   const worldLimit = isBattleMode() ? BATTLE_RULES.arenaHalfSize : HALF_WORLD;
@@ -12959,6 +13781,29 @@ function getBattleFlag(team) {
   return battleFlags.find((flag) => flag.team === team) ?? null;
 }
 
+function getBattleReturnPad(team) {
+  return battleReturnPads.find((pad) => pad.team === team) ?? null;
+}
+
+function isBattleFlagAtHome(flag) {
+  if (!flag || flag.carrier) return false;
+  return flag.group.position.distanceTo(flag.home) <= 2.5;
+}
+
+function returnBattleFlag(flag, reason = "returned") {
+  if (!flag) return;
+  flag.carrier = null;
+  flag.group.userData.carrier = null;
+  flag.group.position.copy(flag.home);
+  allBattleCars().forEach((car) => {
+    if (car.battleCarryingFlag === flag.team) car.battleCarryingFlag = "";
+  });
+  state.modeRun.battle.flagMessage =
+    flag.team === "blue" ? "Blue flag returned" : "Red flag returned";
+  state.modeRun.battle.lastFlagEvent = reason;
+  setEffectToast(state.modeRun.battle.flagMessage, { pulse: 0.22 });
+}
+
 function releaseBattleFlag(car) {
   battleFlags.forEach((flag) => {
     if (flag.carrier !== car) return;
@@ -12966,6 +13811,7 @@ function releaseBattleFlag(car) {
     flag.group.userData.carrier = null;
     flag.group.position.set(car.position.x, 0, car.position.z);
     if (car) car.battleCarryingFlag = "";
+    state.modeRun.battle.lastFlagEvent = `${flag.team}_flag_dropped`;
   });
 }
 
@@ -12992,6 +13838,7 @@ function scoreBattleFlag(team) {
     setEffectToast("Red Flag Captured", { pulse: 0.32, shake: 0.2 });
   }
   state.modeRun.battle.flagMessage = `${team.toUpperCase()} flag point`;
+  state.modeRun.battle.lastFlagEvent = `${team}_scored`;
   state.modeRun.progress = Math.max(
     state.modeRun.battle.blueScore,
     state.modeRun.battle.redScore,
@@ -13035,16 +13882,39 @@ function updateBattleFlags() {
       car.battleCarryingFlag = flag.team;
       state.modeRun.battle.flagMessage =
         car.team === "blue" ? "You have the red flag" : "Red has the flag";
+      state.modeRun.battle.lastFlagEvent =
+        car.team === "blue" ? "blue_took_red_flag" : "red_took_blue_flag";
       if (car === player)
-        setEffectToast("Red Flag Taken - Return Home", { pulse: 0.28 });
+        setEffectToast("Red Flag Taken - Hit Your Return Pad", {
+          pulse: 0.28,
+        });
     });
   });
 
   allBattleCars().forEach((car) => {
-    if (!car.battleCarryingFlag || car.demolished) return;
+    if (car.demolished) return;
     const ownFlag = getBattleFlag(car.team);
-    if (!ownFlag) return;
-    if (car.position.distanceTo(ownFlag.home) <= 13) {
+    const ownPad = getBattleReturnPad(car.team);
+    const onReturnPad =
+      ownPad && car.position.distanceTo(ownPad.position) <= ownPad.radius;
+    if (
+      onReturnPad &&
+      ownFlag &&
+      !ownFlag.carrier &&
+      !isBattleFlagAtHome(ownFlag)
+    ) {
+      returnBattleFlag(ownFlag, `${car.team}_returned_own_flag`);
+    }
+    if (!car.battleCarryingFlag || car.demolished) return;
+    if (!ownFlag || !ownPad) return;
+    if (onReturnPad) {
+      if (!isBattleFlagAtHome(ownFlag)) {
+        state.modeRun.battle.flagMessage = "Return your flag first";
+        state.modeRun.battle.lastFlagEvent = "score_blocked_own_flag_missing";
+        if (car === player)
+          setEffectToast("Return Your Flag First", { pulse: 0.2 });
+        return;
+      }
       scoreBattleFlag(car.team);
     }
   });
@@ -15333,6 +16203,16 @@ function registerNearMiss(label = "Near Miss", strength = 1) {
 
 function updateHunterThreatFeedback() {
   if (isMaxMode() || !state.running || bots.length === 0) return;
+  const mode = getModeDefinition();
+  if (
+    mode.id === GAME_MODE_RACE ||
+    mode.id === GAME_MODE_TIME_TRIAL ||
+    mode.id === GAME_MODE_BATTLE ||
+    mode.id === GAME_MODE_BOOST_BOWLING ||
+    mode.id === GAME_MODE_STUNT ||
+    mode.id === GAME_MODE_RAMP_RUSH
+  )
+    return;
   let closest = Infinity;
   let closing = false;
   for (const bot of bots) {
@@ -15435,6 +16315,8 @@ function leaveFromSchoolGate() {
 
 function startRun(resetLives = false) {
   if (state.schoolGate.active && !state.schoolGate.dismissed) return;
+  markOnboardingSeen();
+  window.scrollTo?.(0, 0);
   overlay.classList.remove("show");
   message.classList.remove("show");
   document.body.classList.add("playing");
@@ -15447,6 +16329,48 @@ function startRun(resetLives = false) {
   state.running = true;
   savePersistentState();
   resetLevel();
+}
+
+function readOnboardingState() {
+  const saved = readLocalJson(ONBOARDING_STORAGE_KEY, {});
+  let hasSave = false;
+  try {
+    hasSave = Boolean(localStorage.getItem(SAVE_STORAGE_KEY));
+  } catch {
+    hasSave = false;
+  }
+  const firstVisit = !saved.seen && !hasSave && !state.running;
+  state.onboarding.firstVisit = Boolean(firstVisit);
+  state.onboarding.recommendedMode = GAME_MODE_RACE;
+  state.onboarding.tipsVisible = Boolean(firstVisit);
+  if (firstVisit) {
+    if (tips) tips.style.display = "grid";
+    if (overlaySubtitle) {
+      overlaySubtitle.textContent =
+        "Start with a short race, learn steering and checkpoints, then branch into arenas, stunts, and online rooms.";
+    }
+  }
+}
+
+function markOnboardingSeen() {
+  if (!state.onboarding.firstVisit) return;
+  state.onboarding.firstVisit = false;
+  state.onboarding.tipsVisible = Boolean(tips && tips.style.display !== "none");
+  writeLocalJson(ONBOARDING_STORAGE_KEY, {
+    seen: true,
+    firstStartedAt: new Date().toISOString(),
+  });
+}
+
+function startFirstRace() {
+  settings.activeGameMode = GAME_MODE_RACE;
+  if (onlineRoomMode) onlineRoomMode.value = GAME_MODE_RACE;
+  refreshGamesUi();
+  state.modeHelpOpen = false;
+  setStartAccountStatus(
+    "First Race selected. Drive through gates, finish a lap, and press R if you want an instant retry.",
+  );
+  startGuestProfile();
 }
 
 function dispatchGameAction(action) {
@@ -15968,6 +16892,7 @@ function initTouchControls() {
 }
 
 bindPressAction(startBtn, () => startGuestProfile());
+bindPressAction(startHereBtn, () => startFirstRace());
 bindPressAction(startAccountSubmit, () => submitStartAccount());
 bindPressAction(schoolLeave, () => leaveFromSchoolGate());
 bindPressAction(schoolContinue, () => continuePastSchoolGate());
@@ -16076,6 +17001,7 @@ bindPressAction(onlineAddFriend, () => {
 bindPressAction(feedbackClose, () => closeFeedbackModal());
 bindPressAction(feedbackCancel, () => closeFeedbackModal());
 bindPressAction(feedbackSubmit, () => submitFeedback());
+feedbackMessage?.addEventListener("input", () => updateFeedbackCounter());
 
 [onlineChatInput, chatPopoutInput].forEach((inputNode) => {
   inputNode?.addEventListener("keydown", (event) => {
@@ -16654,6 +17580,11 @@ window.render_game_to_text = () => {
       objective: getModeHelp(mode).objective,
       placement: "bottom-right",
     },
+    onboarding: {
+      firstVisit: Boolean(state.onboarding.firstVisit),
+      recommendedMode: state.onboarding.recommendedMode,
+      tipsVisible: Boolean(state.onboarding.tipsVisible),
+    },
     player: {
       x: Number(player.position.x.toFixed(2)),
       y: Number(player.position.y.toFixed(2)),
@@ -16761,7 +17692,18 @@ window.render_game_to_text = () => {
       lap: state.modeRun.raceLap,
       checkpoint: state.modeRun.markerIndex,
       trackBounded: Boolean(state.modeRun.trackBounded),
+      trackShape: "wide-winding-circuit",
+      huntersRemoved:
+        getModeDefinition().id === GAME_MODE_RACE ||
+        getModeDefinition().id === GAME_MODE_TIME_TRIAL,
       rivals: bots.filter((bot) => String(bot.role).startsWith("rival")).length,
+      rivalCount: bots.filter((bot) => String(bot.role).startsWith("rival"))
+        .length,
+      handlingProfile:
+        getModeDefinition().id === GAME_MODE_RACE ||
+        getModeDefinition().id === GAME_MODE_TIME_TRIAL
+          ? "forgiving-arcade-racing"
+          : "standard",
     },
     ghost: {
       samples: state.modeRun.ghost.length,
@@ -16794,6 +17736,20 @@ window.render_game_to_text = () => {
         x: Number(flag.group.position.x.toFixed(2)),
         z: Number(flag.group.position.z.toFixed(2)),
       })),
+      returnPads: battleReturnPads.map((pad) => ({
+        team: pad.team,
+        x: Number(pad.position.x.toFixed(2)),
+        z: Number(pad.position.z.toFixed(2)),
+        radius: pad.radius,
+      })),
+      flagMessage: state.modeRun.battle.flagMessage,
+      scoringPadActive: Boolean(
+        player.battleCarryingFlag &&
+        getBattleReturnPad(player.team) &&
+        player.position.distanceTo(getBattleReturnPad(player.team).position) <=
+          BATTLE_RULES.returnPadRadius,
+      ),
+      lastFlagEvent: state.modeRun.battle.lastFlagEvent || "",
       lastLaserHit: state.modeRun.battle.lastLaserHit,
       lastLaserBlocked: Boolean(state.modeRun.battle.lastLaserBlocked),
       coverBlocksLasers: obstacles.filter(
@@ -16859,6 +17815,11 @@ window.render_game_to_text = () => {
           vz: Number(maxMode.ballVelocity.z.toFixed(2)),
         }
       : null,
+    max: {
+      lastCtrlTarget: maxMode.lastCtrlTarget,
+      ballLungeReady: state.ballLungeCooldown <= 0,
+      ballImpulse: Number((maxMode.lastBallImpulse || 0).toFixed(2)),
+    },
     bots: bots.slice(0, 6).map((bot) => ({
       team: bot.team ?? "hunter",
       role: bot.role ?? "bot",
@@ -16915,16 +17876,27 @@ window.render_game_to_text = () => {
     },
     online: {
       status: onlineState.status,
+      connectionStage: onlineState.connectionStage,
+      transport: onlineState.transport,
+      backendHealth: onlineState.backendHealth,
+      lastCloseCode: onlineState.lastCloseCode,
+      timeoutReason: onlineState.timeoutReason,
+      chatSendStatus: onlineState.chatSendStatus,
       configured: Boolean(onlineState.backendUrl),
       backendUrl: onlineState.backendUrl,
       feedbackConfigured: Boolean(
-        onlineState.feedbackUrl ||
-        (!onlineState.backendDefaulted &&
-          deriveFeedbackUrl(onlineState.backendUrl)),
+        onlineState.feedbackUrl || deriveFeedbackUrl(onlineState.backendUrl),
       ),
       feedbackStatus: onlineState.lastFeedbackStatus,
       feedback: {
         popupVisible: Boolean(feedbackModal?.classList.contains("show")),
+        limit: FEEDBACK_MESSAGE_LIMIT,
+        count: feedbackMessage?.value?.length ?? 0,
+        remaining: Math.max(
+          0,
+          FEEDBACK_MESSAGE_LIMIT - (feedbackMessage?.value?.length ?? 0),
+        ),
+        tooLong: (feedbackMessage?.value?.length ?? 0) > FEEDBACK_MESSAGE_LIMIT,
         submitStatus: onlineState.lastFeedbackStatus,
         delivery: onlineState.lastFeedbackDelivery,
         emailConfigured: Boolean(onlineState.feedbackEmailConfigured),
@@ -17290,6 +18262,106 @@ window.__infernodriftTestApi = {
     return { ...state.schoolGate };
   },
   forceOnlineProgressSync: () => forceOnlineProgressSync({ force: true }),
+  simulateBackendFailure: (kind = "unavailable") => {
+    onlineState.backendHealth = {
+      ok: false,
+      error: kind,
+      checkedAt: Date.now(),
+    };
+    onlineState.transport = "offline";
+    onlineState.timeoutReason = kind;
+    setOnlineStatus(
+      kind === "websocket_timeout" ? "failed" : "unavailable",
+      "Online services unavailable",
+      describeOnlineError(kind),
+    );
+    return window.__infernodriftTestApi.getOnlineDiagnostics();
+  },
+  forceOnlineTimeout: (stage = "auth_timeout") => {
+    onlineState.timeoutReason = stage;
+    onlineState.pendingAuth = null;
+    onlineState.pendingStartAfterAuth = false;
+    onlineState.transport =
+      stage === "websocket_timeout" ? "http-fallback" : "offline";
+    setOnlineStatus(
+      "failed",
+      stage === "websocket_timeout"
+        ? "Live connection timed out"
+        : "Account connection timed out",
+      describeOnlineError(stage),
+    );
+    return window.__infernodriftTestApi.getOnlineDiagnostics();
+  },
+  getOnlineDiagnostics: () => ({
+    status: onlineState.status,
+    connectionStage: onlineState.connectionStage,
+    transport: onlineState.transport,
+    backendHealth: onlineState.backendHealth,
+    lastCloseCode: onlineState.lastCloseCode,
+    timeoutReason: onlineState.timeoutReason,
+    chatSendStatus: onlineState.chatSendStatus,
+    backendUrl: onlineState.backendUrl,
+  }),
+  setBattleFlagCarrier: (team = "red", carrier = "player") => {
+    const flag = getBattleFlag(team);
+    const car =
+      carrier === "player"
+        ? player
+        : (bots.find((bot) => bot.team === carrier || bot.role === carrier) ??
+          bots[0]);
+    if (!flag || !car) return false;
+    releaseBattleFlag(car);
+    flag.carrier = car;
+    flag.group.userData.carrier = car;
+    car.battleCarryingFlag = flag.team;
+    flag.group.position.set(
+      car.position.x,
+      car.position.y + 1.2,
+      car.position.z,
+    );
+    return true;
+  },
+  movePlayerToBattleReturnPad: (team = "blue") => {
+    const pad = getBattleReturnPad(team);
+    if (!pad) return false;
+    player.setPosition(pad.position.x, 0, pad.position.z);
+    player.team = team;
+    updateBattleFlags();
+    return {
+      score: structuredClone(state.modeRun.battle),
+      x: player.position.x,
+      z: player.position.z,
+    };
+  },
+  setMaxBallNearPlayer: (distance = 8, angle = 0) => {
+    if (!maxMode.ball) return false;
+    const heading = player.heading + Number(angle || 0);
+    maxMode.ball.position.set(
+      player.position.x + Math.sin(heading) * Number(distance),
+      MAX_BALL_RADIUS,
+      player.position.z + Math.cos(heading) * Number(distance),
+    );
+    maxMode.ballVelocity.set(0, 0, 0);
+    return true;
+  },
+  pressMaxCtrlForTest: () => performMaxBallLunge() || performMaxBotLunge(),
+  setFeedbackTextForTest: (text = "") => {
+    if (feedbackMessage) feedbackMessage.value = String(text);
+    updateFeedbackCounter();
+    return window.__infernodriftTestApi.getFeedbackLimitState();
+  },
+  getFeedbackLimitState: () => ({
+    limit: FEEDBACK_MESSAGE_LIMIT,
+    count: feedbackMessage?.value?.length ?? 0,
+    remaining: Math.max(
+      0,
+      FEEDBACK_MESSAGE_LIMIT - (feedbackMessage?.value?.length ?? 0),
+    ),
+    tooLong: (feedbackMessage?.value?.length ?? 0) > FEEDBACK_MESSAGE_LIMIT,
+    counter: feedbackCounter?.textContent || "",
+    status: onlineState.lastFeedbackStatus,
+    error: onlineState.lastFeedbackError,
+  }),
   sampleDailyGiftRolls: (count = 1000) =>
     Array.from(
       { length: Math.max(0, Math.min(5000, Number(count) || 0)) },
@@ -17297,6 +18369,12 @@ window.__infernodriftTestApi = {
     ),
   getOnlineState: () => ({
     status: onlineState.status,
+    connectionStage: onlineState.connectionStage,
+    transport: onlineState.transport,
+    backendHealth: onlineState.backendHealth,
+    lastCloseCode: onlineState.lastCloseCode,
+    timeoutReason: onlineState.timeoutReason,
+    chatSendStatus: onlineState.chatSendStatus,
     configured: Boolean(onlineState.backendUrl),
     authenticated: Boolean(onlineState.user),
     username: onlineState.user?.username || onlineState.username,
@@ -17346,6 +18424,7 @@ renderProgressPanel();
 updateOnlineUi();
 applyPlayerCustomization({ progress: getProgressSnapshot() });
 resetLevel();
+readOnboardingState();
 updateHud();
 evaluateSchoolGate();
 requestAnimationFrame(animate);

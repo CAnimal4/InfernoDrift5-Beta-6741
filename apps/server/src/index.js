@@ -118,6 +118,7 @@ const FOUNDER_FRIEND_XP_REWARD = 1000;
 const DAILY_GIFT_MIN_XP = 100;
 const DAILY_GIFT_MAX_XP = 1000;
 const DAILY_GIFT_STEP_XP = 25;
+const FEEDBACK_MESSAGE_LIMIT = 2500;
 const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const PLACEHOLDER_SECRET_VALUES = new Set([
@@ -739,7 +740,11 @@ function normalizeFeedbackType(value) {
 }
 
 function buildFeedbackRow(payload, user = {}) {
-  const message = sanitizeChat(payload.message).slice(0, 2000);
+  const rawMessage = String(payload.message ?? "");
+  if (rawMessage.length > FEEDBACK_MESSAGE_LIMIT) {
+    return { ok: false, error: "feedback_too_long" };
+  }
+  const message = sanitizeChat(rawMessage).slice(0, FEEDBACK_MESSAGE_LIMIT);
   if (!message || message === "[blocked]") {
     return { ok: false, error: "feedback_rejected" };
   }
@@ -842,6 +847,82 @@ export function createInfernoServer(options = {}) {
     return true;
   }
 
+  function makeHttpClient(user = null, sessionToken = "") {
+    return {
+      id: `http-${randomUUID()}`,
+      user: user ?? {
+        id: "",
+        username: "HTTPS Guest",
+        age: null,
+        rating: 1000,
+        online: false,
+      },
+      sessionToken,
+      roomId: null,
+      rate: new Map(),
+      ws: { send() {} },
+    };
+  }
+
+  function clientFromHttpSession(token) {
+    const sessionToken = String(token || "");
+    const session = sessionToken ? db.data.sessions[sessionToken] : null;
+    const user = session ? db.data.users[session.userId] : null;
+    if (!session || !user) return null;
+    session.lastSeenAt = nowIso();
+    user.online = true;
+    user.updatedAt = nowIso();
+    db.data.sessions[sessionToken] = session;
+    db.data.users[user.id] = user;
+    return makeHttpClient(user, sessionToken);
+  }
+
+  function httpSessionTokenFrom(req, url, payload = {}) {
+    const auth = String(req.headers.authorization || "");
+    if (auth.toLowerCase().startsWith("bearer ")) return auth.slice(7).trim();
+    return String(
+      payload.sessionToken || url.searchParams.get("sessionToken") || "",
+    );
+  }
+
+  function chatSendPayload(client, payload = {}) {
+    if (!checkRate(client, "chat", 5, 5000))
+      return { ok: false, error: "rate_limited" };
+    if (!Number.isInteger(client.user.age) || client.user.age < 13) {
+      return { ok: false, error: "chat_requires_13_plus" };
+    }
+    const text = sanitizeChat(payload.text);
+    if (!text || text === "[blocked]")
+      return { ok: false, error: "message_blocked" };
+    const channel = chatChannelForClient(client);
+    const message = {
+      type: "chat.message",
+      from: client.user.username,
+      userId: client.user.id,
+      badge: client.user.badge || "",
+      moderator: isModeratorUser(client.user),
+      text,
+      quick: false,
+      at: nowIso(),
+      channel,
+    };
+    pruneChatMessages();
+    db.data.chatMessages.push({
+      id: randomUUID(),
+      channel,
+      from: message.from,
+      userId: message.userId,
+      badge: message.badge,
+      moderator: message.moderator,
+      text: message.text,
+      quick: false,
+      createdAt: message.at,
+    });
+    db.save();
+    broadcastAll(message, client.user.id);
+    return { ok: true, message };
+  }
+
   const server = http.createServer(async (req, res) => {
     const url = new URL(
       req.url ?? "/",
@@ -897,6 +978,100 @@ export function createInfernoServer(options = {}) {
               ? "message_too_large"
               : "invalid_feedback",
         });
+      }
+      return;
+    }
+    if (url.pathname === "/api/auth/account" && req.method === "POST") {
+      if (!checkHttpRate(req, "auth-http", 8, 60_000)) {
+        writeJson(res, req, 429, { ok: false, error: "rate_limited" });
+        return;
+      }
+      try {
+        const payload = await readJsonBody(req);
+        const client = makeHttpClient();
+        const auth = await handleAccountAuth(client, {
+          ...payload,
+          type: "auth.account",
+        });
+        if (!auth.ok) {
+          writeJson(res, req, 400, {
+            ok: false,
+            error: auth.error,
+            until: auth.until,
+          });
+          return;
+        }
+        const leaderboard = leaderboardSnapshot("casual", auth.user);
+        writeJson(res, req, 200, {
+          ok: true,
+          user: publicUser(auth.user),
+          sessionToken: auth.sessionToken,
+          restored: auth.restored,
+          save: db.data.saves[auth.user.id] ?? null,
+          profile: profileSnapshot(client),
+          friends: friendsSnapshot(client),
+          chat: chatHistoryPayload(client),
+          leaderboard: leaderboard.rows,
+          playerRow: leaderboard.playerRow,
+        });
+      } catch {
+        writeJson(res, req, 400, { ok: false, error: "invalid_auth" });
+      }
+      return;
+    }
+    if (url.pathname === "/api/profile" && req.method === "GET") {
+      const client = clientFromHttpSession(httpSessionTokenFrom(req, url));
+      if (!client) {
+        writeJson(res, req, 401, { ok: false, error: "session_expired" });
+        return;
+      }
+      writeJson(res, req, 200, { ok: true, ...profileSnapshot(client) });
+      return;
+    }
+    if (url.pathname === "/api/leaderboard" && req.method === "GET") {
+      const client = clientFromHttpSession(httpSessionTokenFrom(req, url));
+      if (!client) {
+        writeJson(res, req, 401, { ok: false, error: "session_expired" });
+        return;
+      }
+      const snapshot = leaderboardSnapshot(
+        url.searchParams.get("playlist") || "casual",
+        client.user,
+      );
+      writeJson(res, req, 200, {
+        ok: true,
+        leaderboard: snapshot.rows,
+        playerRow: snapshot.playerRow,
+      });
+      return;
+    }
+    if (url.pathname === "/api/chat/history" && req.method === "GET") {
+      const client = clientFromHttpSession(httpSessionTokenFrom(req, url));
+      if (!client) {
+        writeJson(res, req, 401, { ok: false, error: "session_expired" });
+        return;
+      }
+      writeJson(res, req, 200, { ok: true, ...chatHistoryPayload(client) });
+      return;
+    }
+    if (url.pathname === "/api/chat/send" && req.method === "POST") {
+      if (!checkHttpRate(req, "chat-http", 12, 60_000)) {
+        writeJson(res, req, 429, { ok: false, error: "rate_limited" });
+        return;
+      }
+      try {
+        const payload = await readJsonBody(req);
+        const client = clientFromHttpSession(
+          httpSessionTokenFrom(req, url, payload),
+        );
+        if (!client) {
+          writeJson(res, req, 401, { ok: false, error: "session_expired" });
+          return;
+        }
+        const result = chatSendPayload(client, payload);
+        writeJson(res, req, result.ok ? 200 : 400, result);
+      } catch {
+        writeJson(res, req, 400, { ok: false, error: "invalid_chat" });
       }
       return;
     }

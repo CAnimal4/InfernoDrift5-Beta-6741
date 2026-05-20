@@ -1,5 +1,5 @@
 export const PROTOCOL_VERSION = 1;
-export const MESSAGE_LIMIT_BYTES = 2048;
+export const MESSAGE_LIMIT_BYTES = 4096;
 
 export const QUICK_CHAT = new Set([
   "Nice drift!",
@@ -679,7 +679,7 @@ export function validateClientMessage(raw) {
       !ALLOWED_FEEDBACK_TYPES.has(data.feedbackType) ||
       typeof data.message !== "string" ||
       data.message.trim().length < 8 ||
-      data.message.length > 2000 ||
+      data.message.length > 2500 ||
       (hasOwn(data, "replyEmail") &&
         data.replyEmail !== "" &&
         (typeof data.replyEmail !== "string" ||

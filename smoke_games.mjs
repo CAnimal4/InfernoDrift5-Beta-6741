@@ -218,6 +218,17 @@ assert.equal(
   true,
 );
 await page.locator("#feedback-message").fill("Smoke feedback message");
+const feedbackLimitProbe = await page.evaluate(() => {
+  window.__infernodriftTestApi.setFeedbackTextForTest("x".repeat(2500));
+  const atLimit = window.__infernodriftTestApi.getFeedbackLimitState();
+  window.__infernodriftTestApi.setFeedbackTextForTest("x".repeat(2600));
+  const overLimit = window.__infernodriftTestApi.getFeedbackLimitState();
+  return { atLimit, overLimit };
+});
+assert.equal(feedbackLimitProbe.atLimit.count, 2500);
+assert.equal(feedbackLimitProbe.overLimit.count, 2500);
+assert.match(feedbackLimitProbe.overLimit.counter, /2,500/);
+await page.locator("#feedback-message").fill("Smoke feedback message");
 await page.locator("#feedback-submit").click({ force: true });
 await page.waitForTimeout(180);
 assert.equal(
@@ -255,6 +266,20 @@ assert.equal(
   false,
 );
 await page.locator("#chat-popout-close").click({ force: true });
+
+const onlineFailureProbe = await page.evaluate(() => {
+  const unavailable = window.__infernodriftTestApi.simulateBackendFailure(
+    "backend_unreachable",
+  );
+  const timeout =
+    window.__infernodriftTestApi.forceOnlineTimeout("auth_timeout");
+  const state = JSON.parse(window.render_game_to_text());
+  return { unavailable, timeout, online: state.online };
+});
+assert.equal(onlineFailureProbe.unavailable.transport, "offline");
+assert.equal(onlineFailureProbe.timeout.connectionStage, "failed");
+assert.equal(onlineFailureProbe.online.transport, "offline");
+assert.match(onlineFailureProbe.online.lastError || "", /timed out|too long/i);
 
 await openMenu(page);
 await page.locator('[data-tab="settings"]').click({ force: true });
@@ -315,6 +340,19 @@ assert.equal(
     /Backflip|Jump/i.test(maxFlipState.effects.lastToast),
   true,
 );
+
+const maxCtrlProbe = await page.evaluate(() => {
+  window.__infernodriftTestApi.setMaxBallNearPlayer(7, 0);
+  const before = JSON.parse(window.render_game_to_text()).ball;
+  const ok = window.__infernodriftTestApi.pressMaxCtrlForTest();
+  window.advanceTime(120);
+  const state = JSON.parse(window.render_game_to_text());
+  return { ok, before, after: state.ball, max: state.max };
+});
+assert.equal(maxCtrlProbe.ok, true);
+assert.equal(maxCtrlProbe.max.lastCtrlTarget, "ball");
+assert.ok(Math.abs(maxCtrlProbe.after.vz) > Math.abs(maxCtrlProbe.before.vz));
+assert.ok(maxCtrlProbe.max.ballImpulse > 0);
 
 await page.evaluate(() => window.__infernodriftTestApi.forceMaxGoal("blue"));
 await page.waitForTimeout(150);
@@ -466,6 +504,7 @@ for (const modeId of requiredModes) {
     assert.equal(state.battle.ammo, 10);
     assert.equal(state.battle.targetScore, 3);
     assert.equal(state.battle.flags.length, 2);
+    assert.equal(state.battle.returnPads.length, 2);
     assert.ok(state.battlePickups.length >= 5);
     assert.ok(state.bots.some((bot) => bot.team === "red"));
   }
@@ -491,6 +530,23 @@ const battleProbe = await page.evaluate(() => {
 });
 assert.ok(battleProbe.ammo <= 2);
 assert.ok(battleProbe.cooldown > 0);
+
+const battleFlagProbe = await page.evaluate(() => {
+  window.__infernodriftTestApi.startMode("battle-arena");
+  window.__infernodriftTestApi.setBattleFlagCarrier("red", "player");
+  window.__infernodriftTestApi.movePlayerToBattleReturnPad("blue");
+  window.advanceTime(120);
+  const state = JSON.parse(window.render_game_to_text());
+  return {
+    score: state.battle.score.blue,
+    lastFlagEvent: state.battle.lastFlagEvent,
+    flagMessage: state.battle.flagMessage,
+    pads: state.battle.returnPads,
+  };
+});
+assert.equal(battleFlagProbe.score, 1);
+assert.match(battleFlagProbe.lastFlagEvent, /blue_scored/);
+assert.equal(battleFlagProbe.pads.length, 2);
 
 const battleCoverProbe = await page.evaluate(() => {
   window.__infernodriftTestApi.startMode("battle-arena");

@@ -169,6 +169,7 @@ const FOUNDER_FRIEND_XP_REWARD = 1000;
 const DAILY_GIFT_MIN_XP = 100;
 const DAILY_GIFT_MAX_XP = 1000;
 const DAILY_GIFT_STEP_XP = 25;
+const FEEDBACK_MESSAGE_LIMIT = 2500;
 const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "feature", "fix", "other"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const PLACEHOLDER_SECRET_VALUES = new Set([
@@ -764,7 +765,11 @@ function normalizeFeedbackType(value) {
 }
 
 function buildFeedbackRow(payload, user = {}) {
-  const message = sanitizeChat(payload.message).slice(0, 2000);
+  const rawMessage = String(payload.message ?? "");
+  if (rawMessage.length > FEEDBACK_MESSAGE_LIMIT) {
+    return { ok: false, error: "feedback_too_long" };
+  }
+  const message = sanitizeChat(rawMessage).slice(0, FEEDBACK_MESSAGE_LIMIT);
   if (!message || message === "[blocked]") {
     return { ok: false, error: "feedback_rejected" };
   }
@@ -1535,6 +1540,9 @@ export class InfernoRoom {
       await this.persist();
       return json({ ok: true, stored: true });
     }
+    if (url.pathname.startsWith("/api/")) {
+      return this.handleHttpApi(request);
+    }
     if (request.headers.get("upgrade") !== "websocket") {
       return json({
         ok: true,
@@ -1714,6 +1722,109 @@ export class InfernoRoom {
           at: message.createdAt,
         })),
     };
+  }
+
+  makeHttpSession(user = null, sessionToken = "") {
+    return {
+      id: `http-${crypto.randomUUID()}`,
+      ws: { send() {} },
+      rate: new Map(),
+      user: user ?? {
+        id: "",
+        username: "HTTPS Guest",
+        age: null,
+        rating: 1000,
+        online: false,
+      },
+      sessionToken,
+      inRoom: false,
+      roomCode: "",
+      latestInput: null,
+    };
+  }
+
+  sessionFromHttpToken(token = "") {
+    const sessionToken = String(token || "");
+    const stored = sessionToken ? this.data.sessions[sessionToken] : null;
+    const user = stored ? this.data.users[stored.userId] : null;
+    if (!stored || !user) return null;
+    stored.lastSeenAt = nowIso();
+    user.online = true;
+    user.updatedAt = nowIso();
+    this.data.sessions[sessionToken] = stored;
+    this.data.users[user.id] = user;
+    return this.makeHttpSession(user, sessionToken);
+  }
+
+  httpSessionToken(request, url, payload = {}) {
+    const auth = String(request.headers.get("authorization") || "");
+    if (auth.toLowerCase().startsWith("bearer ")) return auth.slice(7).trim();
+    return String(
+      payload.sessionToken || url.searchParams.get("sessionToken") || "",
+    );
+  }
+
+  async handleHttpApi(request) {
+    const url = new URL(request.url);
+    if (url.pathname === "/api/auth/account" && request.method === "POST") {
+      const payload = await request.json().catch(() => ({}));
+      const session = this.makeHttpSession();
+      const auth = await this.handleAccountAuth(session, {
+        ...payload,
+        type: "auth.account",
+      });
+      if (!auth.ok) {
+        return json(
+          { ok: false, error: auth.error, until: auth.until || null },
+          { status: 400 },
+        );
+      }
+      await writeUserSessionToD1(this.env, auth.user, auth.sessionToken);
+      await this.persist();
+      const board = this.leaderboardSnapshot("casual", auth.user);
+      return json({
+        ok: true,
+        user: publicUser(auth.user),
+        sessionToken: auth.sessionToken,
+        restored: auth.restored,
+        save: this.data.saves[auth.user.id] ?? null,
+        profile: this.profileSnapshot(session),
+        friends: this.friendsSnapshot(session),
+        chat: this.chatHistoryPayload(session),
+        leaderboard: board.rows,
+        playerRow: board.playerRow,
+      });
+    }
+    const payload =
+      request.method === "POST" ? await request.json().catch(() => ({})) : {};
+    const session = this.sessionFromHttpToken(
+      this.httpSessionToken(request, url, payload),
+    );
+    if (!session) {
+      return json({ ok: false, error: "session_expired" }, { status: 401 });
+    }
+    if (url.pathname === "/api/profile" && request.method === "GET") {
+      return json({ ok: true, ...this.profileSnapshot(session) });
+    }
+    if (url.pathname === "/api/leaderboard" && request.method === "GET") {
+      const board = this.leaderboardSnapshot(
+        url.searchParams.get("playlist") || "casual",
+        session.user,
+      );
+      return json({
+        ok: true,
+        leaderboard: board.rows,
+        playerRow: board.playerRow,
+      });
+    }
+    if (url.pathname === "/api/chat/history" && request.method === "GET") {
+      return json({ ok: true, ...this.chatHistoryPayload(session) });
+    }
+    if (url.pathname === "/api/chat/send" && request.method === "POST") {
+      const result = await this.handleHttpChat(session, payload);
+      return json(result, { status: result.ok ? 200 : 400 });
+    }
+    return json({ ok: false, error: "not_found" }, { status: 404 });
   }
 
   ensureFriendState(userId) {
@@ -2263,6 +2374,52 @@ export class InfernoRoom {
       channel,
       roomCode: session.roomCode,
     });
+  }
+
+  async handleHttpChat(session, msg) {
+    if (!this.checkRate(session, "chat", 5, 5000)) {
+      return { ok: false, error: "rate_limited" };
+    }
+    if (!Number.isInteger(session.user.age) || session.user.age < 13) {
+      return { ok: false, error: "chat_requires_13_plus" };
+    }
+    const text = sanitizeChat(msg.text);
+    if (!text || text === "[blocked]") {
+      return { ok: false, error: "message_blocked" };
+    }
+    const channel = this.chatChannelForSession(session);
+    const payload = {
+      type: "chat.message",
+      from: session.user.username,
+      userId: session.user.id,
+      badge: session.user.badge || "",
+      moderator: this.isModeratorUser(session.user),
+      text,
+      quick: false,
+      at: nowIso(),
+      channel,
+    };
+    this.pruneChatMessages();
+    const chatRow = {
+      id: crypto.randomUUID(),
+      channel,
+      from: payload.from,
+      userId: payload.userId,
+      badge: payload.badge,
+      moderator: payload.moderator,
+      text: payload.text,
+      quick: false,
+      createdAt: payload.at,
+    };
+    this.data.chatMessages.push(chatRow);
+    writeChatMessageToD1(this.env, chatRow).catch(() => {});
+    await this.persist();
+    this.broadcast(payload, "", session.user.id, {
+      roomOnly: session.inRoom,
+      channel,
+      roomCode: session.roomCode,
+    });
+    return { ok: true, message: payload };
   }
 
   async handleRoomShare(session) {
@@ -3035,6 +3192,12 @@ export default {
       } catch {
         return json({ ok: false, error: "invalid_feedback" }, { status: 400 });
       }
+    }
+    if (url.pathname.startsWith("/api/")) {
+      const stub = env.INFERNO_ROOM.get(
+        env.INFERNO_ROOM.idFromName("global-v3"),
+      );
+      return stub.fetch(request);
     }
     if (url.pathname === "/ws") {
       const roomName =

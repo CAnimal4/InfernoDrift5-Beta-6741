@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const PROTOCOL_VERSION = 1;
-export const MESSAGE_LIMIT_BYTES = 2048;
+export const MESSAGE_LIMIT_BYTES = 4096;
 
 export const QUICK_CHAT = [
   "Nice drift!",
@@ -277,7 +277,7 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("feedback.submit"),
     feedbackType: feedbackTypeSchema,
-    message: z.string().min(8).max(2000),
+    message: z.string().min(8).max(2500),
     replyEmail: z.string().max(120).email().or(z.literal("")).optional(),
     diagnostics: safePayloadSchema.optional(),
     turnstileToken: z.string().max(2048).optional(),

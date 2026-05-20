@@ -1357,6 +1357,87 @@ test("http feedback endpoint stores sanitized submissions and keeps reply email 
     "The bowling reset is boost after a spare.",
   );
   assert.equal(app.db.data.feedback[0].replyEmail, "");
+
+  const longResponse = await fetch(`http://127.0.0.1:${port}/api/feedback`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "http://127.0.0.1:5173",
+    },
+    body: JSON.stringify({
+      feedbackType: "bug",
+      message: "x".repeat(2501),
+    }),
+  });
+  const longPayload = await longResponse.json();
+  assert.equal(longResponse.status, 400);
+  assert.equal(longPayload.error, "feedback_too_long");
+});
+
+test("http fallback supports account auth, leaderboard, and chat without websocket", async (t) => {
+  const app = createInfernoServer({
+    port: 0,
+    dataDir: path.join(os.tmpdir(), `id4-http-fallback-${Date.now()}`),
+    allowedOrigins: "http://127.0.0.1:5173",
+  });
+  const server = await app.listen();
+  t.after(async () => {
+    await app.close();
+  });
+  const port = server.address().port;
+  const base = `http://127.0.0.1:${port}`;
+  const authResponse = await fetch(`${base}/api/auth/account`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "http://127.0.0.1:5173",
+    },
+    body: JSON.stringify({
+      username: "HttpFallbackRacer",
+      password: "school-safe-pass",
+      age: 13,
+      mode: "auto",
+      deviceId: "http-fallback-test",
+    }),
+  });
+  const auth = await authResponse.json();
+  assert.equal(authResponse.status, 200);
+  assert.equal(auth.ok, true);
+  assert.equal(auth.user.username, "HttpFallbackRacer");
+  assert.ok(auth.sessionToken);
+  assert.equal(auth.chat.type, "chat.history");
+
+  const chatResponse = await fetch(`${base}/api/chat/send`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "http://127.0.0.1:5173",
+    },
+    body: JSON.stringify({
+      sessionToken: auth.sessionToken,
+      text: "Hello over HTTPS fallback.",
+    }),
+  });
+  const chat = await chatResponse.json();
+  assert.equal(chatResponse.status, 200);
+  assert.equal(chat.ok, true);
+  assert.equal(chat.message.text, "Hello over HTTPS fallback.");
+
+  const historyResponse = await fetch(
+    `${base}/api/chat/history?sessionToken=${encodeURIComponent(auth.sessionToken)}`,
+    { headers: { origin: "http://127.0.0.1:5173" } },
+  );
+  const history = await historyResponse.json();
+  assert.equal(historyResponse.status, 200);
+  assert.ok(history.messages.some((msg) => msg.text === chat.message.text));
+
+  const leaderboardResponse = await fetch(
+    `${base}/api/leaderboard?sessionToken=${encodeURIComponent(auth.sessionToken)}`,
+    { headers: { origin: "http://127.0.0.1:5173" } },
+  );
+  const leaderboard = await leaderboardResponse.json();
+  assert.equal(leaderboardResponse.status, 200);
+  assert.equal(leaderboard.playerRow.username, "HttpFallbackRacer");
 });
 
 test("http feedback endpoint sends through configured Resend transport truthfully", async (t) => {

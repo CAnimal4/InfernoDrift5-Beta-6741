@@ -97,11 +97,21 @@ test("shared protocol covers phase 4 backend messages and rejects fake results",
     parseClientMessage({
       type: "feedback.submit",
       feedbackType: "bug",
-      message: "The arena replay camera clipped through a wall.",
+      message: "x".repeat(2500),
       replyEmail: "",
       diagnostics: { mode: "max-arena" },
     }).ok,
     true,
+  );
+  assert.equal(
+    parseClientMessage({
+      type: "feedback.submit",
+      feedbackType: "bug",
+      message: "x".repeat(2501),
+      replyEmail: "",
+      diagnostics: { mode: "max-arena" },
+    }).ok,
+    false,
   );
   assert.equal(
     parseClientMessage({

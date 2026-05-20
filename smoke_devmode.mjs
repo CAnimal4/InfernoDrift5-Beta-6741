@@ -26,10 +26,9 @@ await page.evaluate(() => {
 });
 await page.locator("#start-btn").click({ force: true });
 await page.waitForTimeout(600);
-await page.locator("#menu-btn").click({ force: true });
-await page.waitForTimeout(250);
-await page.locator('[data-tab="settings"]').click({ force: true });
-await page.locator("#dev-mode-toggle").click();
+await page.evaluate(() => window.__infernodriftTestApi.openMenuTab("settings"));
+await page.locator("#tab-settings.active").waitFor();
+await page.locator("#dev-mode-toggle").evaluate((toggle) => toggle.click());
 await page.waitForTimeout(350);
 const enabled = await page.locator("#dev-mode-toggle").isChecked();
 const hint = await page.locator("#dev-mode-hint").textContent();
