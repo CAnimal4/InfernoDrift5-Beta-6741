@@ -213,6 +213,20 @@ function emptyData() {
   };
 }
 
+function pruneExpiredBansFromState(state, nowMs = Date.now()) {
+  const bans = state?.bans;
+  if (!bans || typeof bans !== "object") return 0;
+  let removed = 0;
+  for (const [key, ban] of Object.entries(bans)) {
+    const untilMs = Date.parse(ban?.until || "");
+    if (!Number.isFinite(untilMs) || untilMs <= nowMs) {
+      delete bans[key];
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
 function seedSystemAccounts(state) {
   for (const account of SEEDED_ACCOUNTS) {
     const key = claimKey(account.username);
@@ -331,6 +345,7 @@ function normalizeData(data) {
     Array.isArray(state.leaderboard) && state.leaderboard.length
       ? state.leaderboard
       : DEFAULT_LEADERBOARD;
+  pruneExpiredBansFromState(state);
   seedSystemAccounts(state);
   ensureAllAccountLeaderboardRows(state);
   return state;
@@ -1271,6 +1286,16 @@ async function deleteSessionsForUserFromD1(env, userId) {
   return true;
 }
 
+async function deleteExpiredBansFromD1(env, now = nowIso()) {
+  if (!env.INFERNO_DB?.prepare) return false;
+  await env.INFERNO_DB.prepare(
+    "DELETE FROM account_bans WHERE banned_until <= ? OR banned_until = ''",
+  )
+    .bind(now)
+    .run();
+  return true;
+}
+
 async function d1All(env, sql, bindings = []) {
   if (!env.INFERNO_DB?.prepare) return [];
   try {
@@ -1303,6 +1328,8 @@ function parseJsonColumn(value, fallback = {}) {
 async function hydrateDataFromD1(env, stored) {
   const state = normalizeData(stored);
   if (!env.INFERNO_DB?.prepare) return state;
+  state.bans = {};
+  await deleteExpiredBansFromD1(env).catch(() => false);
 
   const userRows = await d1All(
     env,
@@ -1527,6 +1554,8 @@ async function hydrateDataFromD1(env, stored) {
     "SELECT user_id, username, banned_until, banned_by_user_id, reason, created_at FROM account_bans",
   )) {
     if (!row.user_id) continue;
+    const untilMs = Date.parse(row.banned_until || "");
+    if (!Number.isFinite(untilMs) || untilMs <= Date.now()) continue;
     const ban = {
       userId: row.user_id,
       username: row.username || "",
@@ -1543,6 +1572,7 @@ async function hydrateDataFromD1(env, stored) {
         userId: `device:${deviceId}`,
       };
   }
+  pruneExpiredBansFromState(state);
 
   seedSystemAccounts(state);
   state.leaderboard = state.leaderboard.sort(compareLeaderboard);
@@ -1799,18 +1829,24 @@ export class InfernoRoom {
 
   activeBanForUser(userId, deviceId = "") {
     const candidates = [
-      this.data.bans?.[userId],
-      deviceId ? this.data.bans?.[`device:${deviceId}`] : null,
-    ].filter(Boolean);
-    const ban = candidates[0];
-    if (!ban) return null;
-    const untilMs = Date.parse(ban.until);
-    if (!Number.isFinite(untilMs) || untilMs <= Date.now()) {
-      delete this.data.bans[userId];
-      if (deviceId) delete this.data.bans[`device:${deviceId}`];
-      return null;
+      [userId, this.data.bans?.[userId]],
+      deviceId
+        ? [`device:${deviceId}`, this.data.bans?.[`device:${deviceId}`]]
+        : null,
+    ].filter((entry) => entry?.[1]);
+    let pruned = false;
+    for (const [key, ban] of candidates) {
+      const untilMs = Date.parse(ban.until);
+      if (!Number.isFinite(untilMs) || untilMs <= Date.now()) {
+        delete this.data.bans[key];
+        pruned = true;
+        continue;
+      }
+      if (pruned) this.persist().catch(() => {});
+      return ban;
     }
-    return ban;
+    if (pruned) this.persist().catch(() => {});
+    return null;
   }
 
   isModeratorUser(user) {

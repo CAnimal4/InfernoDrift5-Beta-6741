@@ -220,6 +220,20 @@ function emptyDb() {
   };
 }
 
+function pruneExpiredBansFromState(state, nowMs = Date.now()) {
+  const bans = state?.bans;
+  if (!bans || typeof bans !== "object") return 0;
+  let removed = 0;
+  for (const [key, ban] of Object.entries(bans)) {
+    const untilMs = Date.parse(ban?.until || "");
+    if (!Number.isFinite(untilMs) || untilMs <= nowMs) {
+      delete bans[key];
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
 function seedSystemAccounts(db) {
   for (const account of SEEDED_ACCOUNTS) {
     const key = claimKey(account.username);
@@ -322,6 +336,7 @@ function normalizeDbShape(data) {
     Array.isArray(db.leaderboard) && db.leaderboard.length
       ? db.leaderboard
       : DEFAULT_LEADERBOARD;
+  pruneExpiredBansFromState(db);
   seedSystemAccounts(db);
   ensureAllAccountLeaderboardRows(db);
   return db;
@@ -1294,19 +1309,24 @@ export function createInfernoServer(options = {}) {
 
   function activeBanForUser(userId, deviceId = "") {
     const candidates = [
-      db.data.bans?.[userId],
-      deviceId ? db.data.bans?.[`device:${deviceId}`] : null,
-    ].filter(Boolean);
-    const ban = candidates[0];
-    if (!ban) return null;
-    const untilMs = Date.parse(ban.until);
-    if (!Number.isFinite(untilMs) || untilMs <= Date.now()) {
-      delete db.data.bans[userId];
-      if (deviceId) delete db.data.bans[`device:${deviceId}`];
-      db.save();
-      return null;
+      [userId, db.data.bans?.[userId]],
+      deviceId
+        ? [`device:${deviceId}`, db.data.bans?.[`device:${deviceId}`]]
+        : null,
+    ].filter((entry) => entry?.[1]);
+    let pruned = false;
+    for (const [key, ban] of candidates) {
+      const untilMs = Date.parse(ban.until);
+      if (!Number.isFinite(untilMs) || untilMs <= Date.now()) {
+        delete db.data.bans[key];
+        pruned = true;
+        continue;
+      }
+      if (pruned) db.save();
+      return ban;
     }
-    return ban;
+    if (pruned) db.save();
+    return null;
   }
 
   function isModeratorUser(user) {

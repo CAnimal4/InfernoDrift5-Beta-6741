@@ -1163,10 +1163,34 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
     (msg) => msg.type === "error" && msg.error === "account_banned",
   );
 
+  const expiredUntil = new Date(Date.now() - 1000).toISOString();
+  app.db.data.bans["seed-joshua"].until = expiredUntil;
+  app.db.data.bans["device:joshua-device"].until = expiredUntil;
+  app.db.save();
+
+  const expiredBanClient = await makeWsClient(port);
+  expiredBanClient.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "signin",
+      username: "Joshua",
+      password: "footballcards",
+      age: 13,
+      deviceId: "joshua-device",
+    }),
+  );
+  await waitForMessage(
+    expiredBanClient.messages,
+    (msg) => msg.type === "auth.ok",
+  );
+  assert.equal(app.db.data.bans["seed-joshua"], undefined);
+  assert.equal(app.db.data.bans["device:joshua-device"], undefined);
+
   moderator.ws.terminate();
   billy.ws.terminate();
   banned.ws.terminate();
   bannedGuest.ws.terminate();
+  expiredBanClient.ws.terminate();
 });
 
 test("direct-message command backend allows non-friends and report email includes DMs", async (t) => {
