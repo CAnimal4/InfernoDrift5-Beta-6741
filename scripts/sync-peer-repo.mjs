@@ -40,19 +40,19 @@ function isBinary(buffer) {
 function transformTextForTarget(text, targetRepo) {
   if (targetRepo === "InfernoDrift") {
     return text
-      .replaceAll("https://canimal4.github.io/InfernoDrift/", "https://canimal4.github.io/InfernoDrift/")
+      .replaceAll("https://canimal4.github.io/InfernoDrift4/", "https://canimal4.github.io/InfernoDrift/")
       .replace(/https:\/\/canimal4\.github\.io\/InfernoDrift4(?![0-9A-Za-z_-])/g, "https://canimal4.github.io/InfernoDrift")
-      .replaceAll("/InfernoDrift/", "/InfernoDrift/")
+      .replaceAll("/InfernoDrift4/", "/InfernoDrift/")
       .replace(/github\.com\/CAnimal4\/InfernoDrift4(?![0-9A-Za-z_-])/g, "github.com/CAnimal4/InfernoDrift")
       .replace(/CAnimal4\/InfernoDrift4(?![0-9A-Za-z_-])/g, "CAnimal4/InfernoDrift");
   }
   if (targetRepo === "InfernoDrift4") {
     return text
-      .replaceAll("https://canimal4.github.io/InfernoDrift/", "https://canimal4.github.io/InfernoDrift/")
-      .replace(/https:\/\/canimal4\.github\.io\/InfernoDrift(?![0-9A-Za-z_-])/g, "https://canimal4.github.io/InfernoDrift")
-      .replaceAll("/InfernoDrift/", "/InfernoDrift/")
-      .replace(/github\.com\/CAnimal4\/InfernoDrift(?![0-9A-Za-z_-])/g, "github.com/CAnimal4/InfernoDrift")
-      .replace(/CAnimal4\/InfernoDrift(?![0-9A-Za-z_-])/g, "CAnimal4/InfernoDrift");
+      .replaceAll("https://canimal4.github.io/InfernoDrift/", "https://canimal4.github.io/InfernoDrift4/")
+      .replace(/https:\/\/canimal4\.github\.io\/InfernoDrift(?![0-9A-Za-z_-])/g, "https://canimal4.github.io/InfernoDrift4")
+      .replaceAll("/InfernoDrift/", "/InfernoDrift4/")
+      .replace(/github\.com\/CAnimal4\/InfernoDrift(?![0-9A-Za-z_-])/g, "github.com/CAnimal4/InfernoDrift4")
+      .replace(/CAnimal4\/InfernoDrift(?![0-9A-Za-z_-])/g, "CAnimal4/InfernoDrift4");
   }
   throw new Error(`Unsupported target repository: ${targetRepo}`);
 }
@@ -74,6 +74,7 @@ function walkFiles(root) {
 
 function applyTargetTransforms(root, targetRepo) {
   for (const filePath of walkFiles(root)) {
+    if (path.relative(root, filePath) === "scripts/sync-peer-repo.mjs") continue;
     const buffer = fs.readFileSync(filePath);
     if (isBinary(buffer)) continue;
     const original = buffer.toString("utf8");

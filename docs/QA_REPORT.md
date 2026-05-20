@@ -57,7 +57,7 @@ Phase 2 UI/Garage verification, run on 2026-05-16:
 
 Latest Pages smoke, run on 2026-05-16:
 
-- `https://canimal4.github.io/InfernoDrift/?v=f5e23a7`: HTTP 200.
+- `https://canimal4.github.io/InfernoDrift4/?v=f5e23a7`: HTTP 200.
 - Served root static game with `script.js`; no React/Vite bundle detected.
 - Browser play smoke started Campaign Survival, `running: true`, `product: InfernoDrift4`, `radarMode: forward-relative`, `online: offline-static`, and no page errors.
 

@@ -7,7 +7,7 @@ The current frontend build is the restored static InfernoDrift4 root game. `npm 
 1. Push `main`.
 2. Ensure GitHub Pages source is GitHub Actions.
 3. Wait for `Deploy GitHub Pages`.
-4. Open https://canimal4.github.io/InfernoDrift/.
+4. Open https://canimal4.github.io/InfernoDrift4/.
 
 The Pages workflow runs `npm ci`, `npm run typecheck`, `npm run test`, `npm run build:web`, uploads `dist/`, and deploys with official Pages artifact actions.
 
@@ -67,7 +67,7 @@ The current no-cost primary online backend is the Replit Node dev URL:
 - HTTP URL: `https://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev`
 - WebSocket URL: `wss://add88ee5-cd60-43a6-9187-bbf975395ace-00-buwzj014vifw.janeway.replit.dev/ws`
 - Paid publish URL, blocked without plan upgrade: `https://infernodrift4-online.replit.app`
-- Source repository: `https://github.com/CAnimal4/InfernoDrift`
+- Source repository: `https://github.com/CAnimal4/InfernoDrift4`
 
 Deployment checklist:
 

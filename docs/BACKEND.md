@@ -36,7 +36,7 @@ Local features:
 
 ## Replit Backend
 
-The Node backend is the Replit-compatible implementation. Replit should import `https://github.com/CAnimal4/InfernoDrift`, run `npm install`, and start with:
+The Node backend is the Replit-compatible implementation. Replit should import `https://github.com/CAnimal4/InfernoDrift4`, run `npm install`, and start with:
 
 ```bash
 npm run dev:server

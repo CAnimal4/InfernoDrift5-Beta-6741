@@ -2,7 +2,7 @@
 
 InfernoDrift4 is the restored launch rescue: the shipped game is the root static `index.html`, `script.js`, and `style.css` experience, built from the proven base InfernoDrift4 feel instead of the rejected React rewrite.
 
-Play: https://canimal4.github.io/InfernoDrift/
+Play: https://canimal4.github.io/InfernoDrift4/
 
 ## Current Launch Surface
 
