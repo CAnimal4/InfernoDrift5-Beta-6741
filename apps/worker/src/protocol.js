@@ -569,13 +569,22 @@ export function validateClientMessage(raw) {
     if (!onlyKeys(data, new Set(["type"]))) error = "invalid_protocol";
   }
   if (data.type === "chat.send") {
-    const keys = new Set(["type", "text", "age", "channel"]);
+    const keys = new Set([
+      "type",
+      "text",
+      "age",
+      "channel",
+      "username",
+      "userId",
+    ]);
     if (
       !onlyKeys(data, keys) ||
       typeof data.text !== "string" ||
       data.text.trim().length < 1 ||
       data.text.length > 160 ||
       (hasOwn(data, "channel") && !ALLOWED_CHAT_CHANNELS.has(data.channel)) ||
+      !isOptionalString(data, "username", 24) ||
+      !isOptionalString(data, "userId", 80) ||
       (hasOwn(data, "age") && !isIntegerInRange(Number(data.age), 0, 120))
     ) {
       error = "invalid_protocol";

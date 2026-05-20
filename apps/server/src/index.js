@@ -379,6 +379,18 @@ function getLeaderboardXp(row) {
   );
 }
 
+function getLeaderboardRowForUser(data, user) {
+  if (!user) return null;
+  const usernameKey = claimKey(user.username);
+  return (
+    (Array.isArray(data.leaderboard) ? data.leaderboard : []).find(
+      (row) =>
+        (user.id && row.userId === user.id) ||
+        (usernameKey && claimKey(row.username) === usernameKey),
+    ) ?? null
+  );
+}
+
 function progressionLevelForXp(totalXp) {
   return Math.max(1, Math.floor(Math.max(0, Number(totalXp) || 0) / 500) + 1);
 }
@@ -477,6 +489,28 @@ function isFounderUsername(username) {
   return claimKey(username) === claimKey(FOUNDER_USERNAME);
 }
 
+function seededAccountForUsername(username) {
+  const key = claimKey(username);
+  return SEEDED_ACCOUNTS.find((account) => claimKey(account.username) === key);
+}
+
+function applySeededAccountCredentials(user, seeded) {
+  if (!user || !seeded) return user;
+  return {
+    ...user,
+    username: seeded.username,
+    claimedUsername: seeded.username,
+    authProvider: "password",
+    passwordSalt: seeded.passwordSalt,
+    passwordHash: seeded.passwordHash,
+    badge: seeded.badge,
+    role: seeded.role,
+    moderator: seeded.role === "moderator",
+    xp: Math.max(Number(user.xp) || 0, seeded.xp),
+    rating: Math.max(Number(user.rating) || 0, seeded.xp),
+  };
+}
+
 function extractSaveXp(payload = {}) {
   const progress =
     payload.progressionV2 && typeof payload.progressionV2 === "object"
@@ -550,16 +584,62 @@ function upsertXpLeaderboard(data, user, totalXp) {
   return row;
 }
 
-function ensureUserLeaderboardRow(data, user) {
-  if (!isLeaderboardEligibleUser(user)) return null;
-  const saved = data.saves?.[user.id]?.payload ?? {};
-  const totalXp = Math.max(
-    extractSaveXp(saved),
-    Math.max(0, Number(user.xp) || 0),
+function canonicalAccountXp(data, user, payload = null) {
+  return Math.max(
+    extractSaveXp(payload ?? data.saves?.[user.id]?.payload ?? {}),
+    Math.max(0, Number(user?.xp) || 0),
+    getLeaderboardXp(getLeaderboardRowForUser(data, user)),
   );
+}
+
+function savePayloadWithXp(payload = {}, totalXp = 0) {
+  const next = structuredClone(
+    payload && typeof payload === "object" ? payload : {},
+  );
+  const progress =
+    next.progressionV2 && typeof next.progressionV2 === "object"
+      ? next.progressionV2
+      : {};
+  const xp = Math.max(0, Math.floor(Number(totalXp) || 0));
+  next.progressionV2 = {
+    ...progress,
+    xp,
+    totalXp: xp,
+    level: Math.max(
+      progressionLevelForXp(xp),
+      Math.max(1, Number(progress.level) || 1),
+    ),
+  };
+  return next;
+}
+
+function ensureCanonicalAccountProgress(data, user) {
+  if (!isLeaderboardEligibleUser(user)) return null;
+  const previous = data.saves?.[user.id] ?? null;
+  const totalXp = canonicalAccountXp(data, user, previous?.payload);
   user.xp = totalXp;
   user.rating = Math.max(Number(user.rating) || 0, totalXp);
-  return upsertXpLeaderboard(data, user, totalXp);
+  user.updatedAt = user.updatedAt || nowIso();
+  const previousXp = extractSaveXp(previous?.payload ?? {});
+  if (totalXp > previousXp || !previous) {
+    data.saves[user.id] = {
+      userId: user.id,
+      schemaVersion: Math.max(2, Number(previous?.schemaVersion) || 2),
+      payload: savePayloadWithXp(previous?.payload ?? {}, totalXp),
+      clientUpdatedAt: previous?.clientUpdatedAt ?? null,
+      serverUpdatedAt: nowIso(),
+    };
+  }
+  return {
+    totalXp,
+    save: data.saves[user.id] ?? previous,
+    leaderboardRow: upsertXpLeaderboard(data, user, totalXp),
+  };
+}
+
+function ensureUserLeaderboardRow(data, user) {
+  if (!isLeaderboardEligibleUser(user)) return null;
+  return ensureCanonicalAccountProgress(data, user)?.leaderboardRow ?? null;
 }
 
 function ensureAllAccountLeaderboardRows(data) {
@@ -894,7 +974,11 @@ export function createInfernoServer(options = {}) {
     const text = sanitizeChat(payload.text);
     if (!text || text === "[blocked]")
       return { ok: false, error: "message_blocked" };
-    const channel = chatChannelForClient(client);
+    const direct = resolveDirectChatTarget(client, payload);
+    if (!direct.ok) return { ok: false, error: direct.error };
+    const channel = direct.direct
+      ? direct.channel
+      : chatChannelForClient(client);
     const message = {
       type: "chat.message",
       from: client.user.username,
@@ -905,6 +989,9 @@ export function createInfernoServer(options = {}) {
       quick: false,
       at: nowIso(),
       channel,
+      direct: Boolean(direct.direct),
+      toUserId: direct.target?.id ?? "",
+      toUsername: direct.target?.username ?? "",
     };
     pruneChatMessages();
     db.data.chatMessages.push({
@@ -919,7 +1006,12 @@ export function createInfernoServer(options = {}) {
       createdAt: message.at,
     });
     db.save();
-    broadcastAll(message, client.user.id);
+    if (direct.direct) {
+      send(client.ws, message);
+      if (direct.targetClient) send(direct.targetClient.ws, message);
+    } else {
+      broadcastAll(message, client.user.id);
+    }
     return { ok: true, message };
   }
 
@@ -1158,6 +1250,34 @@ export function createInfernoServer(options = {}) {
   function chatChannelForClient(client) {
     const room = client?.roomId ? rooms.get(client.roomId) : null;
     return room ? `room:${room.code || room.id}` : "lobby";
+  }
+
+  function directChatChannel(userA = "", userB = "") {
+    return `dm:${[String(userA), String(userB)].sort().join(":")}`;
+  }
+
+  function resolveDirectChatTarget(client, msg) {
+    if (msg.channel !== "friend") return { ok: true, direct: false };
+    const target =
+      (msg.userId && db.data.users[msg.userId]) ||
+      findUserByUsername(msg.username || "");
+    if (!target || target.id === client.user.id) {
+      return { ok: false, error: "friend_chat_target_not_found" };
+    }
+    if (isBlockedBetween(client.user.id, target.id)) {
+      return { ok: false, error: "friend_chat_blocked" };
+    }
+    const friendState = ensureFriendState(client.user.id);
+    if (!friendState.friends?.[target.id]) {
+      return { ok: false, error: "friend_required" };
+    }
+    return {
+      ok: true,
+      direct: true,
+      target,
+      targetClient: clientByUserId(target.id),
+      channel: directChatChannel(client.user.id, target.id),
+    };
   }
 
   function chatHistoryPayload(client) {
@@ -1414,6 +1534,7 @@ export function createInfernoServer(options = {}) {
   }
 
   function profileSnapshot(client) {
+    ensureCanonicalAccountProgress(db.data, client.user);
     return {
       type: "profile.snapshot",
       user: publicUser(client.user),
@@ -1642,7 +1763,14 @@ export function createInfernoServer(options = {}) {
     if (!key || username.length < 2)
       return { ok: false, error: "invalid_username" };
     const ownerId = db.data.usernameClaims[key];
-    const existing = ownerId ? db.data.users[ownerId] : null;
+    let existing = ownerId ? db.data.users[ownerId] : null;
+    const seeded = seededAccountForUsername(username);
+    if (existing && seeded && !existing.passwordHash) {
+      existing = applySeededAccountCredentials(existing, seeded);
+      db.data.users[existing.id] = existing;
+      db.data.usernameClaims[key] = existing.id;
+      ensureCanonicalAccountProgress(db.data, existing);
+    }
     if (
       key === "clark" &&
       (!existing || existing.id !== "seed-clark") &&
@@ -2267,8 +2395,15 @@ export function createInfernoServer(options = {}) {
               : sanitizeChat(msg.text);
           if (!text || text === "[blocked]")
             return send(ws, { type: "error", error: "message_blocked" });
+          const direct = resolveDirectChatTarget(client, msg);
+          if (!direct.ok)
+            return send(ws, { type: "error", error: direct.error });
           const room = rooms.get(client.roomId);
-          const channel = room ? `room:${room.code || room.id}` : "lobby";
+          const channel = direct.direct
+            ? direct.channel
+            : room
+              ? `room:${room.code || room.id}`
+              : "lobby";
           const payload = {
             type: "chat.message",
             from: client.user.username,
@@ -2279,6 +2414,9 @@ export function createInfernoServer(options = {}) {
             quick: msg.type === "quick.send",
             at: nowIso(),
             channel,
+            direct: Boolean(direct.direct),
+            toUserId: direct.target?.id ?? "",
+            toUsername: direct.target?.username ?? "",
           };
           pruneChatMessages();
           db.data.chatMessages.push({
@@ -2293,7 +2431,10 @@ export function createInfernoServer(options = {}) {
             createdAt: payload.at,
           });
           db.save();
-          if (room) broadcast(room, payload, client.user.id);
+          if (direct.direct) {
+            send(ws, payload);
+            if (direct.targetClient) send(direct.targetClient.ws, payload);
+          } else if (room) broadcast(room, payload, client.user.id);
           else broadcastAll(payload, client.user.id);
           return;
         }

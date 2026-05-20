@@ -113,6 +113,18 @@ test("protocol accepts known messages and rejects unknown messages", () => {
   );
   assert.equal(
     validateClientMessage(
+      JSON.stringify({
+        type: "chat.send",
+        age: 13,
+        channel: "friend",
+        username: "Friend",
+        text: "direct hello",
+      }),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    validateClientMessage(
       JSON.stringify({ type: "room.create", playlist: "private", teamSize: 3 }),
     ).ok,
     true,
@@ -1318,6 +1330,354 @@ test("websocket backend persists sessions, claims, saves, friends, reports, feed
   a.ws.terminate();
   b.ws.terminate();
   reconnect.ws.terminate();
+});
+
+test("account profile save never downgrades canonical leaderboard XP", async (t) => {
+  const app = createInfernoServer({
+    port: 0,
+    dataDir: path.join(os.tmpdir(), `id4-canonical-xp-${Date.now()}`),
+    allowedOrigins: "http://127.0.0.1:5173",
+  });
+  app.db.data.saves["seed-clark"] = {
+    userId: "seed-clark",
+    schemaVersion: 2,
+    payload: { progressionV2: { xp: 175, totalXp: 175, level: 1 } },
+    serverUpdatedAt: new Date(Date.now() - 60_000).toISOString(),
+  };
+  delete app.db.data.users["seed-clark"].passwordHash;
+  delete app.db.data.users["seed-clark"].passwordSalt;
+  app.db.data.users["seed-clark"].authProvider = "guest";
+  app.db.save();
+  const server = await app.listen();
+  t.after(async () => {
+    await app.close();
+  });
+  const port = server.address().port;
+  const clark = await makeWsClient(port);
+
+  clark.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "signin",
+      username: "Clark",
+      password: "ibelikesheesh",
+      age: 13,
+    }),
+  );
+  const auth = await waitForMessage(
+    clark.messages,
+    (msg) => msg.type === "auth.ok",
+  );
+  assert.equal(auth.user.username, "Clark");
+  assert.equal(auth.save.payload.progressionV2.xp, 8200);
+  assert.equal(auth.save.payload.progressionV2.totalXp, 8200);
+  const profile = await waitForMessage(
+    clark.messages,
+    (msg) => msg.type === "profile.snapshot" && msg.user?.username === "Clark",
+  );
+  assert.equal(profile.save.payload.progressionV2.xp, 8200);
+  assert.equal(profile.user.xp, 8200);
+  const leaderboard = await waitForMessage(
+    clark.messages,
+    (msg) => msg.type === "leaderboard.snapshot" && msg.playerRow,
+  );
+  assert.equal(leaderboard.playerRow.username, "Clark");
+  assert.equal(leaderboard.playerRow.xp, 8200);
+  clark.ws.terminate();
+});
+
+test("online stress covers leaderboard, rooms, friends, chat, reports, feedback, moderation, and reconnects", async (t) => {
+  const app = createInfernoServer({
+    port: 0,
+    dataDir: path.join(os.tmpdir(), `id4-online-stress-${Date.now()}`),
+    allowedOrigins: "http://127.0.0.1:5173",
+  });
+  const server = await app.listen();
+  t.after(async () => {
+    await app.close();
+  });
+  const port = server.address().port;
+  const alpha = await makeWsClient(port);
+  const beta = await makeWsClient(port);
+  const gamma = await makeWsClient(port);
+  const mod = await makeWsClient(port);
+
+  const signIn = async (client, username, password, mode = "create") => {
+    client.ws.send(
+      JSON.stringify({
+        type: "auth.account",
+        mode,
+        username,
+        password,
+        age: 13,
+        deviceId: `${username}-device`,
+      }),
+    );
+    return waitForMessage(
+      client.messages,
+      (msg) => msg.type === "auth.ok" && msg.user?.username === username,
+    );
+  };
+
+  const authAlpha = await signIn(alpha, "StressAlpha", "stress-alpha-pass");
+  await signIn(beta, "StressBeta", "stress-beta-pass");
+  await signIn(gamma, "StressGamma", "stress-gamma-pass");
+  await signIn(mod, "MODERATOR", "thefoxjumpedoverthelazyriver", "signin");
+
+  alpha.ws.send(
+    JSON.stringify({
+      type: "save.sync",
+      schemaVersion: 2,
+      payload: { progressionV2: { xp: 1250, totalXp: 1250, level: 3 } },
+    }),
+  );
+  await waitForMessage(
+    alpha.messages,
+    (msg) =>
+      msg.type === "save.synced" && msg.payload.progressionV2.xp === 1250,
+  );
+  alpha.ws.send(
+    JSON.stringify({ type: "leaderboard.get", playlist: "casual" }),
+  );
+  const alphaBoard = await waitForMessage(
+    alpha.messages,
+    (msg) =>
+      msg.type === "leaderboard.snapshot" &&
+      msg.playerRow?.username === "StressAlpha" &&
+      msg.playerRow?.xp === 1250,
+  );
+  assert.ok(
+    alphaBoard.leaderboard.some((row) => row.username === "StressAlpha"),
+  );
+
+  beta.ws.send(
+    JSON.stringify({ type: "friend.request", username: "StressAlpha" }),
+  );
+  const friendRequest = await waitForMessage(
+    beta.messages,
+    (msg) => msg.type === "friend.requested" && msg.username === "StressAlpha",
+  );
+  await waitForMessage(
+    alpha.messages,
+    (msg) =>
+      msg.type === "friends.snapshot" &&
+      msg.incomingRequests?.some(
+        (request) => request.id === friendRequest.requestId,
+      ),
+  );
+  alpha.ws.send(
+    JSON.stringify({
+      type: "friend.accept",
+      requestId: friendRequest.requestId,
+    }),
+  );
+  await waitForMessage(
+    beta.messages,
+    (msg) =>
+      msg.type === "friends.snapshot" &&
+      msg.friends?.some((friend) => friend.username === "StressAlpha"),
+  );
+  alpha.ws.send(
+    JSON.stringify({
+      type: "chat.send",
+      channel: "friend",
+      username: "StressBeta",
+      text: "friend direct hello",
+    }),
+  );
+  await waitForMessage(
+    beta.messages,
+    (msg) =>
+      msg.type === "chat.message" &&
+      msg.direct === true &&
+      msg.text === "friend direct hello" &&
+      msg.toUsername === "StressBeta",
+  );
+  const offline = await makeWsClient(port);
+  await signIn(offline, "StressOffline", "stress-offline-pass");
+  offline.ws.send(
+    JSON.stringify({
+      type: "save.sync",
+      schemaVersion: 2,
+      payload: { progressionV2: { xp: 700, totalXp: 700, level: 2 } },
+    }),
+  );
+  await waitForMessage(
+    offline.messages,
+    (msg) => msg.type === "save.synced" && msg.payload.progressionV2.xp === 700,
+  );
+  offline.ws.close();
+  await new Promise((resolve) => offline.ws.once("close", resolve));
+  alpha.ws.send(
+    JSON.stringify({ type: "leaderboard.get", playlist: "casual" }),
+  );
+  await waitForMessage(
+    alpha.messages,
+    (msg) =>
+      msg.type === "leaderboard.snapshot" &&
+      msg.leaderboard.some(
+        (row) => row.username === "StressOffline" && row.xp === 700,
+      ),
+  );
+
+  alpha.ws.send(
+    JSON.stringify({
+      type: "room.create",
+      mode: "battle-arena",
+      playlist: "private",
+      size: 4,
+      teamSize: 2,
+      botFill: true,
+    }),
+  );
+  beta.ws.send(
+    JSON.stringify({
+      type: "room.create",
+      mode: "max-arena",
+      playlist: "private",
+      size: 4,
+      teamSize: 2,
+      botFill: true,
+    }),
+  );
+  const alphaRoom = await waitForMessage(
+    alpha.messages,
+    (msg) => msg.type === "room.snapshot" && msg.room?.mode === "battle-arena",
+  );
+  const betaRoom = await waitForMessage(
+    beta.messages,
+    (msg) => msg.type === "room.snapshot" && msg.room?.mode === "max-arena",
+  );
+  assert.notEqual(alphaRoom.room.code, betaRoom.room.code);
+  gamma.ws.send(
+    JSON.stringify({ type: "room.join", code: alphaRoom.room.code }),
+  );
+  await waitForMessage(
+    gamma.messages,
+    (msg) =>
+      msg.type === "room.snapshot" &&
+      msg.room?.code === alphaRoom.room.code &&
+      msg.room?.mode === "battle-arena",
+  );
+  alpha.ws.send(JSON.stringify({ type: "room.share" }));
+  await waitForMessage(
+    alpha.messages,
+    (msg) => msg.type === "room.shared" && msg.status === "shared",
+  );
+  alpha.ws.send(JSON.stringify({ type: "room.share" }));
+  await waitForMessage(
+    alpha.messages,
+    (msg) => msg.type === "room.shared" && msg.status === "already_shared",
+  );
+
+  alpha.ws.send(
+    JSON.stringify({
+      type: "input.frame",
+      seq: 1,
+      dt: 0.016,
+      throttle: 1,
+      steer: 0.25,
+      drift: false,
+      boost: true,
+      jump: true,
+      backflip: true,
+      airborne: true,
+      trick: "backflip",
+      mode: "battle-arena",
+      team: "blue",
+      cosmetics: { paintId: "red-hot", glowId: "cyan" },
+      client: { x: 5, y: 3, z: 9, speed: 80, heading: 1.1, airborne: true },
+    }),
+  );
+  const remoteSnapshot = await waitForMessage(
+    gamma.messages,
+    (msg) =>
+      msg.type === "match.snapshot" &&
+      msg.players?.some(
+        (player) =>
+          player.username === "StressAlpha" &&
+          player.input?.backflip === true &&
+          player.input?.cosmetics?.paintId === "red-hot",
+      ),
+  );
+  assert.equal(remoteSnapshot.roomCode, alphaRoom.room.code);
+
+  alpha.ws.send(JSON.stringify({ type: "chat.send", text: "hello room" }));
+  await waitForMessage(
+    gamma.messages,
+    (msg) => msg.type === "chat.message" && msg.text === "hello room",
+  );
+  const lateJoin = await makeWsClient(port);
+  await signIn(lateJoin, "StressLate", "stress-late-pass");
+  lateJoin.ws.send(
+    JSON.stringify({ type: "room.join", code: alphaRoom.room.code }),
+  );
+  await waitForMessage(
+    lateJoin.messages,
+    (msg) =>
+      msg.type === "chat.history" &&
+      msg.messages?.some((message) => message.text === "hello room"),
+  );
+
+  alpha.ws.send(
+    JSON.stringify({
+      type: "friend.report",
+      username: "StressGamma",
+      reason: "Testing report storage",
+    }),
+  );
+  await waitForMessage(
+    alpha.messages,
+    (msg) => msg.type === "friend.reported" && msg.username === "StressGamma",
+  );
+  alpha.ws.send(
+    JSON.stringify({
+      type: "feedback.submit",
+      feedbackType: "bug",
+      message: "Stress feedback should be stored safely by the backend.",
+      diagnostics: { area: "online-stress" },
+    }),
+  );
+  await waitForMessage(
+    alpha.messages,
+    (msg) => msg.type === "feedback.received" && msg.feedbackId,
+  );
+
+  mod.ws.send(
+    JSON.stringify({
+      type: "moderation.kick",
+      username: "StressGamma",
+      reason: "Stress kick",
+    }),
+  );
+  await waitForMessage(
+    gamma.messages,
+    (msg) => msg.type === "moderation.kicked",
+  );
+  await waitForMessage(
+    mod.messages,
+    (msg) => msg.type === "moderation.done" && msg.action === "kick",
+  );
+
+  const reconnect = await makeWsClient(port);
+  reconnect.ws.send(
+    JSON.stringify({
+      type: "reconnect",
+      sessionToken: authAlpha.sessionToken,
+    }),
+  );
+  await waitForMessage(
+    reconnect.messages,
+    (msg) =>
+      msg.type === "reconnect.ok" &&
+      msg.save?.payload?.progressionV2?.xp === 1250,
+  );
+  reconnect.ws.terminate();
+  lateJoin.ws.terminate();
+  alpha.ws.terminate();
+  beta.ws.terminate();
+  gamma.ws.terminate();
+  mod.ws.terminate();
 });
 
 test("http feedback endpoint stores sanitized submissions and keeps reply email 13 plus only", async (t) => {

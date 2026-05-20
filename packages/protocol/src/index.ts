@@ -223,6 +223,8 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("chat.send"),
     text: z.string().min(1).max(160),
     channel: z.enum(["lobby", "friend"]).default("lobby"),
+    username: z.string().min(1).max(24).optional(),
+    userId: z.string().min(1).max(80).optional(),
   }),
   z.object({
     type: z.literal("friend.request"),

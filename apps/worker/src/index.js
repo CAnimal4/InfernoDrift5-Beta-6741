@@ -338,6 +338,18 @@ function getLeaderboardXp(row) {
   );
 }
 
+function getLeaderboardRowForUser(data, user) {
+  if (!user) return null;
+  const usernameKey = claimKey(user.username);
+  return (
+    (Array.isArray(data.leaderboard) ? data.leaderboard : []).find(
+      (row) =>
+        (user.id && row.userId === user.id) ||
+        (usernameKey && claimKey(row.username) === usernameKey),
+    ) ?? null
+  );
+}
+
 function compareLeaderboard(a, b) {
   return getLeaderboardXp(b) - getLeaderboardXp(a);
 }
@@ -448,6 +460,28 @@ function isFounderUsername(username) {
   return claimKey(username) === claimKey(FOUNDER_USERNAME);
 }
 
+function seededAccountForUsername(username) {
+  const key = claimKey(username);
+  return SEEDED_ACCOUNTS.find((account) => claimKey(account.username) === key);
+}
+
+function applySeededAccountCredentials(user, seeded) {
+  if (!user || !seeded) return user;
+  return {
+    ...user,
+    username: seeded.username,
+    claimedUsername: seeded.username,
+    authProvider: "password",
+    passwordSalt: seeded.passwordSalt,
+    passwordHash: seeded.passwordHash,
+    badge: seeded.badge,
+    role: seeded.role,
+    moderator: seeded.role === "moderator",
+    xp: Math.max(Number(user.xp) || 0, seeded.xp),
+    rating: Math.max(Number(user.rating) || 0, seeded.xp),
+  };
+}
+
 function extractSaveXp(payload = {}) {
   const progress =
     payload.progressionV2 && typeof payload.progressionV2 === "object"
@@ -521,16 +555,61 @@ function upsertXpLeaderboard(data, user, totalXp) {
   return row;
 }
 
-function ensureUserLeaderboardRow(data, user) {
-  if (!isLeaderboardEligibleUser(user)) return null;
-  const saved = data.saves?.[user.id]?.payload ?? {};
-  const totalXp = Math.max(
-    extractSaveXp(saved),
-    Math.max(0, Number(user.xp) || 0),
+function canonicalAccountXp(data, user, payload = null) {
+  return Math.max(
+    extractSaveXp(payload ?? data.saves?.[user.id]?.payload ?? {}),
+    Math.max(0, Number(user?.xp) || 0),
+    getLeaderboardXp(getLeaderboardRowForUser(data, user)),
   );
+}
+
+function savePayloadWithXp(payload = {}, totalXp = 0) {
+  const next = structuredClone(
+    payload && typeof payload === "object" ? payload : {},
+  );
+  const progress =
+    next.progressionV2 && typeof next.progressionV2 === "object"
+      ? next.progressionV2
+      : {};
+  const xp = Math.max(0, Math.floor(Number(totalXp) || 0));
+  next.progressionV2 = {
+    ...progress,
+    xp,
+    totalXp: xp,
+    level: Math.max(
+      progressionLevelForXp(xp),
+      Math.max(1, Number(progress.level) || 1),
+    ),
+  };
+  return next;
+}
+
+function ensureCanonicalAccountProgress(data, user) {
+  if (!isLeaderboardEligibleUser(user)) return null;
+  const previous = data.saves?.[user.id] ?? null;
+  const totalXp = canonicalAccountXp(data, user, previous?.payload);
   user.xp = totalXp;
   user.rating = Math.max(Number(user.rating) || 0, totalXp);
-  return upsertXpLeaderboard(data, user, totalXp);
+  user.updatedAt = user.updatedAt || nowIso();
+  const previousXp = extractSaveXp(previous?.payload ?? {});
+  if (totalXp > previousXp || !previous) {
+    data.saves[user.id] = {
+      userId: user.id,
+      schemaVersion: Math.max(2, Number(previous?.schemaVersion) || 2),
+      payload: savePayloadWithXp(previous?.payload ?? {}, totalXp),
+      serverUpdatedAt: nowIso(),
+    };
+  }
+  return {
+    totalXp,
+    save: data.saves[user.id] ?? previous,
+    leaderboardRow: upsertXpLeaderboard(data, user, totalXp),
+  };
+}
+
+function ensureUserLeaderboardRow(data, user) {
+  if (!isLeaderboardEligibleUser(user)) return null;
+  return ensureCanonicalAccountProgress(data, user)?.leaderboardRow ?? null;
 }
 
 function ensureAllAccountLeaderboardRows(data) {
@@ -924,6 +1003,22 @@ async function writeLeaderboardUserToD1(env, user, totalXp = 0) {
     ),
   ]);
   return true;
+}
+
+async function writeCanonicalProgressToD1(env, data, user) {
+  if (!env.INFERNO_DB?.prepare || !isLeaderboardEligibleUser(user)) {
+    return false;
+  }
+  const canonical = ensureCanonicalAccountProgress(data, user);
+  if (canonical?.save) {
+    return writeSaveAndLeaderboardToD1(
+      env,
+      user,
+      canonical.save,
+      canonical.totalXp,
+    );
+  }
+  return writeLeaderboardUserToD1(env, user, canonical?.totalXp ?? user.xp);
 }
 
 async function writeFounderFriendRewardToD1(env, user, row, totalXp) {
@@ -1702,6 +1797,34 @@ export class InfernoRoom {
     return session?.inRoom && room ? `room:${room.code}` : "lobby";
   }
 
+  directChatChannel(userA = "", userB = "") {
+    return `dm:${[String(userA), String(userB)].sort().join(":")}`;
+  }
+
+  resolveDirectChatTarget(session, msg) {
+    if (msg.channel !== "friend") return { ok: true, direct: false };
+    const target =
+      (msg.userId && this.data.users[msg.userId]) ||
+      this.findUserByUsername(msg.username || "");
+    if (!target || target.id === session.user.id) {
+      return { ok: false, error: "friend_chat_target_not_found" };
+    }
+    if (this.isBlockedBetween(session.user.id, target.id)) {
+      return { ok: false, error: "friend_chat_blocked" };
+    }
+    const friendState = this.ensureFriendState(session.user.id);
+    if (!friendState.friends?.[target.id]) {
+      return { ok: false, error: "friend_required" };
+    }
+    return {
+      ok: true,
+      direct: true,
+      target,
+      targetSession: this.clientByUserId(target.id),
+      channel: this.directChatChannel(session.user.id, target.id),
+    };
+  }
+
   chatHistoryPayload(session) {
     this.pruneChatMessages();
     const channel = this.chatChannelForSession(session);
@@ -1780,6 +1903,9 @@ export class InfernoRoom {
         );
       }
       await writeUserSessionToD1(this.env, auth.user, auth.sessionToken);
+      await writeCanonicalProgressToD1(this.env, this.data, auth.user).catch(
+        () => false,
+      );
       await this.persist();
       const board = this.leaderboardSnapshot("casual", auth.user);
       return json({
@@ -1914,7 +2040,14 @@ export class InfernoRoom {
     if (!key || username.length < 2)
       return { ok: false, error: "invalid_username" };
     const ownerId = this.data.usernameClaims[key];
-    const existing = ownerId ? this.data.users[ownerId] : null;
+    let existing = ownerId ? this.data.users[ownerId] : null;
+    const seeded = seededAccountForUsername(username);
+    if (existing && seeded && !existing.passwordHash) {
+      existing = applySeededAccountCredentials(existing, seeded);
+      this.data.users[existing.id] = existing;
+      this.data.usernameClaims[key] = existing.id;
+      ensureCanonicalAccountProgress(this.data, existing);
+    }
     if (
       key === "clark" &&
       (!existing || existing.id !== "seed-clark") &&
@@ -2077,14 +2210,9 @@ export class InfernoRoom {
         auth.sessionToken,
         this.data.sessions[auth.sessionToken],
       ).catch(() => false);
-      await writeLeaderboardUserToD1(
-        this.env,
-        auth.user,
-        Math.max(
-          Number(auth.user.xp) || 0,
-          extractSaveXp(this.data.saves[auth.user.id]?.payload ?? {}),
-        ),
-      ).catch(() => false);
+      await writeCanonicalProgressToD1(this.env, this.data, auth.user).catch(
+        () => false,
+      );
       send(session.ws, {
         type: msg.type === "reconnect" ? "reconnect.ok" : "auth.ok",
         user: publicUser(auth.user),
@@ -2113,14 +2241,9 @@ export class InfernoRoom {
         auth.sessionToken,
         this.data.sessions[auth.sessionToken],
       ).catch(() => false);
-      await writeLeaderboardUserToD1(
-        this.env,
-        auth.user,
-        Math.max(
-          Number(auth.user.xp) || 0,
-          extractSaveXp(this.data.saves[auth.user.id]?.payload ?? {}),
-        ),
-      ).catch(() => false);
+      await writeCanonicalProgressToD1(this.env, this.data, auth.user).catch(
+        () => false,
+      );
       send(session.ws, {
         type: "auth.ok",
         user: publicUser(auth.user),
@@ -2152,14 +2275,9 @@ export class InfernoRoom {
         session.sessionToken,
         this.data.sessions[session.sessionToken],
       ).catch(() => false);
-      await writeLeaderboardUserToD1(
-        this.env,
-        session.user,
-        Math.max(
-          Number(session.user.xp) || 0,
-          extractSaveXp(this.data.saves[session.user.id]?.payload ?? {}),
-        ),
-      ).catch(() => false);
+      await writeCanonicalProgressToD1(this.env, this.data, session.user).catch(
+        () => false,
+      );
       send(session.ws, {
         type: "profile.usernameClaimed",
         username: result.username,
@@ -2342,7 +2460,14 @@ export class InfernoRoom {
       send(session.ws, { type: "error", error: "message_blocked" });
       return;
     }
-    const channel = this.chatChannelForSession(session);
+    const direct = this.resolveDirectChatTarget(session, msg);
+    if (!direct.ok) {
+      send(session.ws, { type: "error", error: direct.error });
+      return;
+    }
+    const channel = direct.direct
+      ? direct.channel
+      : this.chatChannelForSession(session);
     const payload = {
       type: "chat.message",
       from: session.user.username,
@@ -2353,6 +2478,9 @@ export class InfernoRoom {
       quick: msg.type === "quick.send",
       at: nowIso(),
       channel,
+      direct: Boolean(direct.direct),
+      toUserId: direct.target?.id ?? "",
+      toUsername: direct.target?.username ?? "",
     };
     this.pruneChatMessages();
     const chatRow = {
@@ -2369,11 +2497,16 @@ export class InfernoRoom {
     this.data.chatMessages.push(chatRow);
     writeChatMessageToD1(this.env, chatRow).catch(() => {});
     this.persist().catch(() => {});
-    this.broadcast(payload, "", session.user.id, {
-      roomOnly: session.inRoom,
-      channel,
-      roomCode: session.roomCode,
-    });
+    if (direct.direct) {
+      send(session.ws, payload);
+      if (direct.targetSession) send(direct.targetSession.ws, payload);
+    } else {
+      this.broadcast(payload, "", session.user.id, {
+        roomOnly: session.inRoom,
+        channel,
+        roomCode: session.roomCode,
+      });
+    }
   }
 
   async handleHttpChat(session, msg) {
@@ -2387,7 +2520,11 @@ export class InfernoRoom {
     if (!text || text === "[blocked]") {
       return { ok: false, error: "message_blocked" };
     }
-    const channel = this.chatChannelForSession(session);
+    const direct = this.resolveDirectChatTarget(session, msg);
+    if (!direct.ok) return { ok: false, error: direct.error };
+    const channel = direct.direct
+      ? direct.channel
+      : this.chatChannelForSession(session);
     const payload = {
       type: "chat.message",
       from: session.user.username,
@@ -2398,6 +2535,9 @@ export class InfernoRoom {
       quick: false,
       at: nowIso(),
       channel,
+      direct: Boolean(direct.direct),
+      toUserId: direct.target?.id ?? "",
+      toUsername: direct.target?.username ?? "",
     };
     this.pruneChatMessages();
     const chatRow = {
@@ -2414,11 +2554,16 @@ export class InfernoRoom {
     this.data.chatMessages.push(chatRow);
     writeChatMessageToD1(this.env, chatRow).catch(() => {});
     await this.persist();
-    this.broadcast(payload, "", session.user.id, {
-      roomOnly: session.inRoom,
-      channel,
-      roomCode: session.roomCode,
-    });
+    if (direct.direct) {
+      send(session.ws, payload);
+      if (direct.targetSession) send(direct.targetSession.ws, payload);
+    } else {
+      this.broadcast(payload, "", session.user.id, {
+        roomOnly: session.inRoom,
+        channel,
+        roomCode: session.roomCode,
+      });
+    }
     return { ok: true, message: payload };
   }
 
@@ -3020,6 +3165,7 @@ export class InfernoRoom {
   }
 
   profileSnapshot(session) {
+    ensureCanonicalAccountProgress(this.data, session.user);
     return {
       type: "profile.snapshot",
       user: publicUser(session.user),
