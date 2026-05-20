@@ -907,6 +907,7 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
   const port = server.address().port;
   const moderator = await makeWsClient(port);
   const joshua = await makeWsClient(port);
+  const billy = await makeWsClient(port);
 
   moderator.ws.send(
     JSON.stringify({
@@ -940,6 +941,22 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
   );
   assert.equal(joshuaAuth.user.badge, "Advanced Player");
 
+  billy.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "signin",
+      username: "Billy",
+      password: "BillyK2012",
+      age: 13,
+      deviceId: "billy-device",
+    }),
+  );
+  const billyAuth = await waitForMessage(
+    billy.messages,
+    (msg) => msg.type === "auth.ok",
+  );
+  assert.equal(billyAuth.user.badge, "Advanced Player 2.0");
+
   moderator.ws.send(
     JSON.stringify({ type: "leaderboard.get", playlist: "ranked" }),
   );
@@ -958,6 +975,11 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
   assert.ok(
     leaderboard.leaderboard.some(
       (row) => row.username === "Joshua" && row.badge === "Advanced Player",
+    ),
+  );
+  assert.ok(
+    leaderboard.leaderboard.some(
+      (row) => row.username === "Billy" && row.badge === "Advanced Player 2.0",
     ),
   );
 
@@ -985,6 +1007,31 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
   );
   assert.equal(updatedJoshua.xp, 9350);
   assert.equal(updatedJoshua.badge, "Advanced Player");
+
+  billy.ws.send(
+    JSON.stringify({
+      type: "save.sync",
+      schemaVersion: 4,
+      payload: { progressionV2: { xp: 7250, totalXp: 7250, level: 15 } },
+    }),
+  );
+  await waitForMessage(billy.messages, (msg) => msg.type === "save.synced");
+  billy.ws.send(
+    JSON.stringify({ type: "leaderboard.get", playlist: "casual" }),
+  );
+  const updatedBillyLeaderboard = await waitForMessage(
+    billy.messages,
+    (msg) =>
+      msg.type === "leaderboard.snapshot" &&
+      msg.leaderboard.some(
+        (row) => row.username === "Billy" && row.xp === 7250,
+      ),
+  );
+  const updatedBilly = updatedBillyLeaderboard.leaderboard.find(
+    (row) => row.username === "Billy",
+  );
+  assert.equal(updatedBilly.xp, 7250);
+  assert.equal(updatedBilly.badge, "Advanced Player 2.0");
 
   moderator.ws.send(
     JSON.stringify({
@@ -1065,6 +1112,7 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
   );
 
   moderator.ws.terminate();
+  billy.ws.terminate();
   banned.ws.terminate();
   bannedGuest.ws.terminate();
 });

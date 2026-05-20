@@ -78,6 +78,16 @@ const SEEDED_ACCOUNTS = [
       "cc5bb9482d5d701976e3c3b8a97aa38a05a785d0f53e889bd3e5f87085b0f8c7",
   },
   {
+    id: "seed-billy",
+    username: "Billy",
+    badge: "Advanced Player 2.0",
+    role: "player",
+    xp: 6100,
+    passwordSalt: "seed-billy-v1",
+    passwordHash:
+      "aef6bd6fe7a081f2ff1ecac7d743d10f621ac0bd1d9b704f07d26668c630a927",
+  },
+  {
     id: "seed-tosh",
     username: "Tosh the Sigma",
     badge: "Rizzler",
