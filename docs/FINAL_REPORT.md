@@ -6,7 +6,8 @@ Status: active work is the InfernoDrift4 static launch rescue. The current shipp
 
 - Repo: https://github.com/CAnimal4/InfernoDrift4
 - Pages target: https://canimal4.github.io/InfernoDrift4/
-- Cloudflare Worker URL: not verified yet
+- Replit primary backend: https://infernodrift4-online.replit.app / wss://infernodrift4-online.replit.app/ws
+- Cloudflare Worker fallback: wss://infernodrift4-online.clarkbythebay.workers.dev/ws
 
 ## Current Implementation Summary
 
@@ -28,8 +29,9 @@ Status: active work is the InfernoDrift4 static launch rescue. The current shipp
 ## Backend Status
 
 - Local Node backend is real/local and covered by tests/smoke.
-- Cloudflare Worker/Durable Object source exists but hosted online is not live.
-- Friends, persistent accounts, ranked persistence, cloud saves, DMs, reports, and live events remain backend-gated and must not be described as live product features.
+- Replit uses the Node backend as the production primary target. The published Replit URL must pass `/health`, CORS, WebSocket smoke, and Pages two-client checks before being claimed live.
+- Cloudflare Worker/Durable Object source and URL remain fallback-only.
+- Friends, persistent accounts, ranked persistence, cloud saves, DMs, reports, and live events remain backend-gated and must not be described as live unless the active backend verification passes.
 
 ## Required Verification Before Release Sign-Off
 
@@ -65,19 +67,21 @@ Latest Pages smoke:
 - Served the static InfernoDrift4 game with `script.js`; no React/Vite bundle detected.
 - Browser smoke started Campaign Survival, verified the Phase 3 mode catalog, completed a Race result, confirmed Max Arena, and reported public modes as `campaign-survival` and `max-arena`. Console output contained only expected headless WebGL `ReadPixels` warnings.
 
-For Cloudflare work:
+For hosted online work:
 
 ```bash
 npm run worker:check
 npm run worker:types
-INFERNO_ONLINE_SMOKE_URL=wss://<verified-worker>/ws node smoke_online_local.mjs
+curl https://infernodrift4-online.replit.app/health
+INFERNO_ONLINE_SMOKE_URL=wss://infernodrift4-online.replit.app/ws node smoke_online_local.mjs
+INFERNO_ONLINE_SMOKE_URL=wss://infernodrift4-online.clarkbythebay.workers.dev/ws node smoke_online_local.mjs
 ```
 
-Hosted online remains blocked until a real Worker URL passes the hosted smoke and a Pages two-client browser test.
+Hosted online remains blocked until the Replit URL passes hosted smoke and a Pages two-client browser test. The Worker URL stays as a fallback, not the primary.
 
 ## Known Limitations
 
-- Online/social remains local-only or backend-gated in this phase; the static game is honest about offline status.
+- Online/social remains backend-gated in this phase; the static game is honest about offline, HTTP-fallback, and live-room status.
 - Keyboard remapping and controller support are implemented for the static launch surface, but physical controller QA still depends on browser/device availability.
 - Audio runtime and dynamic music are not complete.
-- Hosted online requires Cloudflare credentials, deployment, and verification.
+- Hosted online requires Replit publish/deployment and verification.

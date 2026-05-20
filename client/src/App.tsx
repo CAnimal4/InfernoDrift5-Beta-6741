@@ -58,6 +58,17 @@ const DEFAULT_INPUT: InputFrame = {
   jump: false,
   backflip: false,
 };
+const ONLINE_CONNECT_TIMEOUT_MS = 8000;
+const REPLIT_PRODUCTION_BACKEND_URL =
+  "wss://infernodrift4-online.replit.app/ws";
+const WORKER_FALLBACK_BACKEND_URL =
+  "wss://infernodrift4-online.clarkbythebay.workers.dev/ws";
+const LEGACY_PRODUCTION_BACKEND_URLS = new Set([
+  WORKER_FALLBACK_BACKEND_URL,
+  "wss://infernodrift4-online.clarkbythebay.workers.dev/ws?room=global-v2",
+  "wss://infernodrift4-online.clarkbythebay.workers.dev/ws?room=global-v3",
+]);
+const DEFAULT_BACKUP_SERVER_URLS = [WORKER_FALLBACK_BACKEND_URL];
 
 interface OnlineState {
   status: "offline" | "connecting" | "live" | "error";
@@ -78,6 +89,8 @@ declare global {
     advanceTime?: (ms: number) => void;
     __infernodriftTestApi?: Record<string, unknown>;
     INFERNO_SERVER_URL?: string;
+    INFERNO_ONLINE_URL?: string;
+    INFERNO_BACKUP_ONLINE_URLS?: string[] | string;
   }
 }
 
@@ -115,10 +128,7 @@ export function App() {
   const [accent, setAccent] = useState("#35e8ff");
   const [online, setOnline] = useState<OnlineState>(() => ({
     status: "offline",
-    serverUrl:
-      window.INFERNO_SERVER_URL ||
-      localStorage.getItem("infernoDrift4.serverUrl") ||
-      "",
+    serverUrl: getDefaultOnlineServerUrl(),
     username: localStorage.getItem("infernoDrift4.username") || "Drifter",
     age: null,
     roomCode: null,
@@ -387,57 +397,155 @@ export function App() {
   }, [readInputFrame]);
 
   const connectOnline = useCallback(() => {
-    if (!online.serverUrl) {
+    const primary = canonicalOnlineServerUrl(
+      online.serverUrl || getDefaultOnlineServerUrl(),
+    );
+    const candidates = uniqueServerUrls([
+      primary,
+      ...getFallbackServerUrls(primary),
+    ]);
+    if (!candidates.length) {
       setOnline((prev) => ({
         ...prev,
-        error: "Set a local or Cloudflare WebSocket URL first.",
+        error:
+          "Online services are unavailable on this network. You can still play Guest Offline.",
       }));
       return;
     }
-    try {
-      wsRef.current?.close();
-      const url = normalizeWsUrl(online.serverUrl);
-      const ws = new WebSocket(url);
-      wsRef.current = ws;
-      setOnline((prev) => ({
-        ...prev,
-        status: "connecting",
-        error: null,
-        serverUrl: url,
-      }));
-      ws.addEventListener("open", () => {
-        localStorage.setItem("infernoDrift4.serverUrl", url);
-        localStorage.setItem("infernoDrift4.username", online.username);
-        ws.send(
-          JSON.stringify({
-            type: "auth.guest",
-            version: 1,
-            username: normalizeUsername(online.username),
-            age: online.age ?? undefined,
-          }),
-        );
-      });
-      ws.addEventListener("message", (event) => {
-        const msg = JSON.parse(String(event.data));
-        setOnline((prev) => handleOnlineMessage(prev, msg));
-      });
-      ws.addEventListener("close", () =>
-        setOnline((prev) => ({ ...prev, status: "offline", roomCode: null })),
-      );
-      ws.addEventListener("error", () =>
+    wsRef.current?.close();
+    let connectTimer = 0;
+    const openSocket = (url: string, fallbackUrls: string[]) => {
+      try {
+        const ws = new WebSocket(url);
+        let settled = false;
+        let authenticated = false;
+        wsRef.current = ws;
+        setOnline((prev) => ({
+          ...prev,
+          status: "connecting",
+          error: null,
+          serverUrl: url,
+        }));
+        const clearConnectTimer = () => {
+          if (connectTimer) window.clearTimeout(connectTimer);
+          connectTimer = 0;
+        };
+        const tryFallback = (message: string) => {
+          if (settled) return false;
+          settled = true;
+          clearConnectTimer();
+          if (!fallbackUrls.length) return false;
+          const nextUrl = fallbackUrls[0];
+          try {
+            ws.close();
+          } catch {
+            // Ignore close races while switching backends.
+          }
+          setOnline((prev) => ({
+            ...prev,
+            status: "connecting",
+            serverUrl: nextUrl,
+            roomCode: null,
+            error: message,
+          }));
+          openSocket(nextUrl, fallbackUrls.slice(1));
+          return true;
+        };
+        connectTimer = window.setTimeout(() => {
+          if (wsRef.current !== ws || authenticated) return;
+          if (
+            tryFallback("Primary backend failed; trying fallback backend.")
+          ) {
+            return;
+          }
+          wsRef.current = null;
+          setOnline((prev) => ({
+            ...prev,
+            status: "error",
+            roomCode: null,
+            error:
+              "Online services are unavailable on this network. You can still play Guest Offline.",
+          }));
+          try {
+            ws.close();
+          } catch {
+            // Ignore close races after timeout.
+          }
+        }, ONLINE_CONNECT_TIMEOUT_MS);
+        ws.addEventListener("open", () => {
+          localStorage.setItem("infernoDrift4.serverUrl", url);
+          localStorage.setItem("infernoDrift4.username", online.username);
+          ws.send(
+            JSON.stringify({
+              type: "auth.guest",
+              version: 1,
+              username: normalizeUsername(online.username),
+              age: online.age ?? undefined,
+            }),
+          );
+        });
+        ws.addEventListener("message", (event) => {
+          let msg: Record<string, unknown>;
+          try {
+            msg = JSON.parse(String(event.data));
+          } catch {
+            setOnline((prev) => ({
+              ...prev,
+              error: "Ignored malformed backend message.",
+            }));
+            return;
+          }
+          if (msg.type === "auth.ok" || msg.type === "room.snapshot") {
+            authenticated = true;
+            settled = true;
+            clearConnectTimer();
+          }
+          setOnline((prev) => handleOnlineMessage(prev, msg));
+        });
+        ws.addEventListener("close", () => {
+          if (wsRef.current !== ws) return;
+          clearConnectTimer();
+          if (
+            !authenticated &&
+            tryFallback("Primary backend failed; trying fallback backend.")
+          ) {
+            return;
+          }
+          wsRef.current = null;
+          setOnline((prev) => ({
+            ...prev,
+            status: "offline",
+            roomCode: null,
+          }));
+        });
+        ws.addEventListener("error", () => {
+          if (
+            !authenticated &&
+            tryFallback("Primary backend failed; trying fallback backend.")
+          ) {
+            return;
+          }
+          setOnline((prev) => ({
+            ...prev,
+            status: "error",
+            error:
+              "Online services are unavailable on this network. You can still play Guest Offline.",
+          }));
+          wsRef.current = null;
+        });
+      } catch {
+        if (fallbackUrls.length) {
+          openSocket(fallbackUrls[0], fallbackUrls.slice(1));
+          return;
+        }
         setOnline((prev) => ({
           ...prev,
           status: "error",
-          error: "Backend connection failed.",
-        })),
-      );
-    } catch {
-      setOnline((prev) => ({
-        ...prev,
-        status: "error",
-        error: "Invalid backend URL.",
-      }));
-    }
+          error: "Invalid backend URL.",
+        }));
+      }
+    };
+    openSocket(candidates[0], candidates.slice(1));
   }, [online.age, online.serverUrl, online.username]);
 
   const sendOnline = useCallback((payload: Record<string, unknown>) => {
@@ -1057,7 +1165,7 @@ export function App() {
                       {online.error ||
                         (online.status === "live"
                           ? `Room ${online.roomCode ?? "lobby"} synced. Quick chat and 13+ moderated lobby chat are active.`
-                          : "Set a WebSocket backend for rooms, social, and cloud saves.")}
+                          : "Replit is the primary backend; Worker fallback and Guest Offline stay available if the network blocks it.")}
                     </span>
                   </div>
                 </div>
@@ -1259,7 +1367,7 @@ export function App() {
                     </ul>
                     <ul id="online-social-list" className="menu-list compact">
                       <li>
-                        Friends, blocks, reports, and DMs require D1 backend
+                        Friends, blocks, reports, and DMs require online backend
                         persistence.
                       </li>
                     </ul>
@@ -1496,12 +1604,59 @@ function handleOnlineMessage(
 }
 
 function normalizeWsUrl(value: string): string {
-  if (value.startsWith("ws://") || value.startsWith("wss://")) return value;
-  if (value.startsWith("http://"))
-    return `ws://${value.slice("http://".length)}`;
-  if (value.startsWith("https://"))
-    return `wss://${value.slice("https://".length)}`;
-  return `wss://${value}`;
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith("ws://") || trimmed.startsWith("wss://"))
+    return trimmed;
+  if (trimmed.startsWith("http://"))
+    return `ws://${trimmed.slice("http://".length)}`;
+  if (trimmed.startsWith("https://"))
+    return `wss://${trimmed.slice("https://".length)}`;
+  return `wss://${trimmed}`;
+}
+
+function canonicalOnlineServerUrl(value: string): string {
+  const normalized = normalizeWsUrl(value);
+  if (!normalized) return "";
+  return LEGACY_PRODUCTION_BACKEND_URLS.has(normalized)
+    ? REPLIT_PRODUCTION_BACKEND_URL
+    : normalized;
+}
+
+function parseServerUrlList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => parseServerUrlList(entry));
+  }
+  return String(value || "")
+    .split(/[\s,]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function uniqueServerUrls(urls: string[]): string[] {
+  return Array.from(
+    new Set(
+      urls.map(normalizeWsUrl).filter((url): url is string =>
+        Boolean(url),
+      ),
+    ),
+  );
+}
+
+function getFallbackServerUrls(primary: string): string[] {
+  return uniqueServerUrls([
+    ...parseServerUrlList(window.INFERNO_BACKUP_ONLINE_URLS),
+    ...DEFAULT_BACKUP_SERVER_URLS,
+  ]).filter((url) => url !== primary);
+}
+
+function getDefaultOnlineServerUrl(): string {
+  return canonicalOnlineServerUrl(
+    window.INFERNO_SERVER_URL ||
+      window.INFERNO_ONLINE_URL ||
+      localStorage.getItem("infernoDrift4.serverUrl") ||
+      REPLIT_PRODUCTION_BACKEND_URL,
+  );
 }
 
 function resolveDeviceType(mode: "auto" | "desktop" | "tablet" | "phone") {

@@ -17,7 +17,7 @@ The React/Vite code in `client/` and typed packages in `packages/` remain refere
 2. Stabilize existing InfernoDrift4-style gameplay before broad feature work: driving, drift, boost, ramps, hunters, Max Arena, touch controls, and saves.
 3. Clean the active static HUD, radar, menu, and garage without changing the recognizable InfernoDrift4 playfield feel.
 4. Add offline modes, progression, replay/highlight, and minigame depth only after the static core stays fun and screenshot-reviewed.
-5. Keep online honest: local backend is real/local, hosted Cloudflare online is blocked until a verified Worker URL passes health, WebSocket smoke, and Pages two-client testing.
+5. Keep online honest: Replit is the production primary backend, the verified Cloudflare Worker stays as fallback, and Guest Offline remains available when online services fail.
 
 ## Acceptance
 
@@ -26,4 +26,4 @@ The React/Vite code in `client/` and typed packages in `packages/` remain refere
 - Campaign Survival and Max Arena preserve InfernoDrift4 readability and improve feedback.
 - Radar is forward-relative: top is front, left is car-left, right is car-right, bottom is behind.
 - Docs and reports do not claim the React/Vite tree is the active shipped game.
-- Hosted online is not called live until Cloudflare deployment and verification actually succeed.
+- Hosted online is not called live until the Replit deployment passes `/health`, WebSocket smoke, and Pages two-client testing; the Worker URL remains fallback-only.

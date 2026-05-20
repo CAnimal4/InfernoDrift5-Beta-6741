@@ -2093,6 +2093,7 @@ const onlineState = {
   connectionReport: [],
   connectionTestStatus: "idle",
   lastConnectionTestAt: 0,
+  fallbackAttempted: false,
   lastCloseCode: 0,
   timeoutReason: "",
   chatSendStatus: "idle",
@@ -4244,10 +4245,16 @@ async function selectReachableBackendUrl() {
   );
   if (!candidates.length) return false;
   const startingUrl = onlineState.backendUrl;
+  let firstHealthy = null;
+  onlineState.fallbackAttempted = false;
   for (const candidate of candidates) {
     onlineState.backendUrl = candidate;
     const health = await checkOnlineHealth();
-    if (health.ok) {
+    if (!health.ok) continue;
+    const websocket = await probeWebSocketUrl(candidate);
+    if (!firstHealthy) firstHealthy = { candidate, websocket };
+    if (websocket.ok) {
+      onlineState.fallbackAttempted = candidate !== startingUrl;
       if (candidate !== startingUrl) {
         setOnlineStatus(
           "checking",
@@ -4258,6 +4265,19 @@ async function selectReachableBackendUrl() {
       }
       return true;
     }
+  }
+  if (firstHealthy) {
+    onlineState.backendUrl = firstHealthy.candidate;
+    onlineState.fallbackAttempted = firstHealthy.candidate !== startingUrl;
+    if (firstHealthy.candidate !== startingUrl) {
+      setOnlineStatus(
+        "checking",
+        "Using HTTPS fallback backend",
+        firstHealthy.candidate.replace(/^wss?:\/\//, ""),
+      );
+      saveOnlineConfig();
+    }
+    return true;
   }
   onlineState.backendUrl = startingUrl;
   await checkOnlineHealth();
@@ -4306,9 +4326,12 @@ function renderOnlineDiagnostics() {
   const health = onlineState.backendHealth?.ok
     ? `ok ${onlineState.backendHealth.status || 200}`
     : describeOnlineError(onlineState.backendHealth?.error || "health_failed");
-  const fallbackAttempted = onlineState.connectionReport.some(
-    (row, index) => index > 0 && (row.health || row.websocket || row.httpFallback),
-  );
+  const fallbackAttempted =
+    onlineState.fallbackAttempted ||
+    onlineState.connectionReport.some(
+      (row, index) =>
+        index > 0 && (row.health || row.websocket || row.httpFallback),
+    );
   const wsStatus = isOnlineSocketOpen()
     ? "connected"
     : onlineState.transport === "http-fallback"

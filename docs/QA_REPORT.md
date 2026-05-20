@@ -7,7 +7,8 @@ Updated for the InfernoDrift4 static launch rescue.
 - Active launch client: root `index.html`, `script.js`, `style.css`
 - Static build: `scripts/build-site.mjs` -> `dist/`
 - Local backend: `apps/server`
-- Cloudflare Worker scaffold: `apps/worker`
+- Replit Node backend target: `apps/server`
+- Cloudflare Worker fallback: `apps/worker`
 
 The React/Vite client is not current launch proof.
 
@@ -79,10 +80,11 @@ Latest Pages smoke, run on 2026-05-16:
 
 Local backend smoke must pass before any online UI work is trusted. Hosted online is blocked until:
 
-- Cloudflare Worker deploy succeeds.
-- `/health` responds from the deployed Worker.
-- `INFERNO_ONLINE_SMOKE_URL=wss://.../ws node smoke_online_local.mjs` passes.
-- The deployed Pages client completes a two-client room/chat test against that Worker.
+- Replit deployment publishes `infernodrift4-online`.
+- `/health` responds from `https://infernodrift4-online.replit.app`.
+- `INFERNO_ONLINE_SMOKE_URL=wss://infernodrift4-online.replit.app/ws node smoke_online_local.mjs` passes.
+- Worker fallback remains available at `wss://infernodrift4-online.clarkbythebay.workers.dev/ws`.
+- The deployed Pages client completes a two-client room/chat test against Replit and degrades cleanly to Worker fallback or Guest Offline when Replit fails.
 
 ## Known Noise
 
