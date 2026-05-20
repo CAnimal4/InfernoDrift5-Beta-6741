@@ -269,30 +269,55 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     state.authStatus = "signing-in";
     const { auth, firestore } = internals.sdk;
     const email = usernameToFirebaseEmail(validation.username);
+    const usernameRef = firestore.doc(
+      internals.db,
+      "usernames",
+      validation.usernameLower,
+    );
+    const existingUsername = await withTimeout(
+      firestore.getDoc(usernameRef),
+      timeoutMs,
+      "auth_timeout",
+    );
     let credential = null;
-    try {
-      credential = await withTimeout(
-        auth.signInWithEmailAndPassword(internals.auth, email, password),
-        timeoutMs,
-        "auth_timeout",
-      );
-    } catch (error) {
-      const code = mapFirebaseError(error);
-      if (code !== "account_not_found") throw error;
-      credential = await withTimeout(
-        auth.createUserWithEmailAndPassword(internals.auth, email, password),
-        timeoutMs,
-        "auth_timeout",
-      );
+    if (existingUsername.exists()) {
+      try {
+        credential = await withTimeout(
+          auth.signInWithEmailAndPassword(internals.auth, email, password),
+          timeoutMs,
+          "auth_timeout",
+        );
+      } catch (error) {
+        throw new Error(mapFirebaseError(error) || "invalid_credentials");
+      }
+    } else {
+      try {
+        credential = await withTimeout(
+          auth.createUserWithEmailAndPassword(internals.auth, email, password),
+          timeoutMs,
+          "auth_timeout",
+        );
+      } catch (error) {
+        const code = mapFirebaseError(error);
+        if (code !== "username_taken") {
+          throw new Error(code);
+        }
+        try {
+          credential = await withTimeout(
+            auth.signInWithEmailAndPassword(internals.auth, email, password),
+            timeoutMs,
+            "auth_timeout",
+          );
+        } catch (signInError) {
+          throw new Error(
+            mapFirebaseError(signInError) || "invalid_credentials",
+          );
+        }
+      }
     }
     const user = credential.user;
     const badges = getFirebaseBadges(validation.username);
     await firestore.runTransaction(internals.db, async (transaction) => {
-      const usernameRef = firestore.doc(
-        internals.db,
-        "usernames",
-        validation.usernameLower,
-      );
       const usernameDoc = await transaction.get(usernameRef);
       if (usernameDoc.exists() && usernameDoc.data()?.uid !== user.uid) {
         throw new Error("username_taken");

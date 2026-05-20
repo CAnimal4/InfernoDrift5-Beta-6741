@@ -44,6 +44,12 @@ try {
   await page.evaluate(() =>
     window.__infernodriftTestApi.dismissSchoolGateForTest(),
   );
+  await page.waitForFunction(
+    () =>
+      !document.querySelector("#school-gate")?.classList.contains("show") &&
+      document.querySelector("#overlay")?.classList.contains("show"),
+  );
+  await page.waitForTimeout(300);
 
   let state = JSON.parse(
     await page.evaluate(() => window.render_game_to_text()),
@@ -54,6 +60,76 @@ try {
   assert.equal(state.online.configured, true);
   assert.equal(state.online.backendUrl, "");
   assert.deepEqual(state.online.backupBackendUrls, []);
+
+  const accountUsername = `Smoke${Date.now().toString().slice(-8)}`;
+  await page.locator("#start-account-username").fill(accountUsername);
+  await page.locator("#start-account-password").fill("smoke12345");
+  await page.locator("#start-account-age").fill("13");
+  await page.evaluate(() =>
+    document
+      .querySelector("#start-account-submit")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+  );
+  await page
+    .waitForFunction((username) => {
+      const state = JSON.parse(window.render_game_to_text());
+      return (
+        state.online.authenticated === true &&
+        state.online.username === username &&
+        state.online.transport === "firebase"
+      );
+    }, accountUsername)
+    .catch(async (error) => {
+      const state = JSON.parse(
+        await page.evaluate(() => window.render_game_to_text()),
+      );
+      throw new Error(
+        `Firebase account smoke failed: ${error.message}; status=${JSON.stringify(
+          {
+            online: state.online,
+            startStatus:
+              (await page.locator("#start-account-status").textContent()) ?? "",
+            consoleErrors,
+          },
+        )}`,
+      );
+    });
+
+  await page.evaluate(() =>
+    window.__infernodriftTestApi.openMenuTab("profile"),
+  );
+  await page.evaluate(() =>
+    document
+      .querySelector("#profile-logout")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+  );
+  await page.waitForFunction(() => {
+    const state = JSON.parse(window.render_game_to_text());
+    return state.online.authenticated === false;
+  });
+  await page.evaluate((username) => {
+    const setValue = (selector, value) => {
+      const input = document.querySelector(selector);
+      if (!input) return;
+      input.value = value;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    setValue("#start-account-username", username);
+    setValue("#start-account-password", "smoke12345");
+    setValue("#start-account-age", "13");
+    document
+      .querySelector("#start-account-submit")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  }, accountUsername);
+  await page.waitForFunction((username) => {
+    const state = JSON.parse(window.render_game_to_text());
+    return (
+      state.online.authenticated === true &&
+      state.online.username === username &&
+      state.online.transport === "firebase"
+    );
+  }, accountUsername);
 
   const result = await page.evaluate(() =>
     window.__infernodriftTestApi.runConnectionTest(),
@@ -107,6 +183,7 @@ try {
       {
         firebaseDefault: state.online.backendMode,
         projectId: state.online.firebase.projectId,
+        account: accountUsername,
         diagnostics: state.online.firebase.diagnosticsStatus,
         transport: state.online.transport,
         websocket: result.report[0]?.websocket?.error,
