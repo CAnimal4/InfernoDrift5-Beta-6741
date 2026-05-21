@@ -810,13 +810,18 @@ export function migrateSave(value: unknown): {
     schemaVersion?: unknown;
     progression?: Partial<ProgressionState>;
   };
+  const storedXp = Math.max(
+    0,
+    Math.floor(Number(record.progression?.xp) || 0),
+    getXPForLevel(Number(record.progression?.level) || 1),
+  );
   return {
     schemaVersion: 2,
     progression: {
       ...fallback.progression,
       ...(record.progression ?? {}),
-      xp: Math.max(0, Math.floor(Number(record.progression?.xp) || 0)),
-      level: getLevelFromXP(Number(record.progression?.xp) || 0),
+      xp: storedXp,
+      level: getLevelFromXP(storedXp),
       embers: Math.max(0, Math.floor(Number(record.progression?.embers) || 0)),
       medals: { ...(record.progression?.medals ?? {}) },
       unlocked: Array.isArray(record.progression?.unlocked)

@@ -942,6 +942,24 @@ assert.ok(
       category.options.some((option) => option.id === "blue-flare"),
   ),
 );
+const legacyGarageMigration = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetLocalProgressionForTest();
+  window.__infernodriftTestApi.applySavePayloadForTest(
+    {
+      progressionV2: { schemaVersion: 2, xp: 0, totalXp: 0, level: 7, embers: 180 },
+      customization: { paintId: "frost" },
+    },
+    { forceProgression: true },
+  );
+  const garage = JSON.parse(window.render_game_to_text()).garage;
+  return garage.market
+    .find((category) => category.key === "paintId")
+    .options.find((option) => option.id === "frost");
+});
+assert.equal(legacyGarageMigration.unlockLevel, 3);
+assert.equal(legacyGarageMigration.unlocked, true);
+assert.equal(legacyGarageMigration.owned, true);
+assert.equal(legacyGarageMigration.equipped, true);
 const garageBuyState = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.applySavePayloadForTest(

@@ -2654,6 +2654,20 @@ function getDefaultOwnedCosmetics() {
   ];
 }
 
+function getCosmeticIdsUnlockedThroughLevel(level = 1) {
+  const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
+  return GARAGE_CATEGORIES.flatMap((category) =>
+    category.options
+      .filter((option) => getOptionUnlockLevel(option) <= safeLevel)
+      .map((option) => getCosmeticId(category.key, option.id)),
+  );
+}
+
+function getLegacyLevelFloorXp(source = {}) {
+  const storedLevel = Math.max(1, Math.floor(Number(source.level) || 1));
+  return getXPForLevel(storedLevel);
+}
+
 function createProgressionV2() {
   const dailySeed = makeDailySeed();
   const weeklySeed = makeWeeklySeed();
@@ -2699,11 +2713,19 @@ function createProgressionV2() {
 function normalizeProgressionV2(value = {}) {
   const base = createProgressionV2();
   const source = value && typeof value === "object" ? value : {};
-  const totalXp = Math.max(0, Number(source.totalXp ?? source.xp) || 0);
+  const totalXp = Math.max(
+    0,
+    Number(source.totalXp) || 0,
+    Number(source.xp) || 0,
+    getLegacyLevelFloorXp(source),
+  );
   const daily =
     source.daily && typeof source.daily === "object" ? source.daily : {};
   const weekly =
     source.weekly && typeof source.weekly === "object" ? source.weekly : {};
+  const legacyGarageUnlockSave =
+    Number.isFinite(Number(source.schemaVersion)) &&
+    Number(source.schemaVersion) < PROGRESSION_SCHEMA_VERSION;
   const dailyGiftSalt = normalizeDailyGiftSalt(
     source.dailyGiftSalt ?? base.dailyGiftSalt,
   );
@@ -2730,9 +2752,15 @@ function normalizeProgressionV2(value = {}) {
     unlockedRewards: Array.isArray(source.unlockedRewards)
       ? [...new Set([...base.unlockedRewards, ...source.unlockedRewards])]
       : base.unlockedRewards,
-    ownedCosmetics: Array.isArray(source.ownedCosmetics)
-      ? [...new Set([...base.ownedCosmetics, ...source.ownedCosmetics])]
-      : base.ownedCosmetics,
+    ownedCosmetics: [
+      ...new Set([
+        ...base.ownedCosmetics,
+        ...(Array.isArray(source.ownedCosmetics) ? source.ownedCosmetics : []),
+        ...(legacyGarageUnlockSave
+          ? getCosmeticIdsUnlockedThroughLevel(getLevelFromXP(totalXp))
+          : []),
+      ]),
+    ],
     claimedLevelRewards: Array.isArray(source.claimedLevelRewards)
       ? [...new Set(source.claimedLevelRewards.map((item) => String(item)))]
       : base.claimedLevelRewards,
@@ -2819,6 +2847,18 @@ function ownCosmetic(cosmeticId) {
   if (progression.ownedCosmetics.includes(cosmeticId)) return false;
   progression.ownedCosmetics.push(cosmeticId);
   return true;
+}
+
+function ownEquippedGarageCosmetics() {
+  const owned = [];
+  GARAGE_CATEGORIES.forEach((category) => {
+    const optionId = customization[category.key];
+    const option = category.options.find((item) => item.id === optionId);
+    if (!option) return;
+    const cosmeticId = getCosmeticId(category.key, option.id);
+    if (ownCosmetic(cosmeticId)) owned.push(cosmeticId);
+  });
+  return owned;
 }
 
 function awardLevelRewards(oldLevel, newLevel, { quiet = false } = {}) {
@@ -4598,6 +4638,7 @@ function applyPersistentSavePayload(data, { forceProgression = true } = {}) {
       garageState.loadouts[0] = makeGarageLoadout(0, { ...customization });
       syncActiveLoadoutFromCustomization();
     }
+    ownEquippedGarageCosmetics();
     hydrateControlBindings(data.controlBindings);
     if (
       data.maxTeamCustomization &&

@@ -60,11 +60,17 @@ test("progression curve scales levels, progress, rewards, and migrated Embers", 
   );
 
   const migrated = migrateSave({
-    progression: { xp: getXPForLevel(4) + 12, level: 99, embers: 140 },
+    progression: { xp: getXPForLevel(4) + 12, level: 2, embers: 140 },
   });
   assert.equal(migrated.progression.level, 4);
   assert.equal(migrated.progression.embers, 140);
   assert.deepEqual(migrated.progression.claimedLevelRewards, []);
+
+  const legacyLevelOnly = migrateSave({
+    progression: { xp: 0, level: 7, embers: 25 },
+  });
+  assert.equal(legacyLevelOnly.progression.level, 7);
+  assert.equal(legacyLevelOnly.progression.xp, getXPForLevel(7));
 });
 
 test("radar exposes IDs, labels, priority, threat, closing speed, and normalized position", () => {

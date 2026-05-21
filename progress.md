@@ -353,3 +353,9 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 
 - Tightened `PLAY NOW` credential detection so a prefilled username or age alone no longer triggers account validation; only a real username plus password routes to Login / Sign Up.
 - Expanded smoke coverage for blank, username-only, age-only, and filled credential states.
+
+2026-05-21 garage progression/ownership migration fix:
+
+- Fixed old/Replit/Cloudflare progression migration so a stored level now contributes the minimum XP for that level instead of being overwritten by missing/low XP.
+- Preserved legacy garage unlocks and currently equipped cosmetics as owned during save load, preventing level-unlocked or previously selected paint from asking to unlock/buy again.
+- Added smoke coverage for a level 7 legacy save with level 3 paint equipped/owned/unlocked.
