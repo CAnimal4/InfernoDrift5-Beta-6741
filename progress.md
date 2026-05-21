@@ -348,3 +348,8 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Updated `PLAY NOW` so filled account credentials route through Login / Sign Up instead of silently starting a guest profile; blank credentials still start guest/offline quickly.
 - Added extra battle laser feedback: muzzle sparks, shield sparks, cover impact sparks, hit sparks, and a brighter KO spark burst.
 - Cache-busted the static app assets for the Pages deployment.
+
+2026-05-21 Play Now blank-field fix:
+
+- Tightened `PLAY NOW` credential detection so a prefilled username or age alone no longer triggers account validation; only a real username plus password routes to Login / Sign Up.
+- Expanded smoke coverage for blank, username-only, age-only, and filled credential states.

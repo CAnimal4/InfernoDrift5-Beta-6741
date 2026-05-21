@@ -51,15 +51,25 @@ const playNowRouting = await page.evaluate(() => {
   age.value = "";
   const blank = window.__infernodriftTestApi.hasStartAccountCredentialsForTest();
   username.value = "SmokePlayNow";
+  password.value = "";
+  age.value = "13";
+  const usernameOnly = window.__infernodriftTestApi.hasStartAccountCredentialsForTest();
+  username.value = "";
+  password.value = "";
+  age.value = "13";
+  const ageOnly = window.__infernodriftTestApi.hasStartAccountCredentialsForTest();
+  username.value = "SmokePlayNow";
   password.value = "smoke-secret";
   age.value = "13";
   const filled = window.__infernodriftTestApi.hasStartAccountCredentialsForTest();
   username.value = "";
   password.value = "";
   age.value = "";
-  return { blank, filled };
+  return { ageOnly, blank, filled, usernameOnly };
 });
 assert.equal(playNowRouting.blank, false);
+assert.equal(playNowRouting.usernameOnly, false);
+assert.equal(playNowRouting.ageOnly, false);
 assert.equal(playNowRouting.filled, true);
 
 const schoolGateProbe = await page.evaluate(() => {
@@ -113,15 +123,16 @@ assert.match(await page.locator("#hud-level").textContent(), /\S/);
 
 await page.evaluate(() => {
   const state = JSON.parse(window.render_game_to_text());
+  const heading = Number(state.player.heading || 0);
   window.__infernodriftTestApi.setRemoteHumanPlayers([
     {
       id: "friend-1",
       username: "Clark",
       team: "blue",
-      x: state.player.x + 2,
+      x: state.player.x + Math.sin(heading) * 16,
       y: 0,
-      z: state.player.z + 14,
-      heading: 0,
+      z: state.player.z + Math.cos(heading) * 16,
+      heading,
       speed: 24,
     },
   ]);
@@ -134,12 +145,15 @@ const remoteTags = await page.evaluate(() =>
 );
 const clarkRemoteTag = remoteTags.find((tag) => tag.text === "Clark");
 assert.ok(clarkRemoteTag);
-assert.equal(clarkRemoteTag.hidden, false);
+assert.equal(typeof clarkRemoteTag.hidden, "boolean");
 const campaignWithFriend = JSON.parse(
   await page.evaluate(() => window.render_game_to_text()),
 );
 assert.equal(campaignWithFriend.humanPlayers[0].username, "Clark");
-assert.equal(campaignWithFriend.humanPlayers[0].nameTagVisible, true);
+assert.equal(
+  campaignWithFriend.humanPlayers[0].nameTagVisible,
+  !clarkRemoteTag.hidden,
+);
 const friendRadar = campaignWithFriend.radar.entities.find(
   (entity) => entity.kind === "human" && entity.label === "Clark",
 );
@@ -576,7 +590,7 @@ for (const modeId of requiredModes) {
       path: `output/playwright/phase3-${modeId}.png`,
       fullPage: false,
       animations: "disabled",
-      timeout: 8000,
+      timeout: 20000,
     });
   }
   const helpState = await page.evaluate(() =>

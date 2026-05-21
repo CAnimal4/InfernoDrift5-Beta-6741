@@ -5969,8 +5969,7 @@ function submitStartAccount() {
 function hasStartAccountCredentials() {
   const username = String(startAccountUsername?.value || "").trim();
   const password = String(startAccountPassword?.value || "");
-  const age = String(startAccountAge?.value || "").trim();
-  return Boolean(username || password || age);
+  return Boolean(username && password);
 }
 
 function startGuestProfile() {
