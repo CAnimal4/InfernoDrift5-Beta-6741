@@ -42,6 +42,26 @@ assert.equal(
 assert.equal(await page.locator("#start-btn").textContent(), "Play as Guest");
 assert.equal(await page.locator("#tutorial-btn").textContent(), "Start Tutorial");
 
+const playNowRouting = await page.evaluate(() => {
+  const username = document.getElementById("start-account-username");
+  const password = document.getElementById("start-account-password");
+  const age = document.getElementById("start-account-age");
+  username.value = "";
+  password.value = "";
+  age.value = "";
+  const blank = window.__infernodriftTestApi.hasStartAccountCredentialsForTest();
+  username.value = "SmokePlayNow";
+  password.value = "smoke-secret";
+  age.value = "13";
+  const filled = window.__infernodriftTestApi.hasStartAccountCredentialsForTest();
+  username.value = "";
+  password.value = "";
+  age.value = "";
+  return { blank, filled };
+});
+assert.equal(playNowRouting.blank, false);
+assert.equal(playNowRouting.filled, true);
+
 const schoolGateProbe = await page.evaluate(() => {
   const api = window.__infernodriftTestApi;
   const mondayClass = api.getSchoolGateStatus("2026-05-18T09:00:00");

@@ -5966,6 +5966,13 @@ function submitStartAccount() {
   return true;
 }
 
+function hasStartAccountCredentials() {
+  const username = String(startAccountUsername?.value || "").trim();
+  const password = String(startAccountPassword?.value || "");
+  const age = String(startAccountAge?.value || "").trim();
+  return Boolean(username || password || age);
+}
+
 function startGuestProfile() {
   if (startAccountSubmit) startAccountSubmit.textContent = "Login / Sign Up";
   if (startBtn) startBtn.textContent = "Play as Guest";
@@ -11077,6 +11084,53 @@ function spawnBurst(
       life * (0.76 + Math.random() * 0.42),
     );
   }
+}
+
+function spawnLaserImpactSparks(position, color, forward, count = 18) {
+  const origin = position.clone().add(new THREE.Vector3(0, 0.95, 0));
+  const beamForward = (forward || tempVector).clone();
+  beamForward.y = 0;
+  if (beamForward.lengthSq() < 0.001) beamForward.set(0, 0, 1);
+  beamForward.normalize();
+  const side = new THREE.Vector3(beamForward.z, 0, -beamForward.x).normalize();
+  for (let i = 0; i < count; i += 1) {
+    const kick =
+      beamForward
+        .clone()
+        .multiplyScalar(-2.4 - Math.random() * 3.4)
+        .addScaledVector(side, (Math.random() - 0.5) * 5.6);
+    kick.y = 1.2 + Math.random() * 2.4;
+    spawnFx(
+      origin
+        .clone()
+        .addScaledVector(side, (Math.random() - 0.5) * 0.9)
+        .addScaledVector(beamForward, (Math.random() - 0.5) * 0.7),
+      kick,
+      Math.random() < 0.28 ? 0xffffff : color,
+      0.34 + Math.random() * 0.24,
+      0.18 + Math.random() * 0.16,
+    );
+  }
+}
+
+function spawnLaserMuzzleSparks(actor, forward, color) {
+  const muzzle = actor.position
+    .clone()
+    .add(new THREE.Vector3(0, 0.9, 0))
+    .addScaledVector(forward, 2.1);
+  spawnLaserImpactSparks(muzzle, color, forward, 7);
+}
+
+function getBattleImpactForward(target, attacker) {
+  if (attacker?.position && target?.position) {
+    const fromAttacker = target.position.clone().sub(attacker.position);
+    fromAttacker.y = 0;
+    if (fromAttacker.lengthSq() > 0.001) return fromAttacker.normalize();
+  }
+  if (attacker && Number.isFinite(attacker.heading)) {
+    return new THREE.Vector3(Math.sin(attacker.heading), 0, Math.cos(attacker.heading));
+  }
+  return new THREE.Vector3(0, 0, 1);
 }
 
 function updateFx(dt) {
@@ -17861,13 +17915,16 @@ function respawnBattleCar(car) {
 
 function applyBattleDamage(target, amount, attacker = player) {
   if (!target || target.demolished || amount <= 0) return false;
+  const impactForward = getBattleImpactForward(target, attacker);
   if ((target.battleShieldTimer ?? 0) > 0) {
+    const shieldColor = target.team === "red" ? 0xff8f76 : 0x7feaff;
     spawnBurst(
       target.position.clone().add(new THREE.Vector3(0, 1.1, 0)),
-      target.team === "red" ? 0xff8f76 : 0x7feaff,
+      shieldColor,
       18,
       { scale: 0.48, life: 0.32, force: 4.6, lift: 1.8 },
     );
+    spawnLaserImpactSparks(target.position, shieldColor, impactForward, 22);
     if (target === player)
       setEffectToast("Shield Bubble", { pulse: 0.16, shake: 0.08 });
     return false;
@@ -17892,6 +17949,7 @@ function applyBattleDamage(target, amount, attacker = player) {
       lift: 1.2,
     },
   );
+  spawnLaserImpactSparks(target.position, color, impactForward, 18);
   if (target.battleHealth > 0) {
     if (target === player)
       setEffectToast("Laser Hit", { shake: 0.18, pulse: 0.16 });
@@ -17907,6 +17965,7 @@ function applyBattleDamage(target, amount, attacker = player) {
     shake: 0.24,
     pulse: 0.28,
   });
+  spawnLaserImpactSparks(target.position, 0xffd66b, impactForward, 28);
   return true;
 }
 
@@ -17964,6 +18023,7 @@ function fireBattleLaser(actor = player) {
     0,
     Math.cos(actor.heading),
   );
+  const laserColor = actor.team === "red" ? 0xff8f76 : 0x7feaff;
   const hitPoint = lock?.hitPoint
     ? lock.hitPoint
     : lock?.target
@@ -17973,15 +18033,17 @@ function fireBattleLaser(actor = player) {
           .addScaledVector(forward, BATTLE_RULES.laserRange);
   const hitEnemy = Boolean(lock?.target);
   const hitCover = Boolean(lock?.blockedByCover);
+  spawnLaserMuzzleSparks(actor, forward, laserColor);
   drawBattleLaser(actor, hitPoint, hitEnemy || hitCover);
   if (hitEnemy) applyBattleDamage(lock.target, BATTLE_RULES.laserDamage, actor);
   if (hitCover) {
     spawnBurst(
       hitPoint.clone().add(new THREE.Vector3(0, 1.05, 0)),
-      actor.team === "red" ? 0xff8f76 : 0x7feaff,
+      laserColor,
       12,
       { scale: 0.32, life: 0.22, force: 2.4, lift: 0.9 },
     );
+    spawnLaserImpactSparks(hitPoint, laserColor, forward, 14);
   }
   if (actor === player) {
     state.cameraShake = Math.max(state.cameraShake, 0.08);
@@ -19654,6 +19716,10 @@ function startFirstRace() {
   setStartAccountStatus(
     "First Race selected. Drive through gates, finish a lap, and press R if you want an instant retry.",
   );
+  if (hasStartAccountCredentials()) {
+    submitStartAccount();
+    return;
+  }
   startGuestProfile();
 }
 
@@ -21811,6 +21877,7 @@ window.__infernodriftTestApi = {
   getProgressionSnapshot: () => structuredClone(state.progressionV2),
   getDailyGiftState: () => getDailyGiftSnapshot(),
   redeemDailyGift: () => redeemDailyGift(),
+  hasStartAccountCredentialsForTest: () => hasStartAccountCredentials(),
   resetLocalProgressionForTest: () => {
     state.progressionV2 = createProgressionV2();
     savePersistentState();

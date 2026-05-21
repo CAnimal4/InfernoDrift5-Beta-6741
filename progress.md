@@ -342,3 +342,9 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Added a non-playable `ChatGPT (Codex)` system leaderboard row that is injected only into displayed rankings, flagged as non-playable/system, and automatically stays just ahead of the highest real XP row.
 - Reserved the Codex username in Firebase and legacy WebSocket account flows so players cannot create, sign in as, or claim the system identity.
 - Added targeted tests/smoke assertions for Firebase username rejection, WebSocket account rejection, Codex first-place ranking, and close XP chasing.
+
+2026-05-21 laser sparks and Play Now auth polish:
+
+- Updated `PLAY NOW` so filled account credentials route through Login / Sign Up instead of silently starting a guest profile; blank credentials still start guest/offline quickly.
+- Added extra battle laser feedback: muzzle sparks, shield sparks, cover impact sparks, hit sparks, and a brighter KO spark burst.
+- Cache-busted the static app assets for the Pages deployment.
