@@ -28,6 +28,13 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Fixed another Firebase parity gap: leaderboard reads now return the signed-in player's own `playerRow` even when that user is outside the top leaderboard page.
 - Extended the live Firebase smoke so a fresh account redeems XP, syncs it, sees it in the Firebase leaderboard, logs out, signs back in, and confirms the same XP is restored and still present as the player's leaderboard row.
 
+2026-05-20 player-facing backend copy cleanup:
+
+- Removed visible `Firebase` naming from normal player-facing account, lobby, feedback, offline, and online-status text. The game now says "online services", "online guest", and "online lobby" in normal play.
+- Kept Firebase wording in developer/diagnostics areas such as Advanced Server settings, source identifiers, backend tests, and docs.
+- Updated the Firebase live smoke expectations to assert the new player-facing "Create Online Lobby" / "Online lobby" copy.
+- Validation passed: `node --check script.js`, `node --check smoke_firebase_live.mjs`, `npm run typecheck`, `npm run smoke:firebase-live`, `npm run smoke:firebase`, `npm run build`, `npm run smoke`, `npm test`, the develop-web-game Playwright client, and a direct Online-tab text audit proving the non-advanced Online panel contains no `Firebase` text.
+
 2026-05-13:
 
 - Started from `main` at `bc965cf`; current worktree was clean.

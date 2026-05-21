@@ -208,7 +208,7 @@ try {
 
   await page.evaluate(() => window.__infernodriftTestApi.openMenuTab("online"));
   await page.waitForFunction(() =>
-    /Create Firebase Lobby/i.test(
+    /Create Online Lobby/i.test(
       document.querySelector("#online-create-room")?.textContent || "",
     ),
   );
@@ -226,7 +226,7 @@ try {
   const lobbyCode = lobbyState.online.room.code;
   assert.match(
     (await page.locator("#online-room-state").textContent()) ?? "",
-    /Firebase lobby .*Chat and invites are active/i,
+    /Online lobby .*Chat and invites are active/i,
   );
   assert.equal(await page.locator("#online-queue").isDisabled(), true);
   await page.locator("#online-share-room").click({ force: true });

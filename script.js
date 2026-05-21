@@ -2092,7 +2092,7 @@ const onlineState = {
   backendDefaulted: false,
   feedbackUrl: "",
   status: "idle",
-  statusText: "Firebase online-lite ready when configured",
+  statusText: "Online services ready when configured",
   connectionStage: "idle",
   transport: "offline",
   backendHealth: null,
@@ -4199,7 +4199,7 @@ async function importBundledLegacyProgressForFirebaseAccount({
   if (!legacyPayload || legacyXp <= localXp) {
     onlineState.legacyImportStatus = "already-current";
     onlineState.profileActionStatus = legacyPayload
-      ? `Firebase/local progress is already at least as high as the old Cloudflare save (${legacyXp.toLocaleString()} XP found).`
+      ? `Online/local progress is already at least as high as the old save (${legacyXp.toLocaleString()} XP found).`
       : "No old Cloudflare saved progress was found for this account.";
     if (markerKey) {
       writeLocalJson(markerKey, {
@@ -4217,7 +4217,7 @@ async function importBundledLegacyProgressForFirebaseAccount({
   await firebaseOnline.syncProgress(bestPayload);
   onlineState.legacyImportStatus = "imported";
   onlineState.legacyImportXp = getSavePayloadTotalXp(bestPayload);
-  onlineState.profileActionStatus = `Restored ${onlineState.legacyImportXp.toLocaleString()} XP from the old Cloudflare backend into Firebase.`;
+  onlineState.profileActionStatus = `Restored ${onlineState.legacyImportXp.toLocaleString()} XP from the old online backend into your current online account.`;
   pushOnlineChatMessage({
     from: "System",
     text: onlineState.profileActionStatus,
@@ -4394,7 +4394,7 @@ async function importLegacyProgressForFirebaseAccount(
     if (!legacyPayload || legacyXp <= localXp) {
       onlineState.legacyImportStatus = "already-current";
       onlineState.profileActionStatus = legacyPayload
-        ? `Firebase/local progress is already at least as high as the old backend (${legacyXp.toLocaleString()} XP found).`
+        ? `Online/local progress is already at least as high as the old backend (${legacyXp.toLocaleString()} XP found).`
         : "No old saved progress was found for this account.";
       if (markerKey) {
         writeLocalJson(markerKey, {
@@ -4411,7 +4411,7 @@ async function importLegacyProgressForFirebaseAccount(
     await firebaseOnline.syncProgress(bestPayload);
     onlineState.legacyImportStatus = "imported";
     onlineState.legacyImportXp = getSavePayloadTotalXp(bestPayload);
-    onlineState.profileActionStatus = `Imported ${onlineState.legacyImportXp.toLocaleString()} XP from the legacy online backend into Firebase.`;
+    onlineState.profileActionStatus = `Imported ${onlineState.legacyImportXp.toLocaleString()} XP from the legacy online backend into your current online account.`;
     pushOnlineChatMessage({
       from: "System",
       text: onlineState.profileActionStatus,
@@ -4995,7 +4995,7 @@ function loadOnlineConfig() {
     onlineBackupUrlsInput.value = onlineState.backupBackendUrls.join("\n");
   if (isFirebaseBackendMode()) {
     syncFirebaseServiceStatus();
-    onlineState.statusText = "Firebase online-lite is the default backend.";
+    onlineState.statusText = "Online services are ready when available.";
   } else if (onlineState.backendUrl && onlineState.status === "offline") {
     onlineState.statusText = `Backend ready: ${onlineState.backendUrl}`;
   }
@@ -5075,10 +5075,10 @@ function sendOnlineMessage(payload, { queue = true } = {}) {
     const type = String(payload?.type || "");
     const text =
       type.startsWith("queue.") || type === "input.frame"
-        ? "Live matchmaking and server-authoritative racing need the legacy WebSocket server. Firebase lobbies, chat, progress, friends, feedback, and leaderboard are active."
+        ? "Live matchmaking and server-authoritative racing need a live game server. Online accounts, chat, progress, friends, feedback, and leaderboard are active."
         : type.startsWith("room.")
-          ? "Use the Firebase lobby buttons for lobby chat/invites. Live race rooms still need the legacy WebSocket server."
-          : "That live-server action is unavailable in Firebase mode.";
+          ? "Use the online lobby buttons for lobby chat/invites. Live race rooms still need a dedicated game server."
+          : "That live-server action is unavailable in this online mode.";
     pushOnlineChatMessage({
       from: "System",
       text,
@@ -5232,7 +5232,7 @@ async function completeFirebaseAuth(result, { guest = false } = {}) {
   onlineState.authRequired = false;
   onlineState.chatSendStatus = "ready";
   onlineState.accountStatus = guest
-    ? `${onlineState.username} is online as a Firebase guest.`
+    ? `${onlineState.username} is online as a guest.`
     : `Signed in as ${onlineState.username}.`;
   syncFirebaseServiceStatus();
   await firebaseOnline.subscribeChat().catch((error) => {
@@ -5257,7 +5257,7 @@ async function submitFirebaseStartAccount() {
   onlineState.pendingAuth = null;
   onlineState.sessionToken = "";
   setStartAccountStatus(`Connecting account for ${payload.username}...`);
-  setOnlineStatus("checking", "Checking Firebase online services");
+  setOnlineStatus("checking", "Checking online services");
   updateConnectionStage("checking-online");
   updateOnlineUi();
   try {
@@ -5301,7 +5301,7 @@ async function submitFirebaseStartAccount() {
 }
 
 async function startFirebaseGuestSession() {
-  setOnlineStatus("checking", "Checking Firebase guest mode");
+  setOnlineStatus("checking", "Checking online guest mode");
   updateConnectionStage("checking-online");
   try {
     const result = await firebaseOnline.signInGuest({
@@ -5312,7 +5312,7 @@ async function startFirebaseGuestSession() {
     });
     syncFirebaseServiceStatus();
     await completeFirebaseAuth(result, { guest: true });
-    setStartAccountStatus(`${onlineState.username} is online as a Firebase guest.`);
+    setStartAccountStatus(`${onlineState.username} is online as a guest.`);
     return true;
   } catch (error) {
     onlineState.transport = "offline";
@@ -5596,7 +5596,7 @@ function logoutOnlineProfile() {
   onlineState.profileActionStatus = "Logging out...";
   if (isFirebaseBackendMode()) {
     firebaseOnline.logout().finally(() => {
-      completeLocalLogout("Logged out of Firebase.");
+      completeLocalLogout("Logged out of online services.");
       syncFirebaseServiceStatus();
       updateOnlineUi();
     });
@@ -5668,7 +5668,7 @@ function deleteOnlineProfile() {
   onlineState.profileDeleteStatus = "Deleting account...";
   if (isFirebaseBackendMode()) {
     onlineState.profileDeleteStatus =
-      "Firebase account deletion requires the Firebase console or a trusted server. Log out here, then delete from Firebase if needed.";
+      "Account deletion requires a trusted server/admin console. You can log out here for now.";
     updateOnlineUi();
     return;
   }
@@ -5720,13 +5720,13 @@ function describeOnlineError(error = "") {
     feedback_rejected:
       "Feedback was blocked by the safety filter. Try shorter, school-appropriate wording.",
     firebase_not_configured:
-      "Firebase is not configured yet. Add the Firebase web config and rules.",
+      "Online services are not configured yet. Developer setup is required.",
     firebase_timeout:
-      "Firebase did not answer quickly. You can still play Guest Offline.",
+      "Online services did not answer quickly. You can still play Guest Offline.",
     firebase_unavailable:
-      "Firebase online services are unavailable on this network.",
+      "Online services are unavailable on this network.",
     permission_denied:
-      "Firebase rejected that request. Check Auth, Firestore, and rules.",
+      "Online services rejected that request. A developer may need to check account and database rules.",
     health_timeout:
       "The online backend did not answer quickly. A school network may be blocking it.",
     health_failed: "The online backend could not be reached from this browser.",
@@ -5816,7 +5816,7 @@ async function connectFirebaseOnline({ reconnect = false } = {}) {
   clearOnlineTimers();
   setOnlineStatus(
     "checking",
-    reconnect ? "Retrying Firebase online services" : "Checking Firebase online services",
+    reconnect ? "Retrying online services" : "Checking online services",
   );
   updateConnectionStage("checking-online");
   onlineState.transport = BACKEND_MODE_FIREBASE;
@@ -5870,7 +5870,7 @@ async function connectFirebaseOnline({ reconnect = false } = {}) {
   } else {
     setOnlineStatus(
       "connected",
-      "Firebase is available",
+      "Online services are available",
       "Sign in, create an account, or continue as guest.",
     );
   }
@@ -6090,7 +6090,7 @@ function disconnectOnline({ manual = true, suppressReconnect = false } = {}) {
     onlineState.connectionStage = "idle";
     onlineState.remoteSnapshots = [];
     setRemoteHumanPlayers([]);
-    setOnlineStatus("offline", manual ? "Offline: Firebase disconnected" : "Offline");
+    setOnlineStatus("offline", manual ? "Offline: online services disconnected" : "Offline");
     syncFirebaseServiceStatus();
     updateOnlineUi();
     return;
@@ -6654,7 +6654,7 @@ async function createFirebaseLobbyRoom() {
   if (!onlineState.user) {
     pushOnlineChatMessage({
       from: "System",
-      text: "Sign in or continue as a Firebase guest before creating a lobby.",
+      text: "Sign in or continue as an online guest before creating a lobby.",
       quick: true,
     });
     updateOnlineUi();
@@ -6667,7 +6667,7 @@ async function createFirebaseLobbyRoom() {
     handleOnlineMessage(JSON.stringify({ type: "room.snapshot", room }));
     pushOnlineChatMessage({
       from: "System",
-      text: `Firebase lobby ${room.code} created. Chat and invites work here; live racing still needs the legacy WebSocket server.`,
+      text: `Online lobby ${room.code} created. Chat and invites work here; live racing still needs a dedicated game server.`,
       quick: true,
       roomInvite: {
         code: room.code,
@@ -6682,7 +6682,7 @@ async function createFirebaseLobbyRoom() {
   } catch (error) {
     pushOnlineChatMessage({
       from: "System",
-      text: `Firebase lobby could not be created: ${describeOnlineError(error?.message || "")}`,
+      text: `Online lobby could not be created: ${describeOnlineError(error?.message || "")}`,
       quick: true,
     });
     updateOnlineUi();
@@ -6694,7 +6694,7 @@ async function joinFirebaseLobbyByCode(code, { source = "manual" } = {}) {
   if (!onlineState.user) {
     pushOnlineChatMessage({
       from: "System",
-      text: "Sign in or continue as a Firebase guest before joining a lobby.",
+      text: "Sign in or continue as an online guest before joining a lobby.",
       quick: true,
     });
     updateOnlineUi();
@@ -6706,7 +6706,7 @@ async function joinFirebaseLobbyByCode(code, { source = "manual" } = {}) {
     if (source === "invite") {
       pushOnlineChatMessage({
         from: "System",
-        text: `Joined Firebase lobby ${room.code}.`,
+        text: `Joined online lobby ${room.code}.`,
         quick: true,
       });
     }
@@ -6714,7 +6714,7 @@ async function joinFirebaseLobbyByCode(code, { source = "manual" } = {}) {
   } catch (error) {
     pushOnlineChatMessage({
       from: "System",
-      text: `Could not join Firebase lobby: ${describeOnlineError(error?.message || "")}`,
+      text: `Could not join online lobby: ${describeOnlineError(error?.message || "")}`,
       quick: true,
     });
     updateOnlineUi();
@@ -7566,10 +7566,10 @@ function updateProfileUi() {
     profileStatusText.textContent = user
       ? onlineState.guestTemporary
         ? isFirebaseBackendMode()
-          ? "Firebase guest online. Chat and leaderboard can work; durable progress needs an account."
+          ? "Online guest active. Chat and leaderboard can work; durable progress needs an account."
           : "Temporary guest profile. Online rooms work, but durable progress requires an account."
         : isFirebaseBackendMode()
-          ? "Signed in with Firebase. Progress, friends, chat, feedback, and leaderboard sync use Firestore."
+          ? "Signed in online. Progress, friends, chat, feedback, and leaderboard sync are active."
           : "Signed in. Progress, friends, chat, and leaderboard sync use the InfernoDrift4 backend."
       : "Offline profile. Sign in or play as guest to use online-lite features; local modes keep working offline.";
   }
@@ -7603,7 +7603,7 @@ function updateProfileUi() {
   if (profileLeaderboardState) {
     profileLeaderboardState.textContent = onlineState.leaderboardSyncedAt
       ? isFirebaseBackendMode()
-        ? "Firebase XP"
+        ? "Online XP"
         : "Live XP"
       : isOnlineServiceConnected()
         ? "Refreshing"
@@ -7700,7 +7700,7 @@ function updateOnlineUi() {
   });
   if (onlineCreateRoom) {
     onlineCreateRoom.textContent = firebaseMode
-      ? "Create Firebase Lobby"
+      ? "Create Online Lobby"
       : "Create Private Room";
   }
   if (onlineQueue) {
@@ -7725,12 +7725,12 @@ function updateOnlineUi() {
     const room = onlineState.room;
     onlineRoomState.textContent = room
       ? room.firebaseLobby
-        ? `Firebase lobby ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${getModeDefinition(room.mode).label}. Chat and invites are active; live racing needs the legacy WebSocket server.`
+        ? `Online lobby ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${getModeDefinition(room.mode).label}. Chat and invites are active; live racing needs a dedicated game server.`
         : `Room ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${room.bots || 0} bots, ${getModeDefinition(room.mode).label}`
       : onlineState.queue
         ? `Queued for ${onlineState.queue.playlist || "casual"} ${onlineState.queue.teamSize || 2}v${onlineState.queue.teamSize || 2}`
         : firebaseMode
-          ? "Firebase lobby mode is active. Create a lobby for chat/invites; live racing uses the legacy WebSocket server when available."
+          ? "Online lobby mode is active. Create a lobby for chat/invites; live racing uses a dedicated game server when available."
           : roomsNeedLive
           ? "Rooms need live WebSocket connection. Account, chat, and leaderboard are using HTTPS fallback."
           : "No room joined.";
@@ -7750,7 +7750,7 @@ function updateOnlineUi() {
   renderOnlinePlayerRows(
     onlineFriends,
     onlineState.friends,
-    firebaseMode ? "No Firebase friends yet." : "No friends from backend yet.",
+    firebaseMode ? "No online friends yet." : "No friends from backend yet.",
     (row) => (row.online ? "Online" : ""),
   );
   renderOnlinePlayerRows(
@@ -7805,7 +7805,7 @@ function openFeedbackModal() {
           })
         : onlineState.lastFeedbackError ||
           (isFirebaseBackendMode()
-            ? "Feedback saves to Firebase when you are signed in or online as guest."
+            ? "Feedback saves online when you are signed in or playing as an online guest."
             : "Feedback saves only when a backend endpoint is configured.");
   }
 }
@@ -7841,7 +7841,7 @@ function getFeedbackDeliveryMessage(result = {}) {
     return "Feedback saved by the backend. Email delivery is not configured yet.";
   }
   if (delivery === "stored_firebase") {
-    return "Feedback saved to Firebase for review.";
+    return "Feedback saved online for review.";
   }
   return result.emailConfigured
     ? "Feedback saved by the configured backend."
@@ -7935,13 +7935,13 @@ async function submitFirebaseFeedback() {
   if (!onlineState.user) {
     onlineState.lastFeedbackStatus = "not_configured";
     onlineState.lastFeedbackError =
-      "Sign in or continue as guest online before sending Firebase feedback.";
+      "Sign in or continue as an online guest before sending feedback.";
     updateFeedbackStatus();
     return;
   }
   const age13 = Boolean(feedbackAge13?.checked);
   try {
-    updateFeedbackStatus("Saving feedback to Firebase...");
+    updateFeedbackStatus("Saving feedback online...");
     const result = await firebaseOnline.submitFeedback({
       feedbackType: feedbackType?.value || "other",
       message,
@@ -7993,7 +7993,7 @@ function updateFeedbackStatus(text = "") {
     text ||
     onlineState.lastFeedbackError ||
     (isFirebaseBackendMode()
-      ? "Feedback saves to Firebase when you are signed in or online as guest."
+      ? "Feedback saves online when you are signed in or playing as an online guest."
       : "Feedback saves only when a backend endpoint is configured.");
 }
 
