@@ -194,3 +194,31 @@ test("legacy Cloudflare progress manifest restores old account XP without secret
   assert.doesNotMatch(serialized, /passwordhash|passwordsalt|sessiontoken/);
   assert.doesNotMatch(serialized, /olduserid|user_id/);
 });
+
+test("Firebase account attach prefers legacy XP over lower local save", () => {
+  const script = fs.readFileSync(
+    new URL("../script.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    script,
+    /const signInSavePayload = chooseBestSavePayload\(\s*currentPayload,\s*bundledLegacyEntry\?\.payload \|\| null,\s*\);/s,
+  );
+  assert.match(script, /savePayload: signInSavePayload,/);
+});
+
+test("legacy import marker cannot hide downgraded Firebase progress", () => {
+  const script = fs.readFileSync(
+    new URL("../script.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    script,
+    /const markerXp =\s*Number\(previousMarker\.importedXp \|\| previousMarker\.legacyXp\) \|\| 0;/,
+  );
+  assert.match(
+    script,
+    /const currentXp = getSavePayloadTotalXp\(buildPersistentSavePayload\(\)\);/,
+  );
+  assert.match(script, /if \(currentXp >= markerXp\) \{/);
+});

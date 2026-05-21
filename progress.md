@@ -317,3 +317,9 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Stopped Firebase guest leaderboard submissions, deduped visible leaderboard rows by user ID and normalized username, and updated Firestore rules for the new signed-in leaderboard account/guest metadata.
 - Fixed Firebase/private room join so a successful join launches the joined mode immediately, closes the menu into the playing screen, and preserves the room code.
 - Added successful-send visibility for Firebase DMs so the sender immediately sees their own private message in the active DM thread.
+
+2026-05-21 legacy-to-Firebase sync hardening:
+
+- Tightened Firebase account sign-in/create so the save sent into the Firebase transaction is the best of current browser progress and the bundled old Cloudflare D1 save for the same normalized username.
+- Kept legacy import markers from hiding a downgraded Firebase account: if the local/Firebase save has less XP than the old imported marker, the client checks the bundled export/legacy API again instead of skipping recovery.
+- Added tests proving the Firebase attach path prefers legacy XP and that an old import marker cannot mask lower current progress.

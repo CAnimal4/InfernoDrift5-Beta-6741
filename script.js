@@ -4919,10 +4919,14 @@ async function importLegacyProgressForFirebaseAccount(
   const markerKey = getLegacyImportMarkerKey(authPayload?.username);
   const previousMarker = markerKey ? readLocalJson(markerKey, null) : null;
   if (!manual && previousMarker?.status === "imported") {
-    onlineState.legacyImportStatus = "already-imported";
-    onlineState.legacyImportXp =
+    const markerXp =
       Number(previousMarker.importedXp || previousMarker.legacyXp) || 0;
-    return false;
+    const currentXp = getSavePayloadTotalXp(buildPersistentSavePayload());
+    if (currentXp >= markerXp) {
+      onlineState.legacyImportStatus = "already-imported";
+      onlineState.legacyImportXp = markerXp;
+      return false;
+    }
   }
   const localPayload = buildPersistentSavePayload();
   const localXp = getSavePayloadTotalXp(localPayload);
@@ -5830,11 +5834,16 @@ async function submitFirebaseStartAccount() {
     const bundledLegacyEntry = await findBundledLegacyProgress(
       payload.username,
     ).catch(() => null);
+    const currentPayload = buildPersistentSavePayload();
+    const signInSavePayload = chooseBestSavePayload(
+      currentPayload,
+      bundledLegacyEntry?.payload || null,
+    );
     const result = await firebaseOnline.signInAccount({
       username: payload.username,
       password: payload.password,
       age: payload.age,
-      savePayload: buildPersistentSavePayload(),
+      savePayload: signInSavePayload,
       timeoutMs: ONLINE_AUTH_TIMEOUT_MS,
       allowLegacyAutoCreate: Boolean(bundledLegacyEntry),
     });
