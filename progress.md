@@ -13,6 +13,14 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Published updated Firestore rules in the Firebase console for lobby docs and room-invite chat payloads after CLI auth was unavailable locally.
 - Validation passed for this pass: `node --check script.js`, `node --check firebase-online.js`, `node --test tests/firebase-online.test.mjs`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke:firebase-live`, `npm run smoke:firebase`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:online-local`, `npm run worker:check`, `npm run worker:types`, and the develop-web-game Playwright client against local `http://127.0.0.1:4173/index.html`.
 
+2026-05-20 Firebase room join repair:
+
+- Started a focused fix for Firebase lobby joining after the Join button did not reliably put players into shared rooms.
+- Added live Firestore lobby document subscriptions after Firebase lobby create/join so hosts and joiners automatically see updated membership.
+- Made the Join button fall back to the newest visible room invite when the code input is empty, while still showing a clear message if no code/invite exists.
+- Extended the Firebase live smoke to use a second browser context/account, join from the shared invite path, and verify the host sees the joiner in the lobby.
+- Validation passed for this repair: `node --check script.js`, `node --check firebase-online.js`, `node --check smoke_firebase_live.mjs`, `node --test tests/firebase-online.test.mjs`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke:firebase-live`, `npm run smoke:firebase`, `npm run smoke`, `npm run smoke:online-local`, `npm run test:e2e`, `npm run lint`, `npm run worker:check`, `npm run worker:types`, and the develop-web-game Playwright client with screenshots reviewed at `output/web-game/firebase-room-join/shot-2.png`.
+
 2026-05-13:
 
 - Started from `main` at `bc965cf`; current worktree was clean.

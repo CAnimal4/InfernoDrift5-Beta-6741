@@ -6641,6 +6641,15 @@ function isFirebaseLobbyRoom(room = onlineState.room) {
   return Boolean(room?.firebaseLobby);
 }
 
+function getLatestJoinableRoomInvite() {
+  const currentCode = onlineState.room?.code || "";
+  for (let i = onlineState.chatMessages.length - 1; i >= 0; i -= 1) {
+    const invite = normalizeRoomInvite(onlineState.chatMessages[i]);
+    if (invite?.code && invite.code !== currentCode) return invite;
+  }
+  return null;
+}
+
 async function createFirebaseLobbyRoom() {
   if (!onlineState.user) {
     pushOnlineChatMessage({
@@ -6756,15 +6765,28 @@ async function shareFirebaseLobby() {
 }
 
 function joinRoomByCode(code, { source = "manual" } = {}) {
-  const cleanCode = String(code || "")
+  const invite = code ? null : getLatestJoinableRoomInvite();
+  const cleanCode = String(code || invite?.code || "")
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "")
     .slice(0, 10);
-  if (!cleanCode) return false;
+  if (!cleanCode) {
+    pushOnlineChatMessage({
+      from: "System",
+      text: isFirebaseBackendMode()
+        ? "Enter a lobby code or share an invite first, then tap Join."
+        : "Enter a room code before joining.",
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
   if (onlineRoomCode) onlineRoomCode.value = cleanCode;
   if (isFirebaseBackendMode()) {
-    joinFirebaseLobbyByCode(cleanCode, { source });
+    joinFirebaseLobbyByCode(cleanCode, {
+      source: source === "manual" && invite ? "invite" : source,
+    });
     return true;
   }
   if (onlineState.transport === "http-fallback" || !isOnlineSocketOpen()) {

@@ -199,6 +199,76 @@ try {
         state.online.room.code
     );
   });
+
+  const joinerContext = await browser.newContext({
+    viewport: { width: 1280, height: 820 },
+  });
+  const joiner = await joinerContext.newPage();
+  joiner.setDefaultTimeout(18_000);
+  const joinerConsoleErrors = [];
+  joiner.on("console", (msg) => {
+    const text = msg.text();
+    if (
+      msg.type() === "error" &&
+      !/WebGL|GL Driver/i.test(text) &&
+      !/Failed to load resource: the server responded with a status of 400/i.test(
+        text,
+      )
+    ) {
+      joinerConsoleErrors.push(text);
+    }
+  });
+  const joinerUsername = `Join${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
+  await joiner.goto(smokeUrl, { waitUntil: "commit", timeout: 45_000 });
+  await joiner.waitForFunction(
+    () => typeof window.render_game_to_text === "function",
+  );
+  await joiner.evaluate(() =>
+    window.__infernodriftTestApi.dismissSchoolGateForTest(),
+  );
+  await joiner.locator("#start-account-username").fill(joinerUsername);
+  await joiner.locator("#start-account-password").fill("smoke12345");
+  await joiner.locator("#start-account-age").fill("13");
+  await joiner.evaluate(() =>
+    document
+      .querySelector("#start-account-submit")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+  );
+  await joiner.waitForFunction((username) => {
+    const state = JSON.parse(window.render_game_to_text());
+    return (
+      state.online.authenticated === true &&
+      state.online.username === username &&
+      state.online.transport === "firebase"
+    );
+  }, joinerUsername);
+  await joiner.evaluate(() => window.__infernodriftTestApi.openMenuTab("online"));
+  await joiner.waitForFunction((code) => {
+    return [...document.querySelectorAll(".chat-room-invite")].some((button) =>
+      new RegExp(`Join\\s+${code}`, "i").test(button.textContent || ""),
+    );
+  }, lobbyCode);
+  await joiner.locator("#online-room-code").fill("");
+  await joiner.locator("#online-join-room").click({ force: true });
+  await joiner.waitForFunction((code) => {
+    const state = JSON.parse(window.render_game_to_text());
+    return (
+      state.online.room?.firebaseLobby === true &&
+      state.online.room?.code === code
+    );
+  }, lobbyCode);
+  await page.waitForFunction((joinerName) => {
+    const state = JSON.parse(window.render_game_to_text());
+    return (
+      state.online.room?.players >= 2 &&
+      state.online.room?.members?.some?.(
+        (member) => member.username === joinerName,
+      )
+    );
+  }, joinerUsername);
+  assert.deepEqual(joinerConsoleErrors, []);
+  await joinerContext.close();
+
   await page.locator("#online-room-code").fill(lobbyCode);
   await page.locator("#online-join-room").click({ force: true });
   await page.waitForFunction((code) => {

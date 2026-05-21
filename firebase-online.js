@@ -210,6 +210,8 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     db: null,
     userProfile: null,
     unsubscribers: [],
+    lobbyUnsubscribe: null,
+    lobbyCode: "",
     lastChatAt: 0,
   };
 
@@ -640,6 +642,51 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     });
     state.chatListenerActive = false;
     state.chatStatus = "idle";
+    stopLobbySubscription();
+  }
+
+  function stopLobbySubscription() {
+    if (!internals.lobbyUnsubscribe) return;
+    try {
+      internals.lobbyUnsubscribe();
+    } catch {
+      // Listener was already closed.
+    }
+    internals.lobbyUnsubscribe = null;
+    internals.lobbyCode = "";
+  }
+
+  function subscribeLobby(code) {
+    const validation = validateFirebaseLobbyCode(code);
+    if (!validation.ok || internals.lobbyCode === validation.code) return;
+    stopLobbySubscription();
+    const { firestore } = internals.sdk;
+    const ref = firestore.doc(
+      internals.db,
+      LOBBY_COLLECTION_ID,
+      validation.code,
+    );
+    internals.lobbyCode = validation.code;
+    internals.lobbyUnsubscribe = firestore.onSnapshot(
+      ref,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          emit("room.left", { code: validation.code, reason: "room_closed" });
+          stopLobbySubscription();
+          return;
+        }
+        emit("room.snapshot", {
+          room: mapLobbyDoc({
+            id: snapshot.id,
+            data: () => snapshot.data() || {},
+          }),
+        });
+      },
+      (error) => {
+        fail(error, "lobby_listener_failed");
+        emit("system.error", { message: state.lastError });
+      },
+    );
   }
 
   async function subscribeChat({ roomId = CHAT_ROOM_ID } = {}) {
@@ -763,6 +810,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       };
       await firestore.setDoc(ref, lobby, { merge: false });
       const room = mapLobbyDoc({ id: code, data: () => lobby });
+      subscribeLobby(code);
       emit("room.snapshot", { room });
       return room;
     }
@@ -813,6 +861,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
         data: () => ({ ...data, players: nextPlayers }),
       });
     });
+    subscribeLobby(validation.code);
     emit("room.snapshot", { room: joinedRoom });
     return joinedRoom;
   }
