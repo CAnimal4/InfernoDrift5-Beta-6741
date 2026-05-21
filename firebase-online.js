@@ -131,6 +131,7 @@ function mapChatDoc(snapshot) {
 
 function mapLeaderboardDoc(snapshot) {
   const data = snapshot.data() || {};
+  const guest = Boolean(data.guest);
   return {
     id: snapshot.id,
     userId: data.uid || "",
@@ -143,6 +144,8 @@ function mapLeaderboardDoc(snapshot) {
     source: "server",
     scope: "Total XP",
     verified: false,
+    account: data.account !== false && !guest,
+    guest,
   };
 }
 
@@ -573,7 +576,9 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       },
       { merge: true },
     );
-    await submitLeaderboard({ score: xp, mode: FIREBASE_LEADERBOARD_MODE });
+    if (!state.isGuest && !internals.userProfile?.isGuest) {
+      await submitLeaderboard({ score: xp, mode: FIREBASE_LEADERBOARD_MODE });
+    }
     if (!silent) emit("save.synced", { payload });
     return true;
   }
@@ -613,6 +618,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
   async function submitLeaderboard(row = {}) {
     requireReady();
     if (!state.uid) return false;
+    if (state.isGuest || internals.userProfile?.isGuest) return false;
     const validation = validateFirebaseScore(row);
     if (!validation.ok) throw new Error(validation.error);
     const { firestore } = internals.sdk;
@@ -628,6 +634,8 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
         uid: state.uid,
         username: state.username || "Player",
         badges: internals.userProfile?.badges || [],
+        account: true,
+        guest: false,
         score: validation.score,
         mode: validation.mode,
         carClass: row.carClass || "",

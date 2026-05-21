@@ -307,3 +307,13 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Reworked Garage into visual category carousels backed by cosmetic metadata, Ember purchase/equip guards, owned/equipped/locked/buy states, and expanded categories for body, colors, decals, livery, wheels, tires, spoiler, stance, underglow, boost trail, exhaust, horn, goal burst, tint, nameplate, and finish.
 - Improved the stylized low-poly car visual with cleaner bumpers, side skirts, fenders, dynamic ride height, decals, finish materials, exhaust, boost flame anchors, and safer fallbacks for partial remote-player cosmetic payloads.
 - Kept new economy fields inside the existing Firebase progress save payload; no Firestore top-level rule changes were required.
+
+2026-05-21 Garage, leaderboard, rooms, and DM polish:
+
+- Fixed the unified Play grid so mode cards fill the Play panel instead of bunching to the right, with stable thumbnails and smoke coverage for card width/left alignment.
+- Moved the Garage preview bay above the cosmetic browser, hid the old Performance Build/Appearance dropdown panels, replaced the large Cosmetic Browser header with a sticky Embers pill, and added icons to Garage category/card bars.
+- Wired Garage card equips so purchases and equips immediately update the saved customization and preview config; the smoke now verifies buying/equipping Muscle changes the active body and car silhouette.
+- Expanded the Driver Track window to 50 levels so the Progress tab shows a longer reward path.
+- Stopped Firebase guest leaderboard submissions, deduped visible leaderboard rows by user ID and normalized username, and updated Firestore rules for the new signed-in leaderboard account/guest metadata.
+- Fixed Firebase/private room join so a successful join launches the joined mode immediately, closes the menu into the playing screen, and preserves the room code.
+- Added successful-send visibility for Firebase DMs so the sender immediately sees their own private message in the active DM thread.

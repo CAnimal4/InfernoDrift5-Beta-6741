@@ -76,6 +76,10 @@ assert.equal(schoolGateProbe.dismissed.dismissed, true);
 
 await page.locator("#start-btn").click({ force: true });
 await page.waitForTimeout(800);
+if (await page.locator("#mode-help-card").isVisible()) {
+  await page.locator("#mode-help-resume").click({ force: true });
+}
+await page.waitForTimeout(1200);
 
 const campaignState = JSON.parse(
   await page.evaluate(() => window.render_game_to_text()),
@@ -102,7 +106,9 @@ await page.evaluate(() => {
     },
   ]);
 });
-await page.evaluate(() => window.advanceTime(16));
+await page.evaluate(() => {
+  for (let i = 0; i < 20; i += 1) window.advanceTime(16);
+});
 const remoteTags = await page.evaluate(() =>
   window.__infernodriftTestApi.getRemoteNameTags(),
 );
@@ -198,6 +204,66 @@ onlineUiState = JSON.parse(
 );
 assert.equal(onlineUiState.ui.tab, "leaderboard");
 assert.equal(await page.locator("#online-leaderboard").isVisible(), true);
+const dedupedLeaderboard = await page.evaluate(() =>
+  window.__infernodriftTestApi.setLeaderboardRowsForTest(
+    [
+      {
+        userId: "guest-intel",
+        username: "inteloftheeon",
+        badge: "Guest",
+        source: "server",
+        guest: true,
+        xp: 120,
+        totalXp: 120,
+      },
+      {
+        userId: "account-intel",
+        username: "inteloftheeon",
+        source: "server",
+        account: true,
+        xp: 900,
+        totalXp: 900,
+      },
+      {
+        userId: "guest-michael",
+        username: "micheeal",
+        badge: "Guest",
+        source: "server",
+        guest: true,
+        xp: 300,
+        totalXp: 300,
+      },
+      {
+        userId: "account-michael",
+        username: "micheeal",
+        source: "server",
+        account: true,
+        xp: 700,
+        totalXp: 700,
+      },
+    ],
+    {
+      userId: "account-intel",
+      username: "inteloftheeon",
+      source: "server",
+      account: true,
+      xp: 950,
+      totalXp: 950,
+    },
+  ),
+);
+assert.equal(
+  dedupedLeaderboard.filter((row) => row.username === "inteloftheeon").length,
+  1,
+);
+assert.equal(
+  dedupedLeaderboard.filter((row) => row.username === "micheeal").length,
+  1,
+);
+assert.equal(
+  dedupedLeaderboard.find((row) => row.username === "inteloftheeon").xp,
+  950,
+);
 await page.locator('[data-tab="profile"]').click({ force: true });
 await page.waitForTimeout(150);
 onlineUiState = JSON.parse(
@@ -226,6 +292,17 @@ onlineUiState = JSON.parse(
 );
 assert.equal(onlineUiState.online.chat.mode, "dm");
 assert.equal(await page.locator("#chat-command-panel").isVisible(), true);
+const dmEchoState = await page.evaluate(() =>
+  window.__infernodriftTestApi.simulateSentDirectMessageForTest({
+    username: "DmSmokeFriend",
+    userId: "dm-smoke-friend",
+    text: "private smoke hello",
+  }),
+);
+assert.equal(dmEchoState.mode, "dm");
+assert.equal(dmEchoState.activeDmUsername, "DmSmokeFriend");
+assert.ok(dmEchoState.dmMessageCount >= 1);
+assert.equal(dmEchoState.lastMessage.text, "private smoke hello");
 await page.locator("#chat-popout-input").fill("/report");
 await page.locator("#chat-popout-send").click({ force: true });
 await page.waitForTimeout(120);
@@ -704,6 +781,7 @@ assert.equal(dailyGiftProgress.textState.dailyGiftNoticeVisible, false);
 assert.ok(dailyGiftProgress.textState.embers >= dailyGiftProgress.first.embers);
 assert.ok(Array.isArray(dailyGiftProgress.textState.dailySparks.items));
 assert.equal(dailyGiftProgress.textState.dailySparks.items.length, 3);
+assert.equal(dailyGiftProgress.textState.levelTrack.length, 50);
 const dailyGiftDistribution = await page.evaluate(() =>
   window.__infernodriftTestApi.sampleDailyGiftRolls(1200),
 );
@@ -725,6 +803,7 @@ assert.equal(exitLinkState.url, "https://example.com/class");
 assert.equal(exitLinkState.controls.exitLinkKey, "Q");
 assert.equal(exitLinkState.controls.exitLinkUrl, "https://example.com/class");
 const sharedXpProgress = await page.evaluate(() => {
+  window.__infernodriftTestApi.setLeaderboardRowsForTest([], null);
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.startMode("campaign-survival");
   window.advanceTime(120);
@@ -761,18 +840,51 @@ assert.equal(leaderboardTiers[1], "Platinum");
 assert.equal(leaderboardTiers[2], "Platinum");
 assert.equal(leaderboardTiers[3], "Gold");
 
+const playLayout = await page.evaluate(() => {
+  window.__infernodriftTestApi.openMenuTab("games");
+  const board = document.querySelector("#mode-board")?.getBoundingClientRect();
+  const card = document.querySelector(".mode-card")?.getBoundingClientRect();
+  const art = document
+    .querySelector(".mode-card-art")
+    ?.getBoundingClientRect();
+  return {
+    boardWidth: board?.width || 0,
+    cardWidth: card?.width || 0,
+    leftGap: card && board ? card.left - board.left : 999,
+    artWidth: art?.width || 0,
+    artHeight: art?.height || 0,
+  };
+});
+assert.ok(playLayout.cardWidth >= 360);
+assert.ok(playLayout.leftGap < 30);
+assert.ok(playLayout.artWidth >= 90);
+assert.ok(playLayout.artHeight >= 70);
+
 const garageUnlockState = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.openMenuTab("customize");
-  return JSON.parse(window.render_game_to_text()).garage;
+  const legacyVisible =
+    document.querySelector(".garage-legacy-controls")?.getBoundingClientRect()
+      .height > 0;
+  const emberPill = document.querySelector(".garage-ember-pill");
+  const categoryIcon = document.querySelector(".garage-category-icon");
+  return {
+    garage: JSON.parse(window.render_game_to_text()).garage,
+    legacyVisible,
+    emberPill: emberPill?.textContent || "",
+    categoryIcon: categoryIcon?.textContent || "",
+  };
 });
-assert.equal(garageUnlockState.unlockRule, "xp-level");
-assert.equal(garageUnlockState.xpLevel, 1);
-assert.ok(garageUnlockState.lockedCount > 0);
-assert.ok(garageUnlockState.nextUnlock.level >= 2);
-assert.ok(garageUnlockState.market.length >= 12);
+assert.equal(garageUnlockState.legacyVisible, false);
+assert.match(garageUnlockState.emberPill, /Embers/);
+assert.match(garageUnlockState.categoryIcon, /\S/);
+assert.equal(garageUnlockState.garage.unlockRule, "xp-level");
+assert.equal(garageUnlockState.garage.xpLevel, 1);
+assert.ok(garageUnlockState.garage.lockedCount > 0);
+assert.ok(garageUnlockState.garage.nextUnlock.level >= 2);
+assert.ok(garageUnlockState.garage.market.length >= 12);
 assert.ok(
-  garageUnlockState.market.some(
+  garageUnlockState.garage.market.some(
     (category) =>
       category.key === "boostTrailId" &&
       category.options.some((option) => option.id === "blue-flare"),
@@ -788,6 +900,12 @@ const garageBuyState = await page.evaluate(() => {
     "boostTrailId",
     "blue-flare",
   );
+  const beforeBody = window.__infernodriftTestApi.getCarVisualConfigForTest();
+  const buyMuscle = window.__infernodriftTestApi.buyGarageCosmetic(
+    "bodyId",
+    "muscle",
+  );
+  const afterBody = window.__infernodriftTestApi.getCarVisualConfigForTest();
   const duplicate = window.__infernodriftTestApi.buyGarageCosmetic(
     "boostTrailId",
     "blue-flare",
@@ -797,12 +915,28 @@ const garageBuyState = await page.evaluate(() => {
     "blue-nova",
   );
   const state = JSON.parse(window.render_game_to_text());
-  return { buy, duplicate, equipLocked, garage: state.garage, skin: state.player.skin };
+  return {
+    buy,
+    buyMuscle,
+    duplicate,
+    equipLocked,
+    garage: state.garage,
+    skin: state.player.skin,
+    beforeBody,
+    afterBody,
+  };
 });
 assert.equal(garageBuyState.buy.ok, true);
+assert.equal(garageBuyState.buyMuscle.ok, true);
 assert.equal(garageBuyState.duplicate.reason, "Already owned.");
 assert.equal(garageBuyState.equipLocked.ok, false);
 assert.equal(garageBuyState.skin.boostTrail, "blue-flare");
+assert.equal(garageBuyState.skin.body, "muscle");
+assert.notDeepEqual(
+  garageBuyState.beforeBody.bodyScale,
+  garageBuyState.afterBody.bodyScale,
+);
+assert.equal(garageBuyState.afterBody.body, "muscle");
 assert.ok(
   garageBuyState.garage.market
     .find((category) => category.key === "boostTrailId")
@@ -814,6 +948,18 @@ const tutorialState = await page.evaluate(() => {
 });
 assert.equal(tutorialState.active, true);
 assert.equal(tutorialState.mode, "race");
+const roomJoinState = await page.evaluate(() => {
+  window.__infernodriftTestApi.openMenuTab("online");
+  return window.__infernodriftTestApi.simulateRoomJoinForTest({
+    code: "BTTL7",
+    mode: "battle-arena",
+    firebaseLobby: true,
+  });
+});
+assert.equal(roomJoinState.mode, "battle-arena");
+assert.equal(roomJoinState.running, true);
+assert.equal(roomJoinState.ui.screen, "playing");
+assert.equal(roomJoinState.online.room.code, "BTTL7");
 assert.ok(phase3Progress.personalBests.race);
 await page.waitForTimeout(1500);
 await page.screenshot({

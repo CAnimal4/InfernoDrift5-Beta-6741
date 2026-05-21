@@ -109,6 +109,8 @@ service cloud.firestore {
           'runId',
           'clientVersion',
           'verified',
+          'account',
+          'guest',
           'createdAt'
         ]);
       allow delete: if false;

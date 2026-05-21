@@ -1782,11 +1782,12 @@ body:has(#school-gate.show) #overlay {
 }
 
 .mode-group.unified-modes {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 
 .mode-group-title {
+  grid-column: 1 / -1;
   color: var(--cool);
   font-size: 0.72rem;
   font-weight: 800;
@@ -1814,13 +1815,13 @@ body:has(#school-gate.show) #overlay {
 }
 
 .mode-card {
-  grid-template-columns: 94px minmax(0, 1fr);
+  grid-template-columns: minmax(104px, 0.34fr) minmax(0, 1fr);
   align-items: stretch;
 }
 
 .mode-card-art {
   width: 100%;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 4 / 3;
   min-height: 0;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -2021,6 +2022,10 @@ body:has(#school-gate.show) #overlay {
   align-items: start;
 }
 
+.garage-legacy-controls {
+  display: none !important;
+}
+
 .garage-shell {
   display: grid;
   grid-template-columns: minmax(280px, 1.05fr) minmax(220px, 0.95fr);
@@ -2148,30 +2153,31 @@ body:has(#school-gate.show) #overlay {
   grid-column: 1 / -1;
   display: grid;
   gap: 14px;
-  margin-top: 2px;
+  margin-top: 14px;
 }
 
-.garage-market-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: end;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid rgba(255, 196, 87, 0.18);
-  border-radius: 16px;
-  background:
-    linear-gradient(120deg, rgba(255, 101, 64, 0.14), transparent 52%),
-    rgba(255, 255, 255, 0.035);
-}
-
-.garage-market-header h3 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.garage-market-header span {
+.garage-ember-pill {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 196, 87, 0.34);
+  border-radius: 999px;
   color: #ffe0a3;
+  background:
+    linear-gradient(120deg, rgba(255, 101, 64, 0.24), rgba(255, 196, 87, 0.12)),
+    rgba(7, 11, 18, 0.94);
+  box-shadow: 0 10px 24px rgba(255, 101, 64, 0.14);
+  backdrop-filter: blur(10px);
   font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
 }
 
 .garage-category-row {
@@ -2181,11 +2187,25 @@ body:has(#school-gate.show) #overlay {
 }
 
 .garage-category-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   color: var(--muted);
   font-size: 0.76rem;
   font-weight: 900;
   letter-spacing: 0.11em;
   text-transform: uppercase;
+}
+
+.garage-category-title .garage-category-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  color: #0d1117;
+  background: linear-gradient(120deg, var(--heat), var(--cool));
+  font-size: 0.78rem;
 }
 
 .garage-option-row {
@@ -2238,8 +2258,23 @@ body:has(#school-gate.show) #overlay {
   height: 42px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  background: linear-gradient(135deg, var(--swatch-color), rgba(255, 255, 255, 0.08));
+  background:
+    linear-gradient(135deg, var(--swatch), rgba(255, 255, 255, 0.08));
   box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.08);
+}
+
+.garage-swatch::before {
+  content: attr(data-icon);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin: 4px;
+  border-radius: 10px;
+  color: #10151d;
+  background: rgba(255, 255, 255, 0.74);
+  font-size: 1rem;
+  font-weight: 900;
 }
 
 .garage-option-card strong {

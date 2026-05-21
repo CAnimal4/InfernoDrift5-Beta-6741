@@ -337,7 +337,7 @@ const PROGRESSION_SCHEMA_VERSION = 3;
 const EMBER_CURRENCY_NAME = "Embers";
 const STARTER_COSMETIC_ID = "paintId-ember";
 const FOUNDER_TARGET_SCORE = 12500;
-const LEVEL_TRACK_WINDOW = 12;
+const LEVEL_TRACK_WINDOW = 50;
 const DAILY_SPARKS_COUNT = 3;
 const ONLINE_PROTOCOL_VERSION = 1;
 const BACKEND_MODE_FIREBASE = "firebase";
@@ -2085,23 +2085,23 @@ const FINISH_OPTIONS = [
 ];
 
 const GARAGE_CATEGORIES = [
-  { key: "bodyId", label: "Body", options: BODY_OPTIONS },
-  { key: "paintId", label: "Paint", options: PAINT_OPTIONS },
-  { key: "accentId", label: "Accent", options: ACCENT_OPTIONS },
-  { key: "decalId", label: "Decal", options: DECAL_OPTIONS },
-  { key: "liveryId", label: "Livery", options: LIVERY_OPTIONS },
-  { key: "wheelId", label: "Wheels", options: WHEEL_OPTIONS },
-  { key: "tireId", label: "Tires", options: TIRE_OPTIONS },
-  { key: "spoilerId", label: "Spoiler", options: SPOILER_OPTIONS },
-  { key: "stanceId", label: "Stance", options: STANCE_OPTIONS },
-  { key: "glowId", label: "Underglow", options: GLOW_OPTIONS },
-  { key: "boostTrailId", label: "Boost Trail", options: BOOST_TRAIL_OPTIONS },
-  { key: "exhaustId", label: "Exhaust", options: EXHAUST_OPTIONS },
-  { key: "hornId", label: "Horn", options: HORN_OPTIONS },
-  { key: "goalExplosionId", label: "Goal Burst", options: GOAL_EXPLOSION_OPTIONS },
-  { key: "tintId", label: "Window Tint", options: TINT_OPTIONS },
-  { key: "plateId", label: "Nameplate", options: PLATE_OPTIONS },
-  { key: "finishId", label: "Finish", options: FINISH_OPTIONS },
+  { key: "bodyId", label: "Body", icon: "B", options: BODY_OPTIONS },
+  { key: "paintId", label: "Paint", icon: "P", options: PAINT_OPTIONS },
+  { key: "accentId", label: "Accent", icon: "A", options: ACCENT_OPTIONS },
+  { key: "decalId", label: "Decal", icon: "D", options: DECAL_OPTIONS },
+  { key: "liveryId", label: "Livery", icon: "L", options: LIVERY_OPTIONS },
+  { key: "wheelId", label: "Wheels", icon: "W", options: WHEEL_OPTIONS },
+  { key: "tireId", label: "Tires", icon: "T", options: TIRE_OPTIONS },
+  { key: "spoilerId", label: "Spoiler", icon: "S", options: SPOILER_OPTIONS },
+  { key: "stanceId", label: "Stance", icon: "H", options: STANCE_OPTIONS },
+  { key: "glowId", label: "Underglow", icon: "U", options: GLOW_OPTIONS },
+  { key: "boostTrailId", label: "Boost Trail", icon: "F", options: BOOST_TRAIL_OPTIONS },
+  { key: "exhaustId", label: "Exhaust", icon: "X", options: EXHAUST_OPTIONS },
+  { key: "hornId", label: "Horn", icon: "N", options: HORN_OPTIONS },
+  { key: "goalExplosionId", label: "Goal Burst", icon: "G", options: GOAL_EXPLOSION_OPTIONS },
+  { key: "tintId", label: "Window Tint", icon: "V", options: TINT_OPTIONS },
+  { key: "plateId", label: "Nameplate", icon: "I", options: PLATE_OPTIONS },
+  { key: "finishId", label: "Finish", icon: "M", options: FINISH_OPTIONS },
 ];
 
 const input = {
@@ -2224,6 +2224,7 @@ const onlineState = {
   authRequired: true,
   room: null,
   queue: null,
+  pendingRoomJoinLaunch: false,
   chatOpen: false,
   feedbackReturnToMenu: false,
   chatMessages: [],
@@ -6802,17 +6803,17 @@ function handleOnlineMessage(raw) {
       onlineState.roomShared = false;
       onlineState.roomSharePending = false;
     }
-    if (
-      onlineState.room?.mode &&
-      MODE_BY_ID[onlineState.room.mode] &&
-      !onlineState.room.firebaseLobby
-    ) {
+    if (onlineState.room?.mode && MODE_BY_ID[onlineState.room.mode]) {
       const joinedNewRoom = Boolean(
         onlineState.room.code && onlineState.room.code !== previousCode,
       );
       const roomModeChanged = onlineState.room.mode !== settings.activeGameMode;
+      const launchJoinedRoom = Boolean(onlineState.pendingRoomJoinLaunch);
+      onlineState.pendingRoomJoinLaunch = false;
       enterOnlineRoomMode(onlineState.room.mode, {
-        start: joinedNewRoom || roomModeChanged,
+        start:
+          launchJoinedRoom ||
+          (!onlineState.room.firebaseLobby && (joinedNewRoom || roomModeChanged)),
       });
     }
     if (
@@ -7245,6 +7246,7 @@ async function createFirebaseLobbyRoom() {
     });
     return true;
   } catch (error) {
+    onlineState.pendingRoomJoinLaunch = false;
     pushOnlineChatMessage({
       from: "System",
       text: `Online lobby could not be created: ${describeOnlineError(error?.message || "")}`,
@@ -7349,8 +7351,11 @@ function joinRoomByCode(code, { source = "manual" } = {}) {
   }
   if (onlineRoomCode) onlineRoomCode.value = cleanCode;
   if (isFirebaseBackendMode()) {
+    onlineState.pendingRoomJoinLaunch = true;
     joinFirebaseLobbyByCode(cleanCode, {
       source: source === "manual" && invite ? "invite" : source,
+    }).catch(() => {
+      onlineState.pendingRoomJoinLaunch = false;
     });
     return true;
   }
@@ -7367,6 +7372,7 @@ function joinRoomByCode(code, { source = "manual" } = {}) {
     { type: "room.join", code: cleanCode },
     { queue: false },
   );
+  onlineState.pendingRoomJoinLaunch = Boolean(sent);
   if (sent && source === "invite") {
     pushOnlineChatMessage({
       from: "System",
@@ -7521,6 +7527,24 @@ async function sendFirebaseChat(text, { quick = false } = {}) {
       quick,
       directTo,
     });
+    if (directTo?.username) {
+      pushOnlineChatMessage(
+        {
+          from: onlineState.user?.username || onlineState.username || "You",
+          userId: onlineState.user?.id || "",
+          badge: onlineState.user?.badge || "",
+          moderator: isCurrentOnlineModerator(),
+          text: clean,
+          quick,
+          channel: "friend",
+          direct: true,
+          toUserId: directTo.uid || "",
+          toUsername: directTo.username,
+          at: Date.now(),
+        },
+        { notify: false },
+      );
+    }
     onlineState.chatSendStatus = "sent";
     if (onlineChatInput) onlineChatInput.value = "";
     if (chatPopoutInput) chatPopoutInput.value = "";
@@ -8056,30 +8080,98 @@ function getDisplayLeaderboardRows() {
   const rows = onlineState.leaderboard.length
     ? [...onlineState.leaderboard]
     : getLocalXpLeaderboardRows();
-  const playerRow = onlineState.leaderboardPlayerRow
+  const localPlayerRow = getCurrentPlayerXpLeaderboardRow();
+  let playerRow = onlineState.leaderboardPlayerRow
     ? {
         ...onlineState.leaderboardPlayerRow,
         source: onlineState.leaderboardPlayerRow.source || "server",
       }
-    : getCurrentPlayerXpLeaderboardRow();
-  const existingIndex = rows.findIndex(
-    (row) => playerRow.userId && row.userId === playerRow.userId,
-  );
-  if (existingIndex >= 0) {
-    const xp = Math.max(getLeaderboardXp(rows[existingIndex]), playerRow.xp);
-    rows[existingIndex] = {
-      ...rows[existingIndex],
-      xp,
-      totalXp: xp,
-    };
-  } else if (
+    : localPlayerRow;
+  if (getLeaderboardXp(localPlayerRow) > getLeaderboardXp(playerRow)) {
+    playerRow = mergeLeaderboardIdentityRows(playerRow, localPlayerRow);
+  }
+  if (
     playerRow.userId ||
     playerRow.xp > 0 ||
     onlineState.guestTemporary
   ) {
     rows.push(playerRow);
   }
-  return rows.sort(compareLeaderboard);
+  return dedupeLeaderboardRows(rows).sort(compareLeaderboard);
+}
+
+function normalizeLeaderboardUsername(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function isGuestLeaderboardRow(row = {}) {
+  return (
+    Boolean(row.guest) ||
+    row.source === "guest" ||
+    row.badge === "Guest" ||
+    /^guest[_\s-]/i.test(String(row.username || ""))
+  );
+}
+
+function getLeaderboardRowPriority(row = {}) {
+  let priority = 0;
+  if (row.account === true) priority += 80;
+  if (row.source === "server") priority += 40;
+  if (row.userId) priority += 20;
+  if (isGuestLeaderboardRow(row)) priority -= 60;
+  return priority;
+}
+
+function mergeLeaderboardIdentityRows(a = {}, b = {}) {
+  const aPriority = getLeaderboardRowPriority(a);
+  const bPriority = getLeaderboardRowPriority(b);
+  const winner =
+    bPriority > aPriority ||
+    (bPriority === aPriority && getLeaderboardXp(b) > getLeaderboardXp(a))
+      ? b
+      : a;
+  const other = winner === a ? b : a;
+  const xp = Math.max(getLeaderboardXp(a), getLeaderboardXp(b));
+  return {
+    ...other,
+    ...winner,
+    xp,
+    totalXp: xp,
+    source: winner.source || other.source,
+  };
+}
+
+function dedupeLeaderboardRows(rows = []) {
+  const byUserId = new Map();
+  const noUserId = [];
+  rows.filter(Boolean).forEach((row) => {
+    const userId = String(row.userId || row.uid || "");
+    if (!userId) {
+      noUserId.push(row);
+      return;
+    }
+    byUserId.set(
+      userId,
+      byUserId.has(userId)
+        ? mergeLeaderboardIdentityRows(byUserId.get(userId), row)
+        : row,
+    );
+  });
+  const byName = new Map();
+  [...byUserId.values(), ...noUserId].forEach((row) => {
+    const nameKey = normalizeLeaderboardUsername(row.username);
+    const key = nameKey || `anon:${row.userId || row.id || byName.size}`;
+    byName.set(
+      key,
+      byName.has(key)
+        ? mergeLeaderboardIdentityRows(byName.get(key), row)
+        : row,
+    );
+  });
+  return [...byName.values()];
 }
 
 function renderLeaderboardRows(target, rows, emptyText) {
@@ -9192,7 +9284,10 @@ function renderProgressPanel() {
     .slice(0, 3);
   const totalXp = getProgressionTotalXp(progression);
   const xpProgress = getXPProgressInCurrentLevel(totalXp);
-  const levelStart = Math.max(1, xpProgress.level - 2);
+  const levelStart = Math.max(
+    1,
+    Math.min(xpProgress.level - 2, Math.max(1, xpProgress.level - LEVEL_TRACK_WINDOW + 8)),
+  );
   const levelNodes = Array.from({ length: LEVEL_TRACK_WINDOW }, (_, index) => {
     const levelNumber = levelStart + index;
     const rewards = getLevelRewards(levelNumber);
@@ -9284,13 +9379,7 @@ function renderGarageMarket() {
   const progress = getProgressSnapshot();
   const embers = state.progressionV2.embers || 0;
   garageMarket.innerHTML = `
-    <div class="garage-market-header">
-      <div>
-        <div class="custom-section-title">Cosmetic Browser</div>
-        <strong>${embers.toLocaleString()} ${EMBER_CURRENCY_NAME}</strong>
-      </div>
-      <span>Buy with earned Embers. Owned parts equip instantly.</span>
-    </div>
+    <div class="garage-ember-pill">${embers.toLocaleString()} ${EMBER_CURRENCY_NAME}</div>
     ${GARAGE_CATEGORIES.map((category) => {
       const cards = category.options
         .map((option) => {
@@ -9314,16 +9403,16 @@ function renderGarageMarket() {
                 : `${price} Embers`;
           return `
             <button class="garage-option-card${equipped ? " equipped" : ""}${!unlocked ? " locked" : ""}" data-garage-key="${category.key}" data-garage-option="${option.id}" type="button">
-              <span class="garage-swatch" style="--swatch:${swatch}"></span>
+              <span class="garage-swatch" data-icon="${category.icon}" style="--swatch:${swatch}"></span>
               <strong>${option.name}</strong>
-              <span>${option.description || getUnlockLabel(option)}</span>
-              <em>${owned ? "Owned" : unlocked ? "Buy" : "Locked"} · ${action}</em>
+              <span class="option-desc">${option.description || getUnlockLabel(option)}</span>
+              <em class="option-action">${owned ? "Owned" : unlocked ? "Buy" : "Locked"} · ${action}</em>
             </button>`;
         })
         .join("");
       return `
         <section class="garage-category-row">
-          <div class="garage-category-title">${category.label}</div>
+          <div class="garage-category-title"><span class="garage-category-icon">${category.icon}</span>${category.label}</div>
           <div class="garage-option-row">${cards}</div>
         </section>`;
     }).join("")}
@@ -20921,9 +21010,13 @@ window.render_game_to_text = () => {
       nextReward: getLevelRewards(
         getXPProgressInCurrentLevel(getProgressionTotalXp()).level + 1,
       ),
-      levelTrack: Array.from({ length: 8 }, (_, index) => {
+      levelTrack: Array.from({ length: LEVEL_TRACK_WINDOW }, (_, index) => {
         const current = getProgressionLevel();
-        const level = Math.max(1, current - 1 + index);
+        const start = Math.max(
+          1,
+          Math.min(current - 2, Math.max(1, current - LEVEL_TRACK_WINDOW + 8)),
+        );
+        const level = start + index;
         return {
           level,
           current: level === current,
@@ -21185,6 +21278,70 @@ window.__infernodriftTestApi = {
     buyGarageCosmetic(categoryKey, optionId),
   equipGarageCosmetic: (categoryKey, optionId) =>
     equipGarageCosmetic(categoryKey, optionId),
+  getCarVisualConfigForTest: () => {
+    const visual = getCarVisualConfig();
+    return {
+      body: getCurrentCustomization().body.id,
+      bodyScale: visual.bodyScale,
+      hoodScale: visual.hoodScale,
+      cabinScale: visual.cabinScale,
+      trunkScale: visual.trunkScale,
+      wheelRadius: visual.wheelRadius,
+      rideHeight: visual.rideHeight,
+      primary: visual.primary,
+      accent: visual.accent,
+    };
+  },
+  setLeaderboardRowsForTest: (rows = [], playerRow = null) => {
+    onlineState.leaderboard = Array.isArray(rows) ? rows : [];
+    onlineState.leaderboardPlayerRow = playerRow;
+    updateOnlineUi();
+    return JSON.parse(window.render_game_to_text()).online.leaderboard;
+  },
+  simulateRoomJoinForTest: (room = {}) => {
+    onlineState.pendingRoomJoinLaunch = true;
+    handleOnlineMessage(
+      JSON.stringify({
+        type: "room.snapshot",
+        room: {
+          code: String(room.code || "TEST7").toUpperCase(),
+          mode: normalizeGameModeId(room.mode || GAME_MODE_BATTLE),
+          playlist: room.playlist || "private",
+          firebaseLobby: Boolean(room.firebaseLobby ?? true),
+          live: false,
+          players: room.players || [],
+          bots: room.bots ?? 0,
+        },
+      }),
+    );
+    return JSON.parse(window.render_game_to_text());
+  },
+  simulateSentDirectMessageForTest: ({
+    username = "TestFriend",
+    userId = "friend-test",
+    text = "test dm",
+  } = {}) => {
+    onlineState.user = onlineState.user || {
+      id: "test-user",
+      username: onlineState.username || "SmokeRacer",
+    };
+    openDirectMessageThread({ username, userId });
+    pushOnlineChatMessage(
+      {
+        from: onlineState.user.username || onlineState.username || "You",
+        userId: onlineState.user.id || "",
+        text,
+        channel: "friend",
+        direct: true,
+        toUserId: userId,
+        toUsername: username,
+        at: Date.now(),
+      },
+      { notify: false },
+    );
+    updateOnlineUi();
+    return JSON.parse(window.render_game_to_text()).online.chat;
+  },
   getDailySparksState: () => structuredClone(state.progressionV2.dailySparks),
   claimDailySpark: (id) => claimDailySpark(id),
   startFirstDriveTutorial: () => {
