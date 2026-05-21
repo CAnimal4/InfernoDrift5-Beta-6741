@@ -14,6 +14,7 @@ for (const file of [
   "firebase-config.js",
   "firebase-online.js",
   "firebase-online-core.js",
+  "legacy-cloudflare-progress.json",
   "manifest.webmanifest",
   "icon.svg",
   "favicon.ico",

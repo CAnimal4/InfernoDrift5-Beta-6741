@@ -327,6 +327,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     age,
     savePayload = null,
     timeoutMs = 8000,
+    allowLegacyAutoCreate = false,
   } = {}) {
     const validation = validateFirebaseUsername(username);
     if (!validation.ok) throw new Error(validation.error);
@@ -355,7 +356,19 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
           "auth_timeout",
         );
       } catch (error) {
-        throw new Error(mapFirebaseError(error) || "invalid_credentials");
+        const code = mapFirebaseError(error) || "invalid_credentials";
+        if (!allowLegacyAutoCreate || code !== "invalid_credentials") {
+          throw new Error(code);
+        }
+        try {
+          credential = await withTimeout(
+            auth.createUserWithEmailAndPassword(internals.auth, email, password),
+            timeoutMs,
+            "auth_timeout",
+          );
+        } catch (createError) {
+          throw new Error(mapFirebaseError(createError) || code);
+        }
       }
     } else {
       try {
@@ -386,7 +399,11 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     const badges = getFirebaseBadges(validation.username);
     await firestore.runTransaction(internals.db, async (transaction) => {
       const usernameDoc = await transaction.get(usernameRef);
-      if (usernameDoc.exists() && usernameDoc.data()?.uid !== user.uid) {
+      if (
+        usernameDoc.exists() &&
+        usernameDoc.data()?.uid !== user.uid &&
+        !allowLegacyAutoCreate
+      ) {
         throw new Error("username_taken");
       }
       const userRef = firestore.doc(internals.db, "users", user.uid);

@@ -1,4 +1,5 @@
-export const FIREBASE_USERNAME_PATTERN = /^[A-Za-z0-9_-]{3,20}$/;
+export const FIREBASE_USERNAME_PATTERN =
+  /^(?!.* {2})[A-Za-z0-9][A-Za-z0-9 _-]{1,18}[A-Za-z0-9]$/;
 export const FIREBASE_CHAT_LIMIT = 300;
 export const FIREBASE_FEEDBACK_LIMIT = 2500;
 export const FIREBASE_SCORE_LIMIT = 1_000_000;
@@ -44,7 +45,7 @@ function deobfuscate(value = "") {
 }
 
 export function normalizeFirebaseUsername(value = "") {
-  return String(value ?? "").trim();
+  return String(value ?? "").trim().replace(/\s+/g, " ");
 }
 
 export function normalizeFirebaseUsernameKey(value = "") {
@@ -76,7 +77,10 @@ export function validateFirebaseUsername(value = "") {
 export function usernameToFirebaseEmail(username = "") {
   const validation = validateFirebaseUsername(username);
   if (!validation.ok) throw new Error(validation.error);
-  return `id4.${validation.usernameLower}@infernodrift4.firebaseapp.com`;
+  const emailKey = validation.usernameLower
+    .replace(/\s+/g, ".")
+    .replace(/[^a-z0-9._-]/g, "-");
+  return `id4.${emailKey}@infernodrift4.firebaseapp.com`;
 }
 
 export function getFirebaseBadges(username = "") {

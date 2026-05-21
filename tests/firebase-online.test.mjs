@@ -23,7 +23,9 @@ test("Firebase username validation enforces launch-safe names", () => {
   assert.deepEqual(getFirebaseBadges("Clark"), ["Founder"]);
   assert.equal(getFirebaseBadges("clark").length, 0);
   assert.equal(normalizeFirebaseUsernameKey(" Drift-King_4 "), "drift-king_4");
+  assert.equal(normalizeFirebaseUsernameKey(" Tosh   the Sigma "), "tosh the sigma");
   assert.equal(validateFirebaseUsername("ab").error, "username_invalid");
+  assert.equal(validateFirebaseUsername("Tosh the Sigma").ok, true);
   assert.equal(validateFirebaseUsername("bad name!").error, "username_invalid");
   assert.equal(
     validateFirebaseUsername("x".repeat(21)).error,
@@ -36,6 +38,10 @@ test("Firebase username validation enforces launch-safe names", () => {
   assert.equal(
     usernameToFirebaseEmail("Drift-King_4"),
     "id4.drift-king_4@infernodrift4.firebaseapp.com",
+  );
+  assert.equal(
+    usernameToFirebaseEmail("Tosh the Sigma"),
+    "id4.tosh.the.sigma@infernodrift4.firebaseapp.com",
   );
 });
 
@@ -116,7 +122,7 @@ test("Firebase guardrails survive stress inputs", () => {
   const rejectedNames = [
     "",
     "ab",
-    "name with space",
+    "bad@name",
     "name!",
     "x".repeat(64),
     "admin",
@@ -167,5 +173,24 @@ test("production source defaults to Firebase and keeps Replit out of shipped URL
   assert.match(script, /const DEFAULT_PRODUCTION_BACKEND_URL = "";/);
   assert.match(buildScript, /firebase-config\.js/);
   assert.match(buildScript, /firebase-online\.js/);
+  assert.match(buildScript, /legacy-cloudflare-progress\.json/);
   assert.doesNotMatch(script, /replit\.dev|replit\.app|janeway\.replit/i);
+});
+
+test("legacy Cloudflare progress manifest restores old account XP without secrets", () => {
+  const manifest = JSON.parse(
+    fs.readFileSync(
+      new URL("../legacy-cloudflare-progress.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.equal(manifest.schemaVersion, 1);
+  assert.equal(manifest.source, "cloudflare-d1");
+  assert.ok(Object.keys(manifest.accounts).length >= 17);
+  assert.ok(manifest.accounts.clark.xp >= 11317);
+  assert.ok(manifest.accounts.billy.xp >= 6100);
+  assert.ok(manifest.accounts["tosh the sigma"].xp >= 4300);
+  const serialized = JSON.stringify(manifest).toLowerCase();
+  assert.doesNotMatch(serialized, /passwordhash|passwordsalt|sessiontoken/);
+  assert.doesNotMatch(serialized, /olduserid|user_id/);
 });

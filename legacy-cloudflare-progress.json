@@ -1,0 +1,1625 @@
+{
+  "schemaVersion": 1,
+  "source": "cloudflare-d1",
+  "exportedAt": "2026-05-21T02:10:46.155Z",
+  "note": "Legacy InfernoDrift4 account saves exported from Cloudflare D1. Contains no password hashes, salts, sessions, or private tokens.",
+  "accounts": {
+    "billy": {
+      "username": "Billy",
+      "usernameLower": "billy",
+      "xp": 6100,
+      "level": 13,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-20T00:55:31.891Z",
+      "payload": {
+        "progressionV2": {
+          "xp": 6100,
+          "totalXp": 6100,
+          "level": 13
+        }
+      }
+    },
+    "clark": {
+      "username": "Clark",
+      "usernameLower": "clark",
+      "xp": 11317,
+      "level": 23,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-20T23:04:31.459Z",
+      "payload": {
+        "worldIndex": 0,
+        "levelIndex": 0,
+        "settings": {
+          "difficulty": "classic",
+          "campaignAiMode": "adaptive",
+          "maxDifficulty": "classic",
+          "invertSteer": true,
+          "cameraFocus": false,
+          "battleCockpitCamera": false,
+          "rampDensity": "normal",
+          "deviceMode": "auto",
+          "touchLayout": "classic",
+          "touchScale": 1,
+          "devMode": false,
+          "activeGameMode": "race",
+          "exitLinkUrl": "https://lbusd.instructure.com/?login_success=1"
+        },
+        "devTuning": {
+          "playerSpeedMult": 1,
+          "botSpeedMult": 1,
+          "infiniteBoost": false,
+          "invulnerable": false,
+          "freezeBots": false,
+          "allowDemolitions": true,
+          "allowReplay": true,
+          "maxBoostVariant": "super",
+          "worldModifier": "world"
+        },
+        "customization": {
+          "bodyId": "street",
+          "wheelId": "grip",
+          "styleId": "balanced",
+          "powerId": "nitro_core",
+          "paintId": "ember",
+          "accentId": "carbon",
+          "tintId": "smoke",
+          "spoilerId": "none",
+          "glowId": "cyan"
+        },
+        "garage": {
+          "schemaVersion": 2,
+          "activeLoadoutId": "slot-1",
+          "loadouts": [
+            {
+              "id": "slot-1",
+              "name": "Street Heat",
+              "classId": "balanced",
+              "bodyId": "street",
+              "wheelId": "grip",
+              "styleId": "balanced",
+              "powerId": "nitro_core",
+              "paintId": "ember",
+              "accentId": "carbon",
+              "tintId": "smoke",
+              "spoilerId": "none",
+              "glowId": "cyan"
+            },
+            {
+              "id": "slot-2",
+              "name": "Air Trick",
+              "classId": "stunt",
+              "bodyId": "street",
+              "wheelId": "grip",
+              "styleId": "balanced",
+              "powerId": "nitro_core",
+              "paintId": "ember",
+              "accentId": "carbon",
+              "tintId": "smoke",
+              "spoilerId": "none",
+              "glowId": "cyan"
+            },
+            {
+              "id": "slot-3",
+              "name": "Arena Guard",
+              "classId": "bruiser",
+              "bodyId": "street",
+              "wheelId": "grip",
+              "styleId": "balanced",
+              "powerId": "nitro_core",
+              "paintId": "ember",
+              "accentId": "carbon",
+              "tintId": "smoke",
+              "spoilerId": "none",
+              "glowId": "cyan"
+            }
+          ]
+        },
+        "progressionV2": {
+          "schemaVersion": 2,
+          "xp": 11317,
+          "totalXp": 11317,
+          "level": 23,
+          "medals": {
+            "race": "Gold",
+            "stunt-park": "Attempt"
+          },
+          "personalBests": {
+            "race": {
+              "score": 3511,
+              "medal": "Inferno",
+              "time": 22.02,
+              "progress": 10,
+              "ghostSamples": [
+                {
+                  "x": 0,
+                  "z": -191.1,
+                  "t": 0.25
+                },
+                {
+                  "x": -0.1,
+                  "z": -191.1,
+                  "t": 0.5
+                },
+                {
+                  "x": -2.3,
+                  "z": -190.9,
+                  "t": 0.77
+                },
+                {
+                  "x": -7.4,
+                  "z": -190.5,
+                  "t": 1.02
+                },
+                {
+                  "x": -15.8,
+                  "z": -189.9,
+                  "t": 1.28
+                },
+                {
+                  "x": -26.3,
+                  "z": -189,
+                  "t": 1.53
+                },
+                {
+                  "x": -39.4,
+                  "z": -187.6,
+                  "t": 1.78
+                },
+                {
+                  "x": -55.8,
+                  "z": -184.9,
+                  "t": 2.05
+                },
+                {
+                  "x": -73.2,
+                  "z": -180.3,
+                  "t": 2.3
+                },
+                {
+                  "x": -91.8,
+                  "z": -172.2,
+                  "t": 2.55
+                },
+                {
+                  "x": -113,
+                  "z": -160.6,
+                  "t": 2.82
+                },
+                {
+                  "x": -133.4,
+                  "z": -146.1,
+                  "t": 3.07
+                },
+                {
+                  "x": -151.9,
+                  "z": -126.1,
+                  "t": 3.32
+                },
+                {
+                  "x": -165.5,
+                  "z": -100,
+                  "t": 3.58
+                },
+                {
+                  "x": -170.8,
+                  "z": -72.8,
+                  "t": 3.83
+                },
+                {
+                  "x": -168.3,
+                  "z": -45.3,
+                  "t": 4.08
+                },
+                {
+                  "x": -157.2,
+                  "z": -18,
+                  "t": 4.35
+                },
+                {
+                  "x": -139.8,
+                  "z": 3.4,
+                  "t": 4.6
+                },
+                {
+                  "x": -115.4,
+                  "z": 19.9,
+                  "t": 4.87
+                },
+                {
+                  "x": -97.2,
+                  "z": 26.6,
+                  "t": 5.12
+                },
+                {
+                  "x": -79.9,
+                  "z": 32.8,
+                  "t": 5.38
+                },
+                {
+                  "x": -65,
+                  "z": 41.5,
+                  "t": 5.63
+                },
+                {
+                  "x": -52.8,
+                  "z": 53.6,
+                  "t": 5.88
+                },
+                {
+                  "x": -44.3,
+                  "z": 68.6,
+                  "t": 6.13
+                },
+                {
+                  "x": -40.7,
+                  "z": 86.6,
+                  "t": 6.4
+                },
+                {
+                  "x": -44.3,
+                  "z": 88.4,
+                  "t": 6.65
+                },
+                {
+                  "x": -46.5,
+                  "z": 90.1,
+                  "t": 6.9
+                },
+                {
+                  "x": -48.4,
+                  "z": 91.4,
+                  "t": 7.15
+                },
+                {
+                  "x": -54.1,
+                  "z": 92.6,
+                  "t": 7.4
+                },
+                {
+                  "x": -64.6,
+                  "z": 90.4,
+                  "t": 7.67
+                },
+                {
+                  "x": -76.4,
+                  "z": 82.7,
+                  "t": 7.92
+                },
+                {
+                  "x": -87.3,
+                  "z": 68.9,
+                  "t": 8.17
+                },
+                {
+                  "x": -93.2,
+                  "z": 52.3,
+                  "t": 8.42
+                },
+                {
+                  "x": -91.2,
+                  "z": 51.5,
+                  "t": 8.68
+                },
+                {
+                  "x": -90.5,
+                  "z": 51,
+                  "t": 8.93
+                },
+                {
+                  "x": -89.6,
+                  "z": 50.4,
+                  "t": 9.2
+                },
+                {
+                  "x": -87.1,
+                  "z": 49.7,
+                  "t": 9.45
+                },
+                {
+                  "x": -82.6,
+                  "z": 50.6,
+                  "t": 9.7
+                },
+                {
+                  "x": -77.4,
+                  "z": 54.2,
+                  "t": 9.95
+                },
+                {
+                  "x": -73.1,
+                  "z": 61.1,
+                  "t": 10.2
+                },
+                {
+                  "x": -71.5,
+                  "z": 70.8,
+                  "t": 10.45
+                },
+                {
+                  "x": -73.7,
+                  "z": 82.2,
+                  "t": 10.7
+                },
+                {
+                  "x": -80.4,
+                  "z": 93.5,
+                  "t": 10.95
+                },
+                {
+                  "x": -92.4,
+                  "z": 103.6,
+                  "t": 11.22
+                },
+                {
+                  "x": -106.8,
+                  "z": 111.6,
+                  "t": 11.47
+                },
+                {
+                  "x": -121.4,
+                  "z": 120.8,
+                  "t": 11.72
+                },
+                {
+                  "x": -134.5,
+                  "z": 133.7,
+                  "t": 11.98
+                },
+                {
+                  "x": -134.6,
+                  "z": 138.4,
+                  "t": 12.23
+                },
+                {
+                  "x": -134.4,
+                  "z": 139,
+                  "t": 12.48
+                },
+                {
+                  "x": -134,
+                  "z": 140,
+                  "t": 12.75
+                },
+                {
+                  "x": -131.2,
+                  "z": 142.5,
+                  "t": 13.02
+                },
+                {
+                  "x": -125.5,
+                  "z": 145.7,
+                  "t": 13.27
+                },
+                {
+                  "x": -116.2,
+                  "z": 148.9,
+                  "t": 13.53
+                },
+                {
+                  "x": -104.8,
+                  "z": 152.1,
+                  "t": 13.78
+                },
+                {
+                  "x": -91,
+                  "z": 156.2,
+                  "t": 14.03
+                },
+                {
+                  "x": -73.7,
+                  "z": 160.7,
+                  "t": 14.3
+                },
+                {
+                  "x": -55,
+                  "z": 164.8,
+                  "t": 14.55
+                },
+                {
+                  "x": -32.5,
+                  "z": 169.4,
+                  "t": 14.82
+                },
+                {
+                  "x": -9,
+                  "z": 174,
+                  "t": 15.07
+                },
+                {
+                  "x": 19,
+                  "z": 175.6,
+                  "t": 15.33
+                }
+              ]
+            },
+            "stunt-park": {
+              "score": 137192,
+              "medal": "Attempt",
+              "time": 120,
+              "progress": 2,
+              "ghostSamples": [
+                {
+                  "x": -44.7,
+                  "z": 35.4,
+                  "t": 97.07
+                },
+                {
+                  "x": -44.3,
+                  "z": 35.4,
+                  "t": 97.33
+                },
+                {
+                  "x": -42.6,
+                  "z": 35.4,
+                  "t": 97.58
+                },
+                {
+                  "x": -41.3,
+                  "z": 35.4,
+                  "t": 97.83
+                },
+                {
+                  "x": -40.2,
+                  "z": 35.5,
+                  "t": 98.1
+                },
+                {
+                  "x": -39.2,
+                  "z": 35.5,
+                  "t": 98.35
+                },
+                {
+                  "x": -36.7,
+                  "z": 35.6,
+                  "t": 98.62
+                },
+                {
+                  "x": -32.5,
+                  "z": 35.8,
+                  "t": 98.88
+                },
+                {
+                  "x": -26.5,
+                  "z": 36,
+                  "t": 99.15
+                },
+                {
+                  "x": -18.8,
+                  "z": 36.3,
+                  "t": 99.42
+                },
+                {
+                  "x": -11,
+                  "z": 36.6,
+                  "t": 99.68
+                },
+                {
+                  "x": -4.2,
+                  "z": 36.9,
+                  "t": 99.93
+                },
+                {
+                  "x": 2.1,
+                  "z": 37.2,
+                  "t": 100.18
+                },
+                {
+                  "x": 8.3,
+                  "z": 37.4,
+                  "t": 100.45
+                },
+                {
+                  "x": 14.1,
+                  "z": 37.5,
+                  "t": 100.71
+                },
+                {
+                  "x": 20.6,
+                  "z": 36.2,
+                  "t": 100.97
+                },
+                {
+                  "x": 29.6,
+                  "z": 35.5,
+                  "t": 101.23
+                },
+                {
+                  "x": 40.5,
+                  "z": 36.9,
+                  "t": 101.5
+                },
+                {
+                  "x": 53,
+                  "z": 39.6,
+                  "t": 101.76
+                },
+                {
+                  "x": 66.3,
+                  "z": 42.8,
+                  "t": 102.02
+                },
+                {
+                  "x": 82.1,
+                  "z": 46.7,
+                  "t": 102.28
+                },
+                {
+                  "x": 97.9,
+                  "z": 49.8,
+                  "t": 102.53
+                },
+                {
+                  "x": 113.8,
+                  "z": 51.1,
+                  "t": 102.78
+                },
+                {
+                  "x": 130.7,
+                  "z": 49.3,
+                  "t": 103.05
+                },
+                {
+                  "x": 145.8,
+                  "z": 44.1,
+                  "t": 103.3
+                },
+                {
+                  "x": 155.3,
+                  "z": 31.6,
+                  "t": 103.55
+                },
+                {
+                  "x": 157.8,
+                  "z": 15.9,
+                  "t": 103.8
+                },
+                {
+                  "x": 155.5,
+                  "z": 0.1,
+                  "t": 104.05
+                },
+                {
+                  "x": 148.1,
+                  "z": -15.2,
+                  "t": 104.32
+                },
+                {
+                  "x": 138.1,
+                  "z": -27.7,
+                  "t": 104.57
+                },
+                {
+                  "x": 126,
+                  "z": -39.7,
+                  "t": 104.83
+                },
+                {
+                  "x": 115.2,
+                  "z": -52.9,
+                  "t": 105.1
+                },
+                {
+                  "x": 104.5,
+                  "z": -66.2,
+                  "t": 105.37
+                },
+                {
+                  "x": 92.7,
+                  "z": -78.5,
+                  "t": 105.63
+                },
+                {
+                  "x": 80,
+                  "z": -88.2,
+                  "t": 105.88
+                },
+                {
+                  "x": 65.6,
+                  "z": -95.2,
+                  "t": 106.13
+                },
+                {
+                  "x": 50,
+                  "z": -94.9,
+                  "t": 106.38
+                },
+                {
+                  "x": 36.9,
+                  "z": -85.9,
+                  "t": 106.63
+                },
+                {
+                  "x": 28.1,
+                  "z": -72.6,
+                  "t": 106.88
+                },
+                {
+                  "x": 24.6,
+                  "z": -57.1,
+                  "t": 107.13
+                },
+                {
+                  "x": 29.8,
+                  "z": -41.2,
+                  "t": 107.4
+                },
+                {
+                  "x": 43.3,
+                  "z": -32,
+                  "t": 107.67
+                },
+                {
+                  "x": 59,
+                  "z": -32.7,
+                  "t": 107.92
+                },
+                {
+                  "x": 75.3,
+                  "z": -37.9,
+                  "t": 108.18
+                },
+                {
+                  "x": 91.1,
+                  "z": -38.7,
+                  "t": 108.43
+                },
+                {
+                  "x": 105.2,
+                  "z": -31.6,
+                  "t": 108.68
+                },
+                {
+                  "x": 112.7,
+                  "z": -17.8,
+                  "t": 108.93
+                },
+                {
+                  "x": 110,
+                  "z": -1.3,
+                  "t": 109.2
+                },
+                {
+                  "x": 99.6,
+                  "z": 10.8,
+                  "t": 109.45
+                },
+                {
+                  "x": 86.5,
+                  "z": 20.1,
+                  "t": 109.7
+                },
+                {
+                  "x": 72,
+                  "z": 26.6,
+                  "t": 109.95
+                },
+                {
+                  "x": 36.4,
+                  "z": 35.9,
+                  "t": 110.22
+                },
+                {
+                  "x": 0.4,
+                  "z": 43.4,
+                  "t": 110.48
+                },
+                {
+                  "x": -33.1,
+                  "z": 51.7,
+                  "t": 110.73
+                },
+                {
+                  "x": -67.4,
+                  "z": 64.6,
+                  "t": 111
+                },
+                {
+                  "x": -97,
+                  "z": 82.3,
+                  "t": 111.25
+                },
+                {
+                  "x": -123.6,
+                  "z": 107.6,
+                  "t": 111.52
+                },
+                {
+                  "x": -142.6,
+                  "z": 138.9,
+                  "t": 111.78
+                },
+                {
+                  "x": -151.9,
+                  "z": 174.4,
+                  "t": 112.05
+                },
+                {
+                  "x": -150,
+                  "z": 210.9,
+                  "t": 112.32
+                }
+              ]
+            }
+          },
+          "ghostSamples": {},
+          "unlockedRewards": [
+            "starter-loadout",
+            "speed-class-xp-ghost-sample",
+            "level-18",
+            "level-19",
+            "level-20",
+            "level-21",
+            "level-22",
+            "level-23"
+          ],
+          "rewardLog": [
+            {
+              "modeId": "race",
+              "label": "Race",
+              "medal": "Gold",
+              "xp": 378,
+              "reward": "Speed class XP + ghost sample",
+              "at": "2026-05-20T15:07:23.814Z"
+            },
+            {
+              "modeId": "race",
+              "label": "Race",
+              "medal": "Gold",
+              "xp": 378,
+              "reward": "Speed class XP + ghost sample",
+              "at": "2026-05-20T15:07:02.613Z"
+            },
+            {
+              "modeId": "race",
+              "label": "Race",
+              "medal": "Gold",
+              "xp": 382,
+              "reward": "Speed class XP + ghost sample",
+              "at": "2026-05-20T14:38:54.478Z"
+            },
+            {
+              "modeId": "race",
+              "label": "Race",
+              "medal": "Gold",
+              "xp": 381,
+              "reward": "Speed class XP + ghost sample",
+              "at": "2026-05-20T14:38:30.712Z"
+            },
+            {
+              "modeId": "race",
+              "label": "Race",
+              "medal": "Inferno",
+              "xp": 388,
+              "reward": "Speed class XP + ghost sample",
+              "at": "2026-05-20T14:38:07.929Z"
+            },
+            {
+              "modeId": "race",
+              "label": "Race",
+              "medal": "Inferno",
+              "xp": 395,
+              "reward": "Speed class XP + ghost sample",
+              "at": "2026-05-20T14:37:04.446Z"
+            },
+            {
+              "modeId": "race",
+              "label": "Race",
+              "medal": "Inferno",
+              "xp": 387,
+              "reward": "Speed class XP + ghost sample",
+              "at": "2026-05-20T14:36:41.231Z"
+            },
+            {
+              "modeId": "stunt-park",
+              "label": "Stunt Park",
+              "medal": "Attempt",
+              "xp": 39,
+              "reward": "Time expired before the mode objective was complete.",
+              "at": "2026-05-20T14:36:14.463Z"
+            }
+          ],
+          "dailyGiftSalt": "gift-mpd7aid7-q6xv1y4n",
+          "dailyGift": {
+            "seed": "2026-05-20",
+            "amount": 175,
+            "claimed": true,
+            "claimedAt": "2026-05-20T00:06:19.226Z",
+            "randomSource": "server",
+            "serverOwned": true
+          },
+          "daily": {
+            "seed": "2026-05-19",
+            "label": "Daily Heat",
+            "modeId": "stunt-park",
+            "target": 2200,
+            "progress": 137192,
+            "complete": true
+          },
+          "weekly": {
+            "seed": "2026-W20",
+            "label": "Weekly Tour",
+            "modeId": "race",
+            "target": 4,
+            "progress": 4,
+            "complete": true
+          }
+        },
+        "controlBindings": {
+          "throttle": [
+            "KeyW"
+          ],
+          "brake": [
+            "KeyS"
+          ],
+          "left": [
+            "KeyA"
+          ],
+          "right": [
+            "KeyD"
+          ],
+          "drift": [
+            "Space"
+          ],
+          "boost": [
+            "ShiftLeft"
+          ],
+          "jumpTrick": [
+            "KeyX"
+          ],
+          "altTrick": [
+            "KeyB"
+          ],
+          "laser": [
+            "KeyF"
+          ],
+          "help": [
+            "KeyH"
+          ],
+          "targetLunge": [
+            "ControlLeft",
+            "MetaLeft",
+            "MetaRight"
+          ],
+          "ballCam": [
+            "KeyL"
+          ],
+          "restart": [
+            "KeyR"
+          ],
+          "menu": [
+            "Escape"
+          ],
+          "chat": [
+            "KeyC"
+          ]
+        },
+        "maxTeamCustomization": {
+          "blue": {
+            "paintId": "frost",
+            "accentId": "ice",
+            "tintId": "midnight",
+            "glowId": "cyan"
+          },
+          "red": {
+            "paintId": "ember",
+            "accentId": "copper",
+            "tintId": "sunset",
+            "glowId": "lava"
+          }
+        }
+      }
+    },
+    "dankfish711": {
+      "username": "DankFish711",
+      "usernameLower": "dankfish711",
+      "xp": 0,
+      "level": 1,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-20T18:08:18.112Z",
+      "payload": {
+        "progressionV2": {
+          "xp": 0,
+          "totalXp": 0,
+          "level": 1
+        }
+      }
+    },
+    "freeqa301819": {
+      "username": "FreeQA301819",
+      "usernameLower": "freeqa301819",
+      "xp": 0,
+      "level": 1,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-20T03:05:03.530Z",
+      "payload": {
+        "progressionV2": {
+          "xp": 0,
+          "totalXp": 0,
+          "level": 1
+        }
+      }
+    },
+    "gabby": {
+      "username": "gabby",
+      "usernameLower": "gabby",
+      "xp": 0,
+      "level": 1,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-20T17:54:42.932Z",
+      "payload": {
+        "progressionV2": {
+          "xp": 0,
+          "totalXp": 0,
+          "level": 1
+        }
+      }
+    },
+    "joshua": {
+      "username": "Joshua",
+      "usernameLower": "joshua",
+      "xp": 5700,
+      "level": 12,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-18T00:00:00.000Z",
+      "payload": {
+        "progressionV2": {
+          "xp": 5700,
+          "totalXp": 5700,
+          "level": 12,
+          "medals": {},
+          "personalBests": {},
+          "ghostSamples": {},
+          "unlockedRewards": [
+            "starter-loadout"
+          ],
+          "rewardLog": []
+        }
+      }
+    },
+    "moderator": {
+      "username": "MODERATOR",
+      "usernameLower": "moderator",
+      "xp": 8875,
+      "level": 18,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-19T03:04:41.522Z",
+      "payload": {
+        "progressionV2": {
+          "schemaVersion": 2,
+          "xp": 8875,
+          "totalXp": 8875,
+          "level": 18,
+          "medals": {},
+          "personalBests": {},
+          "ghostSamples": {},
+          "unlockedRewards": [
+            "starter-loadout"
+          ],
+          "rewardLog": [
+            {
+              "modeId": "daily-gift",
+              "label": "Daily Gift",
+              "medal": "Gift",
+              "xp": 275,
+              "reward": "Daily Gift +275 XP",
+              "at": "2026-05-19T03:04:41.482Z"
+            },
+            {
+              "modeId": "founder-friend",
+              "label": "Founder Friend",
+              "medal": "Bonus",
+              "xp": 1000,
+              "reward": "Founder Friend +1000 XP",
+              "at": "2026-05-19T03:03:42.613Z"
+            }
+          ],
+          "dailyGiftSalt": "gift-mpc1uple-9trazz8l",
+          "dailyGift": {
+            "seed": "2026-05-19",
+            "amount": 275,
+            "claimed": true,
+            "claimedAt": "2026-05-19T03:04:41.482Z"
+          },
+          "daily": {
+            "seed": "2026-05-19",
+            "label": "Daily Heat",
+            "modeId": "stunt-park",
+            "target": 2200,
+            "progress": 0,
+            "complete": false
+          },
+          "weekly": {
+            "seed": "2026-W20",
+            "label": "Weekly Tour",
+            "modeId": "race",
+            "target": 4,
+            "progress": 0,
+            "complete": false
+          }
+        }
+      }
+    },
+    "qa5724793": {
+      "username": "QA5724793",
+      "usernameLower": "qa5724793",
+      "xp": 0,
+      "level": 1,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-20T02:55:26.871Z",
+      "payload": {
+        "progressionV2": {
+          "xp": 0,
+          "totalXp": 0,
+          "level": 1
+        }
+      }
+    },
+    "sigma cole": {
+      "username": "sigma cole",
+      "usernameLower": "sigma cole",
+      "xp": 0,
+      "level": 1,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-20T21:29:08.682Z",
+      "payload": {
+        "progressionV2": {
+          "xp": 0,
+          "totalXp": 0,
+          "level": 1
+        }
+      }
+    },
+    "sizeablemonkey54": {
+      "username": "Sizeablemonkey54",
+      "usernameLower": "sizeablemonkey54",
+      "xp": 0,
+      "level": 1,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-20T18:59:48.039Z",
+      "payload": {
+        "progressionV2": {
+          "xp": 0,
+          "totalXp": 0,
+          "level": 1
+        }
+      }
+    },
+    "smoke20294395": {
+      "username": "Smoke20294395",
+      "usernameLower": "smoke20294395",
+      "xp": 0,
+      "level": 1,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-20T23:38:24.375Z",
+      "payload": {
+        "progressionV2": {
+          "xp": 0,
+          "totalXp": 0,
+          "level": 1
+        }
+      }
+    },
+    "squawking parrot": {
+      "username": "Squawking parrot",
+      "usernameLower": "squawking parrot",
+      "xp": 2000,
+      "level": 5,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-20T00:45:40.498Z",
+      "payload": {
+        "progressionV2": {
+          "xp": 2000,
+          "totalXp": 2000,
+          "level": 5,
+          "rewardLog": [
+            {
+              "modeId": "founder-friend",
+              "label": "Founder Friend",
+              "medal": "Bonus",
+              "xp": 1000,
+              "reward": "Founder Friend +1000 XP",
+              "at": "2026-05-20T00:45:40.498Z"
+            }
+          ]
+        }
+      }
+    },
+    "test1": {
+      "username": "Test1",
+      "usernameLower": "test1",
+      "xp": 0,
+      "level": 1,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-19T15:11:20.890Z",
+      "payload": {
+        "progressionV2": {
+          "xp": 0,
+          "totalXp": 0,
+          "level": 1,
+          "medals": {},
+          "personalBests": {},
+          "ghostSamples": {},
+          "unlockedRewards": [
+            "starter-loadout"
+          ],
+          "rewardLog": []
+        }
+      }
+    },
+    "test2": {
+      "username": "Test2",
+      "usernameLower": "test2",
+      "xp": 0,
+      "level": 1,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-19T15:10:36.481Z",
+      "payload": {
+        "progressionV2": {
+          "xp": 0,
+          "totalXp": 0,
+          "level": 1,
+          "medals": {},
+          "personalBests": {},
+          "ghostSamples": {},
+          "unlockedRewards": [
+            "starter-loadout"
+          ],
+          "rewardLog": []
+        }
+      }
+    },
+    "test4": {
+      "username": "Test4",
+      "usernameLower": "test4",
+      "xp": 150,
+      "level": 1,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-20T14:33:19.945Z",
+      "payload": {
+        "worldIndex": 0,
+        "levelIndex": 0,
+        "settings": {
+          "difficulty": "brutal",
+          "campaignAiMode": "adaptive",
+          "maxDifficulty": "classic",
+          "invertSteer": true,
+          "cameraFocus": false,
+          "battleCockpitCamera": false,
+          "rampDensity": "extra_high",
+          "deviceMode": "auto",
+          "touchLayout": "classic",
+          "touchScale": 1,
+          "devMode": false,
+          "activeGameMode": "infernodrift33",
+          "exitLinkUrl": "https://lbusd.instructure.com/?login_success=1"
+        },
+        "devTuning": {
+          "playerSpeedMult": 1,
+          "botSpeedMult": 1,
+          "infiniteBoost": false,
+          "invulnerable": false,
+          "freezeBots": false,
+          "allowDemolitions": true,
+          "allowReplay": true,
+          "maxBoostVariant": "super",
+          "worldModifier": "world"
+        },
+        "customization": {
+          "bodyId": "street",
+          "wheelId": "grip",
+          "styleId": "balanced",
+          "powerId": "nitro_core",
+          "paintId": "ember",
+          "accentId": "carbon",
+          "tintId": "smoke",
+          "spoilerId": "none",
+          "glowId": "cyan"
+        },
+        "garage": {
+          "schemaVersion": 2,
+          "activeLoadoutId": "slot-1",
+          "loadouts": [
+            {
+              "id": "slot-1",
+              "name": "Street Heat",
+              "classId": "balanced",
+              "bodyId": "street",
+              "wheelId": "grip",
+              "styleId": "balanced",
+              "powerId": "nitro_core",
+              "paintId": "ember",
+              "accentId": "carbon",
+              "tintId": "smoke",
+              "spoilerId": "none",
+              "glowId": "cyan"
+            },
+            {
+              "id": "slot-2",
+              "name": "Air Trick",
+              "classId": "stunt",
+              "bodyId": "street",
+              "wheelId": "grip",
+              "styleId": "balanced",
+              "powerId": "nitro_core",
+              "paintId": "ember",
+              "accentId": "carbon",
+              "tintId": "smoke",
+              "spoilerId": "none",
+              "glowId": "cyan"
+            },
+            {
+              "id": "slot-3",
+              "name": "Arena Guard",
+              "classId": "bruiser",
+              "bodyId": "street",
+              "wheelId": "grip",
+              "styleId": "balanced",
+              "powerId": "nitro_core",
+              "paintId": "ember",
+              "accentId": "carbon",
+              "tintId": "smoke",
+              "spoilerId": "none",
+              "glowId": "cyan"
+            }
+          ]
+        },
+        "progressionV2": {
+          "schemaVersion": 2,
+          "xp": 150,
+          "totalXp": 150,
+          "level": 1,
+          "medals": {},
+          "personalBests": {},
+          "ghostSamples": {},
+          "unlockedRewards": [
+            "starter-loadout"
+          ],
+          "rewardLog": [
+            {
+              "modeId": "daily-gift",
+              "label": "Daily Gift",
+              "medal": "Gift",
+              "xp": 150,
+              "reward": "Daily Gift +150 XP",
+              "at": "2026-05-20T01:57:06.057Z"
+            }
+          ],
+          "dailyGiftSalt": "gift-mpdevpx9-f2qhvm01",
+          "dailyGift": {
+            "seed": "2026-05-20",
+            "amount": 150,
+            "claimed": true,
+            "claimedAt": "2026-05-20T01:57:06.057Z",
+            "randomSource": "server",
+            "serverOwned": true
+          },
+          "daily": {
+            "seed": "2026-05-20",
+            "label": "Daily Heat",
+            "modeId": "stunt-park",
+            "target": 2200,
+            "progress": 0,
+            "complete": false
+          },
+          "weekly": {
+            "seed": "2026-W20",
+            "label": "Weekly Tour",
+            "modeId": "race",
+            "target": 4,
+            "progress": 0,
+            "complete": false
+          }
+        },
+        "controlBindings": {
+          "throttle": [
+            "ArrowUp"
+          ],
+          "brake": [
+            "ArrowDown"
+          ],
+          "left": [
+            "ArrowLeft"
+          ],
+          "right": [
+            "ArrowRight"
+          ],
+          "drift": [
+            "Space"
+          ],
+          "boost": [
+            "ShiftLeft"
+          ],
+          "jumpTrick": [
+            "KeyX"
+          ],
+          "altTrick": [
+            "KeyB"
+          ],
+          "laser": [
+            "KeyF"
+          ],
+          "help": [
+            "KeyH"
+          ],
+          "targetLunge": [
+            "ControlLeft",
+            "MetaLeft",
+            "MetaRight"
+          ],
+          "ballCam": [
+            "KeyL"
+          ],
+          "restart": [
+            "KeyR"
+          ],
+          "menu": [
+            "Escape"
+          ],
+          "chat": [
+            "KeyC"
+          ]
+        },
+        "maxTeamCustomization": {
+          "blue": {
+            "paintId": "frost",
+            "accentId": "ice",
+            "tintId": "midnight",
+            "glowId": "cyan"
+          },
+          "red": {
+            "paintId": "ember",
+            "accentId": "copper",
+            "tintId": "sunset",
+            "glowId": "lava"
+          }
+        }
+      }
+    },
+    "test5": {
+      "username": "Test5",
+      "usernameLower": "test5",
+      "xp": 150,
+      "level": 1,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-20T02:10:42.066Z",
+      "payload": {
+        "worldIndex": 0,
+        "levelIndex": 0,
+        "settings": {
+          "difficulty": "brutal",
+          "campaignAiMode": "adaptive",
+          "maxDifficulty": "classic",
+          "invertSteer": true,
+          "cameraFocus": false,
+          "battleCockpitCamera": false,
+          "rampDensity": "extra_high",
+          "deviceMode": "auto",
+          "touchLayout": "classic",
+          "touchScale": 1,
+          "devMode": false,
+          "activeGameMode": "battle-arena",
+          "exitLinkUrl": "https://lbusd.instructure.com/?login_success=1"
+        },
+        "devTuning": {
+          "playerSpeedMult": 1,
+          "botSpeedMult": 1,
+          "infiniteBoost": false,
+          "invulnerable": false,
+          "freezeBots": false,
+          "allowDemolitions": true,
+          "allowReplay": true,
+          "maxBoostVariant": "super",
+          "worldModifier": "world"
+        },
+        "customization": {
+          "bodyId": "street",
+          "wheelId": "grip",
+          "styleId": "balanced",
+          "powerId": "nitro_core",
+          "paintId": "ember",
+          "accentId": "carbon",
+          "tintId": "smoke",
+          "spoilerId": "none",
+          "glowId": "cyan"
+        },
+        "garage": {
+          "schemaVersion": 2,
+          "activeLoadoutId": "slot-1",
+          "loadouts": [
+            {
+              "id": "slot-1",
+              "name": "Street Heat",
+              "classId": "balanced",
+              "bodyId": "street",
+              "wheelId": "grip",
+              "styleId": "balanced",
+              "powerId": "nitro_core",
+              "paintId": "ember",
+              "accentId": "carbon",
+              "tintId": "smoke",
+              "spoilerId": "none",
+              "glowId": "cyan"
+            },
+            {
+              "id": "slot-2",
+              "name": "Air Trick",
+              "classId": "stunt",
+              "bodyId": "street",
+              "wheelId": "grip",
+              "styleId": "balanced",
+              "powerId": "nitro_core",
+              "paintId": "ember",
+              "accentId": "carbon",
+              "tintId": "smoke",
+              "spoilerId": "none",
+              "glowId": "cyan"
+            },
+            {
+              "id": "slot-3",
+              "name": "Arena Guard",
+              "classId": "bruiser",
+              "bodyId": "street",
+              "wheelId": "grip",
+              "styleId": "balanced",
+              "powerId": "nitro_core",
+              "paintId": "ember",
+              "accentId": "carbon",
+              "tintId": "smoke",
+              "spoilerId": "none",
+              "glowId": "cyan"
+            }
+          ]
+        },
+        "progressionV2": {
+          "schemaVersion": 2,
+          "xp": 150,
+          "totalXp": 150,
+          "level": 1,
+          "medals": {},
+          "personalBests": {},
+          "ghostSamples": {},
+          "unlockedRewards": [
+            "starter-loadout"
+          ],
+          "rewardLog": [
+            {
+              "modeId": "daily-gift",
+              "label": "Daily Gift",
+              "medal": "Gift",
+              "xp": 150,
+              "reward": "Daily Gift +150 XP",
+              "at": "2026-05-20T02:09:56.588Z"
+            }
+          ],
+          "dailyGiftSalt": "gift-mpdfc7ue-bapqycy0",
+          "dailyGift": {
+            "seed": "2026-05-20",
+            "amount": 150,
+            "claimed": true,
+            "claimedAt": "2026-05-20T02:09:56.588Z",
+            "randomSource": "server",
+            "serverOwned": true
+          },
+          "daily": {
+            "seed": "2026-05-20",
+            "label": "Daily Heat",
+            "modeId": "stunt-park",
+            "target": 2200,
+            "progress": 0,
+            "complete": false
+          },
+          "weekly": {
+            "seed": "2026-W20",
+            "label": "Weekly Tour",
+            "modeId": "race",
+            "target": 4,
+            "progress": 0,
+            "complete": false
+          }
+        },
+        "controlBindings": {
+          "throttle": [
+            "ArrowUp"
+          ],
+          "brake": [
+            "ArrowDown"
+          ],
+          "left": [
+            "ArrowLeft"
+          ],
+          "right": [
+            "ArrowRight"
+          ],
+          "drift": [
+            "Space"
+          ],
+          "boost": [
+            "ShiftLeft"
+          ],
+          "jumpTrick": [
+            "KeyX"
+          ],
+          "altTrick": [
+            "KeyB"
+          ],
+          "laser": [
+            "KeyF"
+          ],
+          "help": [
+            "KeyH"
+          ],
+          "targetLunge": [
+            "ControlLeft",
+            "MetaLeft",
+            "MetaRight"
+          ],
+          "ballCam": [
+            "KeyL"
+          ],
+          "restart": [
+            "KeyR"
+          ],
+          "menu": [
+            "Escape"
+          ],
+          "chat": [
+            "KeyC"
+          ]
+        },
+        "maxTeamCustomization": {
+          "blue": {
+            "paintId": "frost",
+            "accentId": "ice",
+            "tintId": "midnight",
+            "glowId": "cyan"
+          },
+          "red": {
+            "paintId": "ember",
+            "accentId": "copper",
+            "tintId": "sunset",
+            "glowId": "lava"
+          }
+        }
+      }
+    },
+    "tosh the sigma": {
+      "username": "Tosh the Sigma",
+      "usernameLower": "tosh the sigma",
+      "xp": 4300,
+      "level": 9,
+      "runs": 0,
+      "wins": 0,
+      "saveUpdatedAt": "2026-05-18T00:00:00.000Z",
+      "payload": {
+        "progressionV2": {
+          "xp": 4300,
+          "totalXp": 4300,
+          "level": 9,
+          "medals": {},
+          "personalBests": {},
+          "ghostSamples": {},
+          "unlockedRewards": [
+            "starter-loadout"
+          ],
+          "rewardLog": []
+        }
+      }
+    }
+  }
+}

@@ -268,3 +268,10 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Set ranks #2-#3 to `Platinum`, #4-#6 to `Gold`, #7-#10 to `Silver`, and lower ranks to `Bronze`.
 - Added visual tier styling for Platinum, Silver, and Bronze, and exposed the computed `tier` in `render_game_to_text()` for smoke coverage.
 - Bumped the static `style.css` and `script.js` asset query strings in `index.html` so GitHub Pages clients pull the updated leaderboard code immediately.
+
+2026-05-20 automatic Cloudflare-to-Firebase save recovery:
+
+- Exported the old Cloudflare D1 password-account save/progress rows into `legacy-cloudflare-progress.json` and added it to the static build output. The manifest contains usernames, XP summary, and save payloads only; it does not include password hashes, salts, sessions, private tokens, or old user IDs.
+- Made old usernames with spaces valid in the Firebase wrapper and mapped spaces to dots in the derived Firebase Auth email, so legacy names like `Tosh the Sigma` and `Squawking parrot` can keep working.
+- Added automatic sign-in recovery: if a matching legacy username exists in the bundled manifest, Firebase sign-in can create the missing Firebase Auth account and then silently import the higher-XP old Cloudflare save into Firestore. No manual recovery button is required.
+- Published updated Firestore rules in the Firebase Console at 7:16 PM to allow the legacy username shape while keeping Auth-gated writes and field restrictions.

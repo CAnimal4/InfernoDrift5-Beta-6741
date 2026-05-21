@@ -14,7 +14,7 @@ service cloud.firestore {
       return value is string
         && value.size() >= 3
         && value.size() <= 20
-        && value.matches('^[A-Za-z0-9_-]+$');
+        && value.matches('^[A-Za-z0-9][A-Za-z0-9 _-]{1,18}[A-Za-z0-9]$');
     }
 
     function safeProfileKeys() {

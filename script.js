@@ -326,6 +326,7 @@ const ONLINE_AUTH_TIMEOUT_MS = 8000;
 const ONLINE_WS_PROBE_TIMEOUT_MS = 4500;
 const LEGACY_IMPORT_TIMEOUT_MS = 4500;
 const LEGACY_IMPORT_STORAGE_PREFIX = "infernoDrift4.legacyImport.v1:";
+const LEGACY_CLOUDFLARE_PROGRESS_URL = "legacy-cloudflare-progress.json";
 const FEEDBACK_MESSAGE_LIMIT = 2500;
 const DAILY_GIFT_MIN_XP = 100;
 const DAILY_GIFT_MAX_XP = 1000;
@@ -2162,6 +2163,7 @@ const onlineState = {
   legacyImportStatus: "idle",
   legacyImportError: "",
   legacyImportXp: 0,
+  legacyImportSource: "",
   legacySessionToken: "",
   chatNoticeTimer: 0,
   lastSystemMessageText: "",
@@ -4143,6 +4145,159 @@ function getLegacyImportMarkerKey(username = onlineState.username) {
   return key ? `${LEGACY_IMPORT_STORAGE_PREFIX}${key}` : "";
 }
 
+let bundledLegacyProgressPromise = null;
+
+function getLegacyProgressManifestUrl() {
+  return new URL(LEGACY_CLOUDFLARE_PROGRESS_URL, window.location.href).toString();
+}
+
+function normalizeLegacyProgressKey(username = "") {
+  return String(username || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+async function loadBundledLegacyProgressManifest() {
+  if (!bundledLegacyProgressPromise) {
+    bundledLegacyProgressPromise = fetchWithTimeout(
+      getLegacyProgressManifestUrl(),
+      { cache: "no-store" },
+      LEGACY_IMPORT_TIMEOUT_MS,
+    )
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`legacy_manifest_${response.status}`);
+        return response.json();
+      })
+      .catch((error) => {
+        debugLog("online", "legacy_manifest_failed", error?.message || error);
+        return null;
+      });
+  }
+  return bundledLegacyProgressPromise;
+}
+
+async function findBundledLegacyProgress(username = "") {
+  const manifest = await loadBundledLegacyProgressManifest();
+  const accounts = manifest?.accounts || {};
+  const key = normalizeLegacyProgressKey(username);
+  return key ? accounts[key] || null : null;
+}
+
+async function importBundledLegacyProgressForFirebaseAccount({
+  username,
+  localPayload,
+  localXp,
+  markerKey,
+} = {}) {
+  const entry = await findBundledLegacyProgress(username);
+  if (!entry) return null;
+  const legacyPayload = entry.payload || null;
+  const legacyXp = getSavePayloadTotalXp(legacyPayload);
+  onlineState.legacyImportXp = legacyXp;
+  onlineState.legacyImportSource = "bundled-cloudflare-export";
+  if (!legacyPayload || legacyXp <= localXp) {
+    onlineState.legacyImportStatus = "already-current";
+    onlineState.profileActionStatus = legacyPayload
+      ? `Firebase/local progress is already at least as high as the old Cloudflare save (${legacyXp.toLocaleString()} XP found).`
+      : "No old Cloudflare saved progress was found for this account.";
+    if (markerKey) {
+      writeLocalJson(markerKey, {
+        status: "already-current",
+        source: onlineState.legacyImportSource,
+        legacyXp,
+        localXp,
+        at: Date.now(),
+      });
+    }
+    return false;
+  }
+  const bestPayload = chooseBestSavePayload(legacyPayload, localPayload);
+  applyServerSave({ payload: bestPayload }, { force: true });
+  await firebaseOnline.syncProgress(bestPayload);
+  onlineState.legacyImportStatus = "imported";
+  onlineState.legacyImportXp = getSavePayloadTotalXp(bestPayload);
+  onlineState.profileActionStatus = `Restored ${onlineState.legacyImportXp.toLocaleString()} XP from the old Cloudflare backend into Firebase.`;
+  pushOnlineChatMessage({
+    from: "System",
+    text: onlineState.profileActionStatus,
+    quick: true,
+  });
+  if (markerKey) {
+    writeLocalJson(markerKey, {
+      status: "imported",
+      source: onlineState.legacyImportSource,
+      legacyXp,
+      importedXp: onlineState.legacyImportXp,
+      at: Date.now(),
+    });
+  }
+  requestOnlineLeaderboard({ force: true });
+  return true;
+}
+
+async function fetchLegacyProfileWithSession(baseUrl, backendUrl) {
+  if (!onlineState.legacySessionToken) {
+    return { ok: false, error: "missing_legacy_session" };
+  }
+  const url = new URL(`${baseUrl}/api/profile`);
+  url.searchParams.set("sessionToken", onlineState.legacySessionToken);
+  const response = await fetchWithTimeout(
+    url.toString(),
+    {},
+    LEGACY_IMPORT_TIMEOUT_MS,
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.error || `legacy_${response.status}`);
+  }
+  return {
+    ok: true,
+    backendUrl,
+    source: "session",
+    save: payload.save || null,
+    user: payload.user || null,
+    profile: payload.profile || payload,
+    leaderboard: payload.leaderboard || null,
+  };
+}
+
+async function fetchLegacyProfileWithCredentials(baseUrl, backendUrl, authPayload) {
+  if (!authPayload?.username || !authPayload?.password) {
+    return { ok: false, error: "missing_legacy_credentials" };
+  }
+  const response = await fetchWithTimeout(
+    `${baseUrl}/api/auth/account`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "auth.account",
+        version: ONLINE_PROTOCOL_VERSION,
+        mode: "signin",
+        username: authPayload.username,
+        password: authPayload.password,
+        age: authPayload.age,
+        deviceId: navigator.userAgent.slice(0, 90),
+      }),
+    },
+    LEGACY_IMPORT_TIMEOUT_MS,
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.error || `legacy_${response.status}`);
+  }
+  return {
+    ok: true,
+    backendUrl,
+    source: "credentials",
+    save: payload.save || null,
+    user: payload.user || null,
+    profile: payload.profile || null,
+    leaderboard: payload.leaderboard || null,
+  };
+}
+
 async function fetchLegacyAccountBundle(authPayload) {
   const candidates = uniqueStrings([
     WORKER_FALLBACK_BACKEND_URL,
@@ -4153,56 +4308,34 @@ async function fetchLegacyAccountBundle(authPayload) {
     if (!baseUrl) continue;
     try {
       if (onlineState.legacySessionToken) {
-        const url = new URL(`${baseUrl}/api/profile`);
-        url.searchParams.set("sessionToken", onlineState.legacySessionToken);
-        const response = await fetchWithTimeout(
-          url.toString(),
-          {},
-          LEGACY_IMPORT_TIMEOUT_MS,
-        );
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || payload.ok === false) {
-          throw new Error(payload.error || `legacy_${response.status}`);
-        }
-        return {
-          ok: true,
-          backendUrl,
-          save: payload.save || null,
-          user: payload.user || null,
-          profile: payload.profile || payload,
-          leaderboard: payload.leaderboard || null,
-        };
+        return await fetchLegacyProfileWithSession(baseUrl, backendUrl);
       }
-      const response = await fetchWithTimeout(
-        `${baseUrl}/api/auth/account`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            type: "auth.account",
-            version: ONLINE_PROTOCOL_VERSION,
-            mode: "login",
-            username: authPayload.username,
-            password: authPayload.password,
-            age: authPayload.age,
-            deviceId: navigator.userAgent.slice(0, 90),
-          }),
-        },
-        LEGACY_IMPORT_TIMEOUT_MS,
-      );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload.ok === false) {
-        throw new Error(payload.error || `legacy_${response.status}`);
-      }
-      return {
-        ok: true,
+      return await fetchLegacyProfileWithCredentials(
+        baseUrl,
         backendUrl,
-        save: payload.save || null,
-        user: payload.user || null,
-        profile: payload.profile || null,
-        leaderboard: payload.leaderboard || null,
-      };
+        authPayload,
+      );
     } catch (error) {
+      if (onlineState.legacySessionToken && authPayload?.password) {
+        try {
+          return await fetchLegacyProfileWithCredentials(
+            baseUrl,
+            backendUrl,
+            authPayload,
+          );
+        } catch (credentialError) {
+          if (
+            /invalid_credentials|account_not_found/i.test(
+              String(credentialError?.message),
+            )
+          ) {
+            throw credentialError;
+          }
+          onlineState.legacyImportError =
+            credentialError?.message || "legacy_unavailable";
+          continue;
+        }
+      }
       if (/invalid_credentials|account_not_found/i.test(String(error?.message))) {
         throw error;
       }
@@ -4212,19 +4345,42 @@ async function fetchLegacyAccountBundle(authPayload) {
   return { ok: false, error: onlineState.legacyImportError || "legacy_unavailable" };
 }
 
-async function importLegacyProgressForFirebaseAccount(authPayload) {
+async function importLegacyProgressForFirebaseAccount(
+  authPayload,
+  { manual = false } = {},
+) {
   if (!isFirebaseBackendMode() || !onlineState.user?.account) return false;
-  if (!onlineState.legacySessionToken) {
-    onlineState.legacyImportStatus = "skipped-no-legacy-session";
+  const markerKey = getLegacyImportMarkerKey(authPayload?.username);
+  const previousMarker = markerKey ? readLocalJson(markerKey, null) : null;
+  if (!manual && previousMarker?.status === "imported") {
+    onlineState.legacyImportStatus = "already-imported";
+    onlineState.legacyImportXp =
+      Number(previousMarker.importedXp || previousMarker.legacyXp) || 0;
     return false;
   }
-  const markerKey = getLegacyImportMarkerKey(authPayload?.username);
   const localPayload = buildPersistentSavePayload();
   const localXp = getSavePayloadTotalXp(localPayload);
   onlineState.legacyImportStatus = "checking";
   onlineState.legacyImportError = "";
+  onlineState.legacyImportSource = "";
+  onlineState.profileActionStatus = manual
+    ? "Checking the old Cloudflare backend for your saved XP..."
+    : "Checking the old online backend for saved XP...";
   updateOnlineUi();
   try {
+    const bundledImport = await importBundledLegacyProgressForFirebaseAccount({
+      username: authPayload?.username,
+      localPayload,
+      localXp,
+      markerKey,
+    });
+    if (bundledImport !== null) return bundledImport;
+    if (!onlineState.legacySessionToken && !authPayload?.password) {
+      onlineState.legacyImportStatus = "skipped-no-legacy-credentials";
+      onlineState.legacyImportError =
+        "No bundled Cloudflare save matched this username.";
+      return false;
+    }
     const bundle = await fetchLegacyAccountBundle(authPayload);
     if (!bundle.ok) {
       onlineState.legacyImportStatus = "unavailable";
@@ -4234,8 +4390,12 @@ async function importLegacyProgressForFirebaseAccount(authPayload) {
     const legacyPayload = bundle.save?.payload || null;
     const legacyXp = getSavePayloadTotalXp(legacyPayload);
     onlineState.legacyImportXp = legacyXp;
+    onlineState.legacyImportSource = bundle.source || "legacy-api";
     if (!legacyPayload || legacyXp <= localXp) {
       onlineState.legacyImportStatus = "already-current";
+      onlineState.profileActionStatus = legacyPayload
+        ? `Firebase/local progress is already at least as high as the old backend (${legacyXp.toLocaleString()} XP found).`
+        : "No old saved progress was found for this account.";
       if (markerKey) {
         writeLocalJson(markerKey, {
           status: "already-current",
@@ -4270,6 +4430,10 @@ async function importLegacyProgressForFirebaseAccount(authPayload) {
   } catch (error) {
     onlineState.legacyImportStatus = "failed";
     onlineState.legacyImportError = error?.message || "legacy_import_failed";
+    onlineState.profileActionStatus =
+      error?.message === "invalid_credentials"
+        ? "Old backend recovery failed: that password did not match the old Cloudflare account."
+        : `Old backend recovery failed: ${describeOnlineError(onlineState.legacyImportError)}`;
     return false;
   } finally {
     updateOnlineUi();
@@ -4582,7 +4746,7 @@ function renderOnlineDiagnostics() {
       `Chat ${onlineState.firebase.chatStatus}${onlineState.firebase.chatListenerActive ? " listener-on" : ""}`,
       `Leaderboard ${onlineState.firebase.leaderboardStatus}`,
       `Diagnostics ${onlineState.firebase.diagnosticsStatus}`,
-      `Legacy import ${onlineState.legacyImportStatus}${onlineState.legacyImportXp ? ` (${onlineState.legacyImportXp} XP)` : ""}${onlineState.legacySessionToken ? " old-session-detected" : ""}`,
+      `Legacy import ${onlineState.legacyImportStatus}${onlineState.legacyImportXp ? ` (${onlineState.legacyImportXp} XP)` : ""}${onlineState.legacyImportSource ? ` via ${onlineState.legacyImportSource}` : ""}${onlineState.legacySessionToken ? " old-session-detected" : ""}`,
       `Realtime DB not used`,
       `Last error ${onlineState.firebase.lastError || onlineState.lastError || "none"}`,
       `Offline fallback ${onlineState.profileMode === "guest" && !onlineState.user ? "yes" : "no"}`,
@@ -5097,12 +5261,16 @@ async function submitFirebaseStartAccount() {
   updateConnectionStage("checking-online");
   updateOnlineUi();
   try {
+    const bundledLegacyEntry = await findBundledLegacyProgress(
+      payload.username,
+    ).catch(() => null);
     const result = await firebaseOnline.signInAccount({
       username: payload.username,
       password: payload.password,
       age: payload.age,
       savePayload: buildPersistentSavePayload(),
       timeoutMs: ONLINE_AUTH_TIMEOUT_MS,
+      allowLegacyAutoCreate: Boolean(bundledLegacyEntry),
     });
     syncFirebaseServiceStatus();
     await completeFirebaseAuth(result, { guest: false });
@@ -19846,6 +20014,7 @@ window.render_game_to_text = () => {
         status: onlineState.legacyImportStatus,
         error: onlineState.legacyImportError,
         xp: onlineState.legacyImportXp,
+        source: onlineState.legacyImportSource,
         oldSessionDetected: Boolean(onlineState.legacySessionToken),
       },
       authenticated: Boolean(onlineState.user),

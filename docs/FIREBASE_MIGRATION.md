@@ -56,4 +56,4 @@ Do not add billing, Blaze, Admin SDK keys, service-account JSON, private API key
 
 ## Future Codex Rule
 
-Future Codex backend prompts for InfernoDrift4 should publish/update Firebase config and Firestore rules, not Replit or Cloudflare. Do not make Cloudflare/Replit primary again. The current client may attempt a one-time old Worker account-save import so player XP/progress can be preserved in Firebase, but Cloudflare and the local Node server remain legacy room-server references only.
+Future Codex backend prompts for InfernoDrift4 should publish/update Firebase config and Firestore rules, not Replit or Cloudflare. Do not make Cloudflare/Replit primary again. The client ships `legacy-cloudflare-progress.json`, a one-time Cloudflare D1 save export with no password hashes, salts, sessions, or private tokens. On normal Firebase sign-in/create, the game checks that manifest by normalized username and silently imports the higher-XP old save into Firebase. Cloudflare and the local Node server remain legacy room-server references only.

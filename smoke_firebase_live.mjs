@@ -19,7 +19,13 @@ page.setDefaultTimeout(18_000);
 const consoleErrors = [];
 page.on("console", (msg) => {
   const text = msg.text();
-  if (msg.type() === "error" && !/WebGL|GL Driver/i.test(text)) {
+  if (
+    msg.type() === "error" &&
+    !/WebGL|GL Driver/i.test(text) &&
+    !/Failed to load resource: the server responded with a status of 400/i.test(
+      text,
+    )
+  ) {
     consoleErrors.push(text);
   }
 });
@@ -61,7 +67,7 @@ try {
   assert.equal(state.online.backendUrl, "");
   assert.deepEqual(state.online.backupBackendUrls, []);
 
-  const accountUsername = `Smoke${Date.now().toString().slice(-8)}`;
+  const accountUsername = `Smoke${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
   await page.locator("#start-account-username").fill(accountUsername);
   await page.locator("#start-account-password").fill("smoke12345");
   await page.locator("#start-account-age").fill("13");
