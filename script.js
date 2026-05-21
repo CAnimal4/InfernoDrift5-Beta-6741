@@ -8966,12 +8966,12 @@ function renderModeBoard() {
           return `
             <button${legacyId} class="game-card mode-card ${activeId === mode.id ? "active" : ""}" data-game-mode="${mode.id}" type="button">
               <div class="mode-card-art" data-scene="${mode.scene}" data-thumb="generated" style="--thumb-position: ${thumbPosition};" aria-hidden="true"></div>
-              <div class="mode-card-copy">
-                <div class="mode-card-tags"><em>${tag}</em><em>${difficulty}</em><em>${length}</em></div>
-                <strong>${mode.label}</strong>
-                <span>${mode.objective}</span>
-                <small>Rewards: XP + Embers + ${mode.reward}</small>
-                <em>${medal}${best ? ` • Best ${best.score}` : ""}</em>
+              <div class="mode-card-copy" style="display:grid;gap:8px;align-content:start;min-width:0;text-transform:none;letter-spacing:0;">
+                <strong style="display:block;color:#f8fbff;font-family:Rajdhani,system-ui,sans-serif;font-size:1.12rem;font-weight:800;line-height:1.08;text-transform:none;letter-spacing:0;">${mode.label}</strong>
+                <span class="mode-card-description" style="display:block;color:#b7c4d6;font-family:Rajdhani,system-ui,sans-serif;font-size:.9rem;font-weight:600;line-height:1.32;text-transform:none;letter-spacing:0;">${mode.objective}</span>
+                <div class="mode-card-tags" style="display:block;color:#e9f6ff;font-family:Rajdhani,system-ui,sans-serif;font-size:.76rem;font-weight:800;line-height:1.2;text-transform:none;letter-spacing:0;">${tag} · ${difficulty} · ${length}</div>
+                <small style="display:block;color:#ffd28a;font-family:Rajdhani,system-ui,sans-serif;font-size:.78rem;font-weight:700;line-height:1.25;text-transform:none;letter-spacing:0;">Rewards: XP + Embers + ${mode.reward}</small>
+                <em style="display:block;color:#ffd28a;font-family:Rajdhani,system-ui,sans-serif;font-size:.78rem;font-style:normal;font-weight:700;line-height:1.2;text-transform:none;letter-spacing:0;">${medal}${best ? ` • Best ${best.score}` : ""}</em>
               </div>
             </button>`;
         }).join("")}

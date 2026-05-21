@@ -1819,6 +1819,11 @@ body:has(#school-gate.show) #overlay {
   align-items: stretch;
 }
 
+.mode-card * {
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
 .mode-card-art {
   width: 100%;
   aspect-ratio: 4 / 3;
@@ -1960,17 +1965,34 @@ body:has(#school-gate.show) #overlay {
 }
 
 .game-card-copy {
-  display: grid;
-  gap: 7px;
+  display: grid !important;
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+}
+
+.game-card-copy > * {
+  display: block !important;
+  min-width: 0;
 }
 
 .game-card-copy strong {
-  font-size: 1.06rem;
+  color: #f8fbff;
+  font-family: "Rajdhani", system-ui, sans-serif;
+  font-size: 1.18rem !important;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.05;
+  text-transform: none;
 }
 
-.game-card-copy span {
+.game-card-copy .mode-card-description {
   color: var(--muted);
-  line-height: 1.35;
+  font-size: 0.9rem !important;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.32;
+  text-transform: none;
 }
 
 .game-card-tags {
@@ -1981,7 +2003,7 @@ body:has(#school-gate.show) #overlay {
 
 .game-card-tags span,
 .mode-reward {
-  display: inline-flex;
+  display: inline-flex !important;
   align-items: center;
   width: fit-content;
   max-width: 100%;
@@ -1992,8 +2014,6 @@ body:has(#school-gate.show) #overlay {
   border: 1px solid rgba(126, 178, 255, 0.16);
   font-size: 0.68rem;
   font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .game-card-tags .mode-label {
@@ -2013,6 +2033,13 @@ body:has(#school-gate.show) #overlay {
   color: #ffe0a3;
   background: rgba(255, 196, 87, 0.12);
   border-color: rgba(255, 196, 87, 0.2);
+}
+
+.game-card-copy small,
+.game-card-copy em {
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .custom-layout {

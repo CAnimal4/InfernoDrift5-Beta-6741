@@ -323,3 +323,9 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Tightened Firebase account sign-in/create so the save sent into the Firebase transaction is the best of current browser progress and the bundled old Cloudflare D1 save for the same normalized username.
 - Kept legacy import markers from hiding a downgraded Firebase account: if the local/Firebase save has less XP than the old imported marker, the client checks the bundled export/legacy API again instead of skipping recovery.
 - Added tests proving the Firebase attach path prefers legacy XP and that an old import marker cannot mask lower current progress.
+
+2026-05-21 Play card readability and sign-in fallback:
+
+- Fixed Play mode cards so game titles, descriptions, mode metadata, rewards, and medal text render on separate readable lines instead of jammed uppercase text.
+- Made Firebase account progress sync tolerate old live Firestore leaderboard rules: account sign-in no longer fails just because the optional leaderboard `account`/`guest` metadata is rejected, and the client retries the older leaderboard payload shape.
+- Local live Firebase smoke passed after this fallback, confirming account sign-in works even before the newer Firestore rules are published.

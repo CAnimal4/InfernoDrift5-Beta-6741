@@ -577,7 +577,13 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       { merge: true },
     );
     if (!state.isGuest && !internals.userProfile?.isGuest) {
-      await submitLeaderboard({ score: xp, mode: FIREBASE_LEADERBOARD_MODE });
+      await submitLeaderboard({
+        score: xp,
+        mode: FIREBASE_LEADERBOARD_MODE,
+      }).catch((error) => {
+        state.leaderboardStatus = "failed";
+        fail(error, "leaderboard_sync_failed");
+      });
     }
     if (!silent) emit("save.synced", { payload });
     return true;
@@ -622,30 +628,41 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     const validation = validateFirebaseScore(row);
     if (!validation.ok) throw new Error(validation.error);
     const { firestore } = internals.sdk;
-    await firestore.setDoc(
-      firestore.doc(
-        internals.db,
-        "leaderboards",
-        validation.mode,
-        "scores",
-        state.uid,
-      ),
-      {
-        uid: state.uid,
-        username: state.username || "Player",
-        badges: internals.userProfile?.badges || [],
-        account: true,
-        guest: false,
-        score: validation.score,
-        mode: validation.mode,
-        carClass: row.carClass || "",
-        runId: row.runId || `client-${state.uid}`,
-        clientVersion: "InfernoDrift4 static",
-        verified: false,
-        createdAt: firestore.serverTimestamp(),
-      },
-      { merge: true },
+    const scoreRef = firestore.doc(
+      internals.db,
+      "leaderboards",
+      validation.mode,
+      "scores",
+      state.uid,
     );
+    const basePayload = {
+      uid: state.uid,
+      username: state.username || "Player",
+      badges: internals.userProfile?.badges || [],
+      score: validation.score,
+      mode: validation.mode,
+      carClass: row.carClass || "",
+      runId: row.runId || `client-${state.uid}`,
+      clientVersion: "InfernoDrift4 static",
+      verified: false,
+      createdAt: firestore.serverTimestamp(),
+    };
+    try {
+      await firestore.setDoc(
+        scoreRef,
+        {
+          ...basePayload,
+          account: true,
+          guest: false,
+        },
+        { merge: true },
+      );
+    } catch (error) {
+      if (!/permission|insufficient/i.test(String(error?.message || ""))) {
+        throw error;
+      }
+      await firestore.setDoc(scoreRef, basePayload, { merge: true });
+    }
     return true;
   }
 
