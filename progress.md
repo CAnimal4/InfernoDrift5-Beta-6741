@@ -329,3 +329,10 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Fixed Play mode cards so game titles, descriptions, mode metadata, rewards, and medal text render on separate readable lines instead of jammed uppercase text.
 - Made Firebase account progress sync tolerate old live Firestore leaderboard rules: account sign-in no longer fails just because the optional leaderboard `account`/`guest` metadata is rejected, and the client retries the older leaderboard payload shape.
 - Local live Firebase smoke passed after this fallback, confirming account sign-in works even before the newer Firestore rules are published.
+
+2026-05-21 car visuals and boost cone polish:
+
+- Changed the rear cone/boost flame mesh so it is hidden by default and only appears during active boost, including remote-player boost snapshots and campaign bot burst boosts.
+- Added a new Monster body option with taller ride height, larger tires, wider wheels, heavier grip, and slower turning so body type changes both build and driving feel.
+- Added per-body visual types and extra low-poly detail pieces: grilles, hood scoops, door panels, roof details, aero splitters/spines, rally guards, muscle haunches, and monster truck rails/guards.
+- Upgraded decals from a small top stripe into visible hood/side graphics with flame and star treatments, and exposed body type/decal/boost-cone state in test snapshots.

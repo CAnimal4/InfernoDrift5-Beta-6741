@@ -1635,13 +1635,14 @@ const BODY_OPTIONS = [
     visual: {
       primary: 0xfff1d0,
       accent: 0x12151c,
+      bodyType: "street",
       bodyScale: [1.8, 0.5, 3.2],
       hoodScale: [1.6, 0.35, 1.2],
       cabinScale: [1.3, 0.45, 1.2],
       trunkScale: [1.4, 0.3, 0.8],
       lightScale: 1,
     },
-    stats: { topSpeed: 0, accel: 0, grip: 0.02, drift: 0, boost: 0.02 },
+    stats: { topSpeed: 0, accel: 0, turnRate: 0, grip: 0.02, drift: 0, boost: 0.02 },
   },
   {
     id: "muscle",
@@ -1650,13 +1651,35 @@ const BODY_OPTIONS = [
     visual: {
       primary: 0xff8a5c,
       accent: 0x24110f,
+      bodyType: "muscle",
       bodyScale: [2.05, 0.58, 3.45],
       hoodScale: [1.75, 0.4, 1.3],
       cabinScale: [1.2, 0.42, 1.05],
       trunkScale: [1.55, 0.34, 0.92],
       lightScale: 1.08,
     },
-    stats: { topSpeed: 4, accel: 0.08, grip: -0.06, drift: 0.16, boost: 0.06 },
+    stats: { topSpeed: 4, accel: 0.08, turnRate: -0.04, grip: -0.06, drift: 0.16, boost: 0.06 },
+  },
+  {
+    id: "monster",
+    name: "Monster",
+    unlockLevel: 8,
+    emberCost: 260,
+    description: "Tall monster-truck build with huge tires and heavy grip.",
+    visual: {
+      primary: 0xffb15f,
+      accent: 0x1a2028,
+      bodyType: "monster",
+      bodyScale: [2.12, 0.7, 3.28],
+      hoodScale: [1.82, 0.42, 1.2],
+      cabinScale: [1.36, 0.58, 1.12],
+      trunkScale: [1.56, 0.38, 0.82],
+      lightScale: 1.16,
+      rideHeightBonus: 0.42,
+      wheelRadiusBonus: 0.2,
+      wheelWidthBonus: 0.12,
+    },
+    stats: { topSpeed: -1, accel: 0.05, turnRate: -0.1, grip: 0.22, drift: -0.1, boost: 0.03 },
   },
   {
     id: "interceptor",
@@ -1665,13 +1688,14 @@ const BODY_OPTIONS = [
     visual: {
       primary: 0x8fe7ff,
       accent: 0x0d1c29,
+      bodyType: "interceptor",
       bodyScale: [1.72, 0.46, 3.42],
       hoodScale: [1.48, 0.3, 1.35],
       cabinScale: [1.12, 0.42, 1.34],
       trunkScale: [1.26, 0.28, 0.9],
       lightScale: 0.94,
     },
-    stats: { topSpeed: 6, accel: -0.03, grip: 0.08, drift: -0.04, boost: 0.03 },
+    stats: { topSpeed: 6, accel: -0.03, turnRate: -0.08, grip: 0.08, drift: -0.04, boost: 0.03 },
   },
   {
     id: "prototype",
@@ -1680,13 +1704,14 @@ const BODY_OPTIONS = [
     visual: {
       primary: 0xcfd6ff,
       accent: 0x111329,
+      bodyType: "prototype",
       bodyScale: [1.68, 0.44, 3.58],
       hoodScale: [1.42, 0.26, 1.44],
       cabinScale: [1.06, 0.38, 1.4],
       trunkScale: [1.18, 0.24, 0.82],
       lightScale: 0.88,
     },
-    stats: { topSpeed: 8, accel: 0.04, grip: -0.02, drift: 0.02, boost: 0.1 },
+    stats: { topSpeed: 8, accel: 0.04, turnRate: -0.02, grip: -0.02, drift: 0.02, boost: 0.1 },
   },
   {
     id: "rally",
@@ -1695,13 +1720,14 @@ const BODY_OPTIONS = [
     visual: {
       primary: 0xffd28f,
       accent: 0x2a1b0e,
+      bodyType: "rally",
       bodyScale: [1.88, 0.56, 3.28],
       hoodScale: [1.6, 0.36, 1.26],
       cabinScale: [1.24, 0.46, 1.18],
       trunkScale: [1.42, 0.34, 0.86],
       lightScale: 1.04,
     },
-    stats: { topSpeed: 2, accel: 0.1, grip: 0.12, drift: -0.02, boost: 0.02 },
+    stats: { topSpeed: 2, accel: 0.1, turnRate: 0.06, grip: 0.12, drift: -0.02, boost: 0.02 },
   },
 ];
 
@@ -3932,7 +3958,8 @@ function computePlayerLoadoutStats() {
   return {
     topSpeed,
     accel: 22 * accelMult,
-    turnRate: 2.8 + loadout.style.stats.turnRate,
+    turnRate:
+      2.8 + (loadout.body.stats.turnRate ?? 0) + loadout.style.stats.turnRate,
     normalGrip: 3.9 + gripBias * 1.6,
     driftGrip: 1.25 + gripBias * 0.6 - driftBias * 0.25,
     driftSlip: 0.58 + driftBias * 0.35,
@@ -9594,6 +9621,8 @@ class Car {
     this.prevPosition = new THREE.Vector3();
     this.visualConfig = null;
     this.underglow = null;
+    this.boostFlame = null;
+    this.boostVisualTimer = 0;
     this.backflipActive = false;
     this.backflipProgress = 0;
     this.backflipRecovery = 0;
@@ -9676,6 +9705,7 @@ class Car {
     }
     this.wheels = [];
     this.visualConfig = config;
+    this.boostFlame = null;
     const finish = config.finish ?? {};
     const finishRoughness = finish.roughness ?? 0.38;
     const finishMetalness = finish.metalness ?? 0.18;
@@ -9721,6 +9751,14 @@ class Car {
     const rideHeight = config.rideHeight ?? 0;
     const bodyWidth = config.bodyScale[0];
     const bodyLength = config.bodyScale[2];
+    const bodyType = config.bodyType ?? "street";
+    const addBox = (name, scale, position, material, parent = this.visualRoot) => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(...scale), material);
+      mesh.name = name;
+      mesh.position.set(...position);
+      parent.add(mesh);
+      return mesh;
+    };
     const body = new THREE.Mesh(
       new THREE.BoxGeometry(...config.bodyScale),
       primaryMat,
@@ -9759,6 +9797,101 @@ class Car {
 
     this.visualRoot.add(body, hood, cabin, trunk);
 
+    const detailMat = accentMat.clone();
+    const darkDetailMat = new THREE.MeshStandardMaterial({
+      color: 0x070a0f,
+      roughness: 0.45,
+      metalness: 0.4,
+    });
+    addBox("front-grille", [bodyWidth * 0.5, 0.12, 0.055], [
+      0,
+      0.49 + rideHeight,
+      bodyLength / 2 + 0.17,
+    ], darkDetailMat.clone());
+    addBox("hood-scoop", [bodyWidth * 0.34, 0.08, 0.32], [
+      0,
+      0.87 + rideHeight + (config.hoodScale[1] - 0.35) * 0.25,
+      bodyLength * 0.22,
+    ], bodyType === "prototype" ? lightMat.clone() : detailMat.clone());
+    addBox("left-door-panel", [0.035, 0.26, bodyLength * 0.3], [
+      -bodyWidth / 2 - 0.07,
+      0.62 + rideHeight,
+      -0.08,
+    ], detailMat.clone());
+    addBox("right-door-panel", [0.035, 0.26, bodyLength * 0.3], [
+      bodyWidth / 2 + 0.07,
+      0.62 + rideHeight,
+      -0.08,
+    ], detailMat.clone());
+    addBox("roof-detail", [bodyWidth * 0.46, 0.055, 0.34], [
+      0,
+      1.12 + rideHeight + (config.cabinScale[1] - 0.45) * 0.42,
+      -0.14,
+    ], bodyType === "rally" || bodyType === "monster" ? accentMat.clone() : glassMat.clone());
+    if (bodyType === "muscle") {
+      addBox("muscle-hood-bulge", [bodyWidth * 0.5, 0.1, 0.48], [
+        0,
+        0.93 + rideHeight,
+        bodyLength * 0.2,
+      ], primaryMat.clone());
+      addBox("muscle-rear-haunch-left", [0.22, 0.24, bodyLength * 0.28], [
+        -bodyWidth / 2 - 0.02,
+        0.64 + rideHeight,
+        -bodyLength * 0.24,
+      ], primaryMat.clone());
+      addBox("muscle-rear-haunch-right", [0.22, 0.24, bodyLength * 0.28], [
+        bodyWidth / 2 + 0.02,
+        0.64 + rideHeight,
+        -bodyLength * 0.24,
+      ], primaryMat.clone());
+    }
+    if (bodyType === "monster") {
+      addBox("monster-roll-bar", [bodyWidth * 0.84, 0.1, 0.12], [
+        0,
+        1.34 + rideHeight,
+        -0.55,
+      ], accentMat.clone());
+      addBox("monster-front-guard", [bodyWidth * 0.72, 0.16, 0.16], [
+        0,
+        0.58 + rideHeight,
+        bodyLength / 2 + 0.34,
+      ], darkDetailMat.clone());
+      addBox("monster-bed-rail-left", [0.09, 0.24, bodyLength * 0.26], [
+        -bodyWidth * 0.4,
+        0.98 + rideHeight,
+        -bodyLength * 0.28,
+      ], accentMat.clone());
+      addBox("monster-bed-rail-right", [0.09, 0.24, bodyLength * 0.26], [
+        bodyWidth * 0.4,
+        0.98 + rideHeight,
+        -bodyLength * 0.28,
+      ], accentMat.clone());
+    }
+    if (bodyType === "interceptor" || bodyType === "prototype") {
+      addBox("aero-front-splitter", [bodyWidth * 1.02, 0.08, 0.26], [
+        0,
+        0.28 + rideHeight,
+        bodyLength / 2 + 0.17,
+      ], accentMat.clone());
+      addBox("aero-center-spine", [0.12, 0.09, bodyLength * 0.52], [
+        0,
+        1.03 + rideHeight,
+        0.03,
+      ], detailMat.clone());
+    }
+    if (bodyType === "rally") {
+      addBox("rally-roof-scoop", [bodyWidth * 0.32, 0.12, 0.28], [
+        0,
+        1.24 + rideHeight,
+        -0.18,
+      ], accentMat.clone());
+      addBox("rally-bumper-guard", [bodyWidth * 0.8, 0.16, 0.12], [
+        0,
+        0.44 + rideHeight,
+        bodyLength / 2 + 0.26,
+      ], darkDetailMat.clone());
+    }
+
     const nose = new THREE.Mesh(
       new THREE.BoxGeometry(bodyWidth * 0.84, 0.18, 0.18),
       primaryMat.clone(),
@@ -9777,6 +9910,8 @@ class Car {
       color: config.decalColor ?? 0xffffff,
       transparent: true,
       opacity: config.decalOpacity ?? 0.82,
+      side: THREE.DoubleSide,
+      depthWrite: false,
     });
     if (config.decalStyle && config.decalStyle !== "none") {
       const stripeWidth =
@@ -9792,6 +9927,51 @@ class Car {
         stripeR.position.x = bodyWidth * 0.18;
         this.visualRoot.add(stripeL, stripeR);
         stripe.visible = false;
+      }
+      const hoodMark = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyWidth * 0.46, 0.02, bodyLength * 0.18),
+        decalMat.clone(),
+      );
+      hoodMark.position.set(0, 0.94 + rideHeight, bodyLength * 0.24);
+      this.visualRoot.add(hoodMark);
+      const sideDecalGeo = new THREE.BoxGeometry(0.022, 0.24, bodyLength * 0.32);
+      const sideDecalL = new THREE.Mesh(sideDecalGeo, decalMat.clone());
+      const sideDecalR = sideDecalL.clone();
+      sideDecalL.position.set(-bodyWidth / 2 - 0.09, 0.68 + rideHeight, -0.06);
+      sideDecalR.position.set(bodyWidth / 2 + 0.09, 0.68 + rideHeight, -0.06);
+      this.visualRoot.add(sideDecalL, sideDecalR);
+      if (config.decalStyle === "flame") {
+        [-1, 1].forEach((side) => {
+          const baseX = side * (bodyWidth / 2 + 0.105);
+          const flameBase = new THREE.Mesh(
+            new THREE.BoxGeometry(0.026, 0.18, bodyLength * 0.22),
+            decalMat.clone(),
+          );
+          flameBase.position.set(baseX, 0.72 + rideHeight, bodyLength * 0.05);
+          flameBase.rotation.y = side * 0.16;
+          const flameTip = new THREE.Mesh(
+            new THREE.BoxGeometry(0.028, 0.12, bodyLength * 0.14),
+            decalMat.clone(),
+          );
+          flameTip.position.set(baseX, 0.83 + rideHeight, bodyLength * 0.22);
+          flameTip.rotation.y = side * -0.24;
+          this.visualRoot.add(flameBase, flameTip);
+        });
+      }
+      if (config.decalStyle === "star") {
+        [-1, 1].forEach((side) => {
+          const starX = side * (bodyWidth / 2 + 0.115);
+          const starA = new THREE.Mesh(
+            new THREE.BoxGeometry(0.026, 0.3, 0.08),
+            decalMat.clone(),
+          );
+          const starB = starA.clone();
+          starA.position.set(starX, 0.75 + rideHeight, -0.1);
+          starB.position.copy(starA.position);
+          starB.rotation.x = Math.PI / 2;
+          starB.rotation.z = side * 0.78;
+          this.visualRoot.add(starA, starB);
+        });
       }
     }
 
@@ -9900,12 +10080,15 @@ class Car {
       new THREE.MeshBasicMaterial({
         color: config.boostColor ?? 0xff8a4f,
         transparent: true,
-        opacity: 0.58,
+        opacity: 0,
+        depthWrite: false,
       }),
     );
     boostFlame.rotation.x = -Math.PI / 2;
     boostFlame.position.set(0, 0.31 + rideHeight, -bodyLength / 2 - 0.58);
+    boostFlame.visible = false;
     this.visualRoot.add(boostFlame);
+    this.boostFlame = boostFlame;
 
     if (config.plateText) {
       const plate = new THREE.Mesh(
@@ -9942,6 +10125,12 @@ class Car {
     shieldBubble.visible = false;
     this.visualRoot.add(shieldBubble);
     this.shieldBubble = shieldBubble;
+  }
+
+  setBoostVisual(active) {
+    if (active) {
+      this.boostVisualTimer = 0.12;
+    }
   }
 
   setPosition(x, y, z) {
@@ -10024,6 +10213,16 @@ class Car {
         this.shieldBubble.scale.setScalar(pulse);
         this.shieldBubble.material.opacity =
           0.16 + Math.min(1, this.battleShieldTimer / 5) * 0.12;
+      }
+    }
+    if (this.boostFlame) {
+      this.boostVisualTimer = Math.max(0, this.boostVisualTimer - dt);
+      const active = this.boostVisualTimer > 0 && !this.demolished;
+      this.boostFlame.visible = active;
+      if (active) {
+        const pulse = 0.82 + Math.sin(state.elapsed * 42) * 0.16;
+        this.boostFlame.scale.setScalar(pulse);
+        this.boostFlame.material.opacity = 0.46 + pulse * 0.16;
       }
     }
     this.updateWheels(this.speed * dt);
@@ -10236,9 +10435,9 @@ function getCarVisualConfig(loadout = getCurrentCustomization()) {
         : loadout.accent.color;
   const decalStyle =
     loadout.decal.id === "flame-stripe"
-      ? "single"
+      ? "flame"
       : loadout.decal.id === "founder-star"
-        ? "double"
+        ? "star"
         : "none";
   return {
     ...loadout.body.visual,
@@ -10247,10 +10446,12 @@ function getCarVisualConfig(loadout = getCurrentCustomization()) {
     tintColor: loadout.tint.color,
     wheelRadius:
       loadout.wheels.visual.radius +
-      (loadout.tires.id === "magma" ? 0.03 : loadout.tires.id === "rally" ? 0.05 : 0),
+      (loadout.tires.id === "magma" ? 0.03 : loadout.tires.id === "rally" ? 0.05 : 0) +
+      (loadout.body.visual.wheelRadiusBonus ?? 0),
     wheelWidth:
       loadout.wheels.visual.width +
-      (loadout.tires.id === "rally" ? 0.05 : loadout.tires.id === "magma" ? 0.03 : 0),
+      (loadout.tires.id === "rally" ? 0.05 : loadout.tires.id === "magma" ? 0.03 : 0) +
+      (loadout.body.visual.wheelWidthBonus ?? 0),
     wheelColor: loadout.wheels.visual.color,
     rimColor: loadout.wheels.visual.rim,
     spoiler:
@@ -10259,14 +10460,19 @@ function getCarVisualConfig(loadout = getCurrentCustomization()) {
         : loadout.spoiler.style,
     glowColor: loadout.glow.color,
     rideHeight:
-      loadout.stance.id === "lifted" ? 0.16 : loadout.stance.id === "low" ? -0.08 : 0,
+      (loadout.stance.id === "lifted" ? 0.16 : loadout.stance.id === "low" ? -0.08 : 0) +
+      (loadout.body.visual.rideHeightBonus ?? 0),
     boostColor: loadout.boostTrail.color ?? loadout.glow.color,
     exhaustColor:
       loadout.exhaust.id === "lava-spit" ? 0xffd35f : loadout.boostTrail.color,
     exhaustStyle: loadout.exhaust.id === "twin-burst" ? "dual" : "single",
     decalStyle,
     decalColor:
-      loadout.decal.id === "founder-star" ? 0xffd35f : loadout.accent.color,
+      loadout.decal.id === "founder-star"
+        ? 0xffd35f
+        : loadout.decal.id === "flame-stripe"
+          ? 0xffd35f
+          : loadout.accent.color,
     decalOpacity: loadout.decal.id === "none" ? 0 : 0.82,
     finish: {
       roughness: loadout.finish.roughness,
@@ -10614,6 +10820,7 @@ function updateRemoteHumanPlayers(dt) {
     remote.car.position.lerp(remote.target, Math.min(1, dt * 12));
     remote.car.group.position.copy(remote.car.position);
     remote.car.group.rotation.y = remote.car.heading;
+    remote.car.setBoostVisual(remote.boost);
     remote.car.updateWheels(remote.speed * dt);
     if (remote.boost && Math.random() < 0.16) {
       spawnFx(
@@ -14349,6 +14556,7 @@ function updatePlayer(dt) {
     !bowlingActive && (input.drift || gamepadState.drift) && !airborne;
   const boostActive =
     !bowlingActive && (input.boost || gamepadState.boost) && state.boost > 0.05;
+  player.setBoostVisual(boostActive);
   player.maxBoostTimer = boostActive
     ? 0.2
     : Math.max(0, (player.maxBoostTimer ?? 0) - dt);
@@ -16263,6 +16471,7 @@ function updateBots(dt) {
         boostSpeedMult: 1.08,
       });
     }
+    bot.setBoostVisual(bot.aiBurstCooldown > 0);
 
     const forward = tempVectorC.set(
       Math.sin(bot.moveHeading),
@@ -20727,10 +20936,12 @@ window.render_game_to_text = () => {
         tint: currentCustomization.tint.id,
         glow: currentCustomization.glow.id,
         body: currentCustomization.body.id,
+        bodyType: currentCustomization.body.visual.bodyType ?? currentCustomization.body.id,
         decal: currentCustomization.decal.id,
         livery: currentCustomization.livery.id,
         boostTrail: currentCustomization.boostTrail.id,
         finish: currentCustomization.finish.id,
+        boostConeVisible: Boolean(player.boostFlame?.visible),
       },
     },
     hud: {
@@ -21287,16 +21498,41 @@ window.__infernodriftTestApi = {
     buyGarageCosmetic(categoryKey, optionId),
   equipGarageCosmetic: (categoryKey, optionId) =>
     equipGarageCosmetic(categoryKey, optionId),
+  grantGarageCosmeticForTest: (categoryKey, optionId) => {
+    const category = GARAGE_CATEGORIES.find((item) => item.key === categoryKey);
+    const option = category
+      ? getOptionById(
+          category.options,
+          optionId,
+          DEFAULT_CUSTOMIZATION[categoryKey],
+        )
+      : null;
+    const unlockLevel = getOptionUnlockLevel(option);
+    if (unlockLevel > getProgressionLevel()) {
+      state.progressionV2.totalXp = Math.max(
+        state.progressionV2.totalXp,
+        getXPForLevel(unlockLevel),
+      );
+    }
+    const cosmeticId = getCosmeticId(categoryKey, optionId);
+    if (!state.progressionV2.ownedCosmetics.includes(cosmeticId)) {
+      state.progressionV2.ownedCosmetics.push(cosmeticId);
+    }
+    return state.progressionV2.ownedCosmetics.includes(cosmeticId);
+  },
   getCarVisualConfigForTest: () => {
     const visual = getCarVisualConfig();
     return {
       body: getCurrentCustomization().body.id,
+      bodyType: visual.bodyType,
       bodyScale: visual.bodyScale,
       hoodScale: visual.hoodScale,
       cabinScale: visual.cabinScale,
       trunkScale: visual.trunkScale,
       wheelRadius: visual.wheelRadius,
       rideHeight: visual.rideHeight,
+      decalStyle: visual.decalStyle,
+      boostConeVisible: Boolean(player.boostFlame?.visible),
       primary: visual.primary,
       accent: visual.accent,
     };
