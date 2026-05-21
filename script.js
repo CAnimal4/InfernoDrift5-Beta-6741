@@ -1,6 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260520-firebase-room-join";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
