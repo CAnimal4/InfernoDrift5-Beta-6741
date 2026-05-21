@@ -264,6 +264,24 @@ assert.equal(
   dedupedLeaderboard.find((row) => row.username === "inteloftheeon").xp,
   950,
 );
+assert.equal(dedupedLeaderboard[0].username, "ChatGPT (Codex)");
+assert.equal(dedupedLeaderboard[0].isSystemPlayer, true);
+const chasedLeaderboard = await page.evaluate(() =>
+  window.__infernodriftTestApi.setLeaderboardRowsForTest([
+    {
+      userId: "account-top",
+      username: "RealTopDriver",
+      source: "server",
+      account: true,
+      xp: 10000,
+      totalXp: 10000,
+    },
+  ]),
+);
+assert.equal(chasedLeaderboard[0].username, "ChatGPT (Codex)");
+assert.ok(chasedLeaderboard[0].xp > 10000);
+assert.ok(chasedLeaderboard[0].xp <= 10101);
+assert.equal(chasedLeaderboard[1].username, "RealTopDriver");
 await page.locator('[data-tab="profile"]').click({ force: true });
 await page.waitForTimeout(150);
 onlineUiState = JSON.parse(

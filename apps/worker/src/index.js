@@ -161,6 +161,7 @@ const DEFAULT_LEADERBOARD = [
     source: "server",
   },
 ];
+const SYSTEM_USERNAME_KEYS = new Set(["chatgptcodex"]);
 
 const BOT_NAMES = [
   "Ash Bot",
@@ -378,6 +379,10 @@ function getLeaderboardRowForUser(data, user) {
 
 function compareLeaderboard(a, b) {
   return getLeaderboardXp(b) - getLeaderboardXp(a);
+}
+
+function isSystemUsernameKey(key = "") {
+  return SYSTEM_USERNAME_KEYS.has(String(key).replace(/[^a-z0-9]/g, ""));
 }
 
 function isLeaderboardEligibleUser(user) {
@@ -2178,6 +2183,8 @@ export class InfernoRoom {
     const key = claimKey(username);
     if (!key || username.length < 2)
       return { ok: false, error: "invalid_username" };
+    if (isSystemUsernameKey(key))
+      return { ok: false, error: "username_reserved" };
     const ownerId = this.data.usernameClaims[key];
     let existing = ownerId ? this.data.users[ownerId] : null;
     const seeded = seededAccountForUsername(username);
@@ -2281,6 +2288,8 @@ export class InfernoRoom {
     const username = normalizeUsername(msg.username, "");
     const key = claimKey(username);
     if (!key) return { ok: false, error: "invalid_username" };
+    if (isSystemUsernameKey(key))
+      return { ok: false, error: "username_reserved" };
     if (
       key === "clark" &&
       (!usableSecret(this.env.CLARK_RESERVATION_TOKEN) ||

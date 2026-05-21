@@ -36,6 +36,14 @@ test("Firebase username validation enforces launch-safe names", () => {
     "username_rejected",
   );
   assert.equal(
+    validateFirebaseUsername("ChatGPT (Codex)").error,
+    "username_reserved",
+  );
+  assert.equal(
+    validateFirebaseUsername("ChatGPT Codex").error,
+    "username_reserved",
+  );
+  assert.equal(
     usernameToFirebaseEmail("Drift-King_4"),
     "id4.drift-king_4@infernodrift4.firebaseapp.com",
   );

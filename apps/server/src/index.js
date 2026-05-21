@@ -111,6 +111,7 @@ const DEFAULT_LEADERBOARD = [
     source: "server",
   },
 ];
+const SYSTEM_USERNAME_KEYS = new Set(["chatgptcodex"]);
 
 const BOT_NAMES = [
   "Ash Bot",
@@ -483,6 +484,10 @@ function makeCode() {
 
 function compareLeaderboard(a, b) {
   return getLeaderboardXp(b) - getLeaderboardXp(a);
+}
+
+function isSystemUsernameKey(key = "") {
+  return SYSTEM_USERNAME_KEYS.has(String(key).replace(/[^a-z0-9]/g, ""));
 }
 
 function isLeaderboardEligibleUser(user) {
@@ -2188,6 +2193,8 @@ export function createInfernoServer(options = {}) {
     const key = claimKey(username);
     if (!key || username.length < 2)
       return { ok: false, error: "invalid_username" };
+    if (isSystemUsernameKey(key))
+      return { ok: false, error: "username_reserved" };
     const ownerId = db.data.usernameClaims[key];
     let existing = ownerId ? db.data.users[ownerId] : null;
     const seeded = seededAccountForUsername(username);
@@ -2293,6 +2300,8 @@ export function createInfernoServer(options = {}) {
     const username = normalizeUsername(msg.username, "");
     const key = claimKey(username);
     if (!key) return { ok: false, error: "invalid_username" };
+    if (isSystemUsernameKey(key))
+      return { ok: false, error: "username_reserved" };
     if (
       key === "clark" &&
       (!clarkReservationToken || msg.turnstileToken !== clarkReservationToken)

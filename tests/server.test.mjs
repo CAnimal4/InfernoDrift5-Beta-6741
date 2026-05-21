@@ -431,10 +431,26 @@ test("websocket backend supports password account create and sign in", async (t)
   assert.equal(clarkAuth.user.badge, "Founder");
   assert.equal(clarkAuth.user.account, true);
 
+  const codex = await makeWsClient(port);
+  codex.ws.send(
+    JSON.stringify({
+      type: "auth.account",
+      mode: "auto",
+      username: "ChatGPT (Codex)",
+      password: "secret789",
+      age: 13,
+    }),
+  );
+  await waitForMessage(
+    codex.messages,
+    (msg) => msg.type === "error" && msg.error === "username_reserved",
+  );
+
   a.ws.terminate();
   wrong.ws.terminate();
   signin.ws.terminate();
   clark.ws.terminate();
+  codex.ws.terminate();
   guest.ws.terminate();
   upgraded.ws.terminate();
 });

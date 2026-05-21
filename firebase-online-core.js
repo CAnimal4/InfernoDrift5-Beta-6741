@@ -7,6 +7,7 @@ export const FIREBASE_LEADERBOARD_MODE = "all-modes";
 export const FIREBASE_BACKEND_MODE = "firebase";
 export const FIREBASE_LOBBY_CODE_PATTERN = /^[A-Z0-9]{4,8}$/;
 const FIREBASE_LOBBY_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const FIREBASE_SYSTEM_USERNAME_KEYS = new Set(["chatgptcodex"]);
 
 const BLOCKED_TERMS = [
   /(?:n|ñ|m)[\W_]*[i1!l|][\W_]*g[\W_]*g[\W_]*(?:e|3)[\W_]*r/i,
@@ -52,9 +53,23 @@ export function normalizeFirebaseUsernameKey(value = "") {
   return normalizeFirebaseUsername(value).toLowerCase();
 }
 
+function normalizeFirebaseSystemUsernameKey(value = "") {
+  return normalizeFirebaseUsername(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
 export function validateFirebaseUsername(value = "") {
   const username = normalizeFirebaseUsername(value);
   const lower = username.toLowerCase();
+  if (FIREBASE_SYSTEM_USERNAME_KEYS.has(normalizeFirebaseSystemUsernameKey(username))) {
+    return {
+      ok: false,
+      error: "username_reserved",
+      username,
+      usernameLower: lower,
+    };
+  }
   if (!FIREBASE_USERNAME_PATTERN.test(username)) {
     return {
       ok: false,

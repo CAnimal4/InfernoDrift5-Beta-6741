@@ -471,6 +471,9 @@ const SEEDED_LEADERBOARD_ROWS = [
     scope: "Total XP",
   },
 ];
+const CODEX_LEADERBOARD_USERNAME = "ChatGPT (Codex)";
+const CODEX_LEADERBOARD_ID = "system-chatgpt-codex";
+let codexLeaderboardXp = 8350;
 const GAME_MODE_ID33 = "infernodrift33";
 const GAME_MODE_MAX1 = "infernodriftmax1";
 const GAME_MODE_RISK = "tryatyourownrisk";
@@ -8079,6 +8082,69 @@ function compareLeaderboard(a, b) {
   return getLeaderboardXp(b) - getLeaderboardXp(a);
 }
 
+function randomIntInclusive(min, max, random = Math.random) {
+  const low = Math.ceil(min);
+  const high = Math.floor(max);
+  return Math.floor(random() * (high - low + 1)) + low;
+}
+
+function isCodexLeaderboardRow(row = {}) {
+  return (
+    row.isSystemPlayer === true ||
+    normalizeLeaderboardUsername(row.username) ===
+      normalizeLeaderboardUsername(CODEX_LEADERBOARD_USERNAME)
+  );
+}
+
+function makeCodexLeaderboardRow(xp = codexLeaderboardXp) {
+  const safeXp = Math.max(0, Math.floor(Number(xp) || 0));
+  return {
+    id: CODEX_LEADERBOARD_ID,
+    userId: CODEX_LEADERBOARD_ID,
+    username: CODEX_LEADERBOARD_USERNAME,
+    badge: "System",
+    xp: safeXp,
+    totalXp: safeXp,
+    rating: safeXp,
+    score: safeXp,
+    playlist: "all modes",
+    scope: "Total XP",
+    source: "system",
+    account: false,
+    guest: false,
+    isSystemPlayer: true,
+    isPlayable: false,
+  };
+}
+
+function ensureCodexAlwaysFirst(rows = [], { random = Math.random } = {}) {
+  const realRows = rows.filter((row) => row && !isCodexLeaderboardRow(row));
+  const existingCodex = rows.find(isCodexLeaderboardRow);
+  const existingXp = getLeaderboardXp(existingCodex);
+  if (existingXp > 0) {
+    codexLeaderboardXp = Math.max(codexLeaderboardXp, existingXp);
+  }
+  const topRealXp = realRows.reduce(
+    (top, row) => Math.max(top, getLeaderboardXp(row)),
+    0,
+  );
+  if (!Number.isFinite(codexLeaderboardXp) || codexLeaderboardXp <= 0) {
+    codexLeaderboardXp = Math.max(150, topRealXp + 50);
+  }
+  const gap = codexLeaderboardXp - topRealXp;
+  if (topRealXp >= codexLeaderboardXp) {
+    const neededToPass = topRealXp - codexLeaderboardXp + 1;
+    codexLeaderboardXp += randomIntInclusive(
+      neededToPass + 25,
+      neededToPass + 100,
+      random,
+    );
+  } else if (gap <= 25) {
+    codexLeaderboardXp += randomIntInclusive(25, 150, random);
+  }
+  return [makeCodexLeaderboardRow(codexLeaderboardXp), ...realRows];
+}
+
 function getLeaderboardTier(row, index = 0) {
   if (!row) return "Bronze";
   const rank = Math.max(1, Math.floor(Number(index) || 0) + 1);
@@ -8090,9 +8156,10 @@ function getLeaderboardTier(row, index = 0) {
 }
 
 function getLocalXpLeaderboardRows() {
-  return [...SEEDED_LEADERBOARD_ROWS, getCurrentPlayerXpLeaderboardRow()].sort(
-    compareLeaderboard,
-  );
+  return ensureCodexAlwaysFirst([
+    ...SEEDED_LEADERBOARD_ROWS,
+    getCurrentPlayerXpLeaderboardRow(),
+  ]).sort(compareLeaderboard);
 }
 
 function getCurrentPlayerXpLeaderboardRow() {
@@ -8133,7 +8200,9 @@ function getDisplayLeaderboardRows() {
   ) {
     rows.push(playerRow);
   }
-  return dedupeLeaderboardRows(rows).sort(compareLeaderboard);
+  return ensureCodexAlwaysFirst(dedupeLeaderboardRows(rows)).sort(
+    compareLeaderboard,
+  );
 }
 
 function normalizeLeaderboardUsername(value) {
@@ -8154,6 +8223,7 @@ function isGuestLeaderboardRow(row = {}) {
 
 function getLeaderboardRowPriority(row = {}) {
   let priority = 0;
+  if (row.isSystemPlayer === true) priority += 1000;
   if (row.account === true) priority += 80;
   if (row.source === "server") priority += 40;
   if (row.userId) priority += 20;

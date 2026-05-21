@@ -336,3 +336,9 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Added a new Monster body option with taller ride height, larger tires, wider wheels, heavier grip, and slower turning so body type changes both build and driving feel.
 - Added per-body visual types and extra low-poly detail pieces: grilles, hood scoops, door panels, roof details, aero splitters/spines, rally guards, muscle haunches, and monster truck rails/guards.
 - Upgraded decals from a small top stripe into visible hood/side graphics with flame and star treatments, and exposed body type/decal/boost-cone state in test snapshots.
+
+2026-05-21 Codex system leaderboard row:
+
+- Added a non-playable `ChatGPT (Codex)` system leaderboard row that is injected only into displayed rankings, flagged as non-playable/system, and automatically stays just ahead of the highest real XP row.
+- Reserved the Codex username in Firebase and legacy WebSocket account flows so players cannot create, sign in as, or claim the system identity.
+- Added targeted tests/smoke assertions for Firebase username rejection, WebSocket account rejection, Codex first-place ranking, and close XP chasing.
