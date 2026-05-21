@@ -2,6 +2,31 @@
 
 Read this first when continuing InfernoDrift4 online/backend work from an older Codex chat that still assumes Cloudflare Workers, Replit, or a required WebSocket backend.
 
+## Quick Start For A New Codex Chat
+
+Use this repo and this policy:
+
+- Work in `CAnimal4/InfernoDrift4`; the public game still deploys to `https://canimal4.github.io/InfernoDrift`.
+- Treat Firebase as the production online backend unless the owner explicitly asks for legacy Worker/WebSocket work.
+- Keep Cloudflare Workers as legacy fallback/import/reference only.
+- Do not use Replit for production and do not ask the owner to pay for Replit.
+- Do not expose Firebase Admin SDK keys, service-account JSON, cookies, GitHub tokens, or private credentials.
+- Do not rename player-facing UI back to "Firebase"; normal players should see "online services", "online guest", and "online lobby". Firebase wording is fine in Advanced Server settings, diagnostics, docs, tests, and source identifiers.
+- Never make the game block play while online services load. Guest Offline and local modes must keep working.
+- When backend behavior changes, update the Firebase client, `firestore.rules`, tests/smokes, and this handoff.
+- Publish backend rules to Firebase, then push the repo so GitHub Pages deploys the frontend.
+
+Current high-signal files:
+
+- `firebase-config.js`: checked-in public Firebase web config and backend mode constant.
+- `firebase-online-core.js`: validation/sanitization helpers for usernames, scores, chat, feedback, and lobby codes.
+- `firebase-online.js`: Firebase Auth, Firestore reads/writes, lobbies, chat, friends, feedback, progress, diagnostics.
+- `script.js`: live game integration, offline fallback, Online tab, legacy import bridge.
+- `firestore.rules`: Firebase backend security rules.
+- `smoke_firebase_live.mjs`: deployed/live Firebase behavior smoke.
+- `smoke_firebase_offline.mjs`: unavailable-network/offline fallback smoke.
+- `docs/FIREBASE_MIGRATION.md`, `docs/BACKEND.md`, `docs/CODEX_ONLINE_BACKEND_PROMPT.md`: related docs that should stay aligned.
+
 ## Current Direction
 
 Firebase is now the default production backend for InfernoDrift4 online-lite features.
@@ -14,6 +39,8 @@ Firebase is now the default production backend for InfernoDrift4 online-lite fea
 - Replit dev URLs are not acceptable as production.
 - Cloudflare Workers are no longer the primary backend for school users.
 - The old Worker backend can remain as a fallback/reference/import source, but new default backend work should target Firebase.
+- `script.js` currently sets `DEFAULT_BACKEND_MODE = BACKEND_MODE_FIREBASE`.
+- `firebase-config.js` currently exports `FIREBASE_BACKEND_MODE = "firebase"` and project ID `infernodrift4-online`.
 
 Do not change the production default back to `workers.dev`, Replit, or a required `WS_URL` unless the owner explicitly asks for legacy server work.
 
@@ -33,6 +60,9 @@ Firebase is responsible for:
 - feedback
 - diagnostics
 - offline fallback when Firebase is blocked or unreachable
+- old Cloudflare/Worker progress import into Firebase when a matching legacy save exists
+- `playerRow` leaderboard recovery so the signed-in player can see their own total-XP row even outside the top page
+- lobby membership subscriptions so hosts see joiners after a shared invite/code join
 
 The main implementation files are:
 
@@ -57,12 +87,21 @@ Firebase is not a free server-authoritative WebSocket multiplayer physics backen
 
 Do not claim Firebase provides authoritative live multiplayer. In Firebase mode:
 
-- private room codes are Firebase lobbies for social grouping, chat, and invite sharing
+- private room codes are Firebase lobbies for social grouping, membership display, lobby chat, and invite sharing
 - live queue/matchmaking is unavailable unless a real server backend is configured
 - real-time authoritative racing still needs a trusted WebSocket/server backend
 - local play, bots, saves, and offline guest mode must keep working
 
 The UI should say this plainly. It should not fake online racing success.
+
+Current player-facing wording should avoid provider names. Use phrases like:
+
+- "Online services are ready when available."
+- "Create Online Lobby"
+- "Online lobby ... Chat and invites are active; live racing needs a dedicated game server."
+- "Online services are unavailable on this network. You can still play Guest Offline."
+
+Keep "Firebase" visible only in developer/diagnostic surfaces such as Advanced Server settings and Run Firebase Test output.
 
 ## Old Backend Status
 
@@ -79,6 +118,7 @@ They may still be useful for:
 - reference behavior while porting features
 - importing old account/profile/save data into Firebase
 - testing the old authoritative WebSocket server
+- `npm run smoke:online-local` and Worker checks when intentionally changing legacy server behavior
 
 Do not delete the Worker backend without explicit owner approval.
 
@@ -108,6 +148,8 @@ The current bridge does this:
 - compares old backend save XP, current local save XP, and Firebase cloud save XP
 - syncs the highest-progress save into Firebase
 - prevents Firebase sign-in from overwriting a higher Firestore save with lower local data
+- refreshes progress and writes the canonical total-XP leaderboard row on auth/sign-in
+- records a local one-time import marker under `infernoDrift4.legacyImport.v1:<username>` so repeated sign-ins do not keep reimporting the same bundled save
 
 Important implementation concepts:
 
@@ -119,6 +161,8 @@ Important implementation concepts:
 - Firebase cloud progress should win if it has more XP
 - old Cloudflare/Worker progress should be imported if it has more XP
 - local offline progress should still survive if it has more XP
+- leaderboard sync must use total XP from `progressionV2`, not a per-mode run score
+- no player should need to click a recovery button; legacy import is a quiet one-time account sign-in side effect
 
 Do not add a manual "Recover Old Save" flow unless the owner explicitly asks for one. The intended player experience is: sign in normally, keep playing, and let the one-time migration run quietly.
 
@@ -129,6 +173,8 @@ node scripts/export-legacy-cloudflare-progress.mjs
 ```
 
 Then rebuild and publish the static site so `dist/legacy-cloudflare-progress.json` is updated.
+
+If that export script cannot run because Cloudflare credentials are missing, do not invent progress data. Report that the bundled manifest could not be refreshed and keep the existing checked-in/static manifest behavior.
 
 ## Firebase Data Model
 
@@ -189,24 +235,46 @@ Required behavior:
 
 ## Firebase Feature Map
 
-| Feature | Firebase path | Notes |
-| --- | --- | --- |
-| Account sign-in/create | Firebase Auth plus `users/{uid}` | Username maps to a derived Firebase email internally. |
-| Username uniqueness | `usernames/{usernameLower}` | Claimed transactionally by the client with rules support. |
-| Guest online | Firebase Anonymous Auth | Falls back to local guest if Firebase is blocked. |
-| Progress | `progress/{uid}` | Uses XP-aware best-save selection. |
-| Leaderboard | `leaderboards/all-modes/scores/{uid}` | Client-submitted, sanity checked, not cheat-proof. |
-| Lobby chat | `chatRooms/lobby/messages` | Uses Firestore realtime listeners. |
-| Firebase lobbies | `lobbies/{code}` | Create/join/share code, not authoritative racing. |
-| Feedback | `feedback/{feedbackId}` | 2500-character limit. |
-| Friends | `friendRequests` and `friends/{uid}/items` | Basic request/accept architecture. |
-| Diagnostics | `diagnostics/{uid}` | Used by Online -> Run Firebase Test. |
+| Feature                | Firebase path                              | Notes                                                                                 |
+| ---------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------- |
+| Account sign-in/create | Firebase Auth plus `users/{uid}`           | Username maps to a derived Firebase email internally.                                 |
+| Username uniqueness    | `usernames/{usernameLower}`                | Claimed transactionally by the client with rules support.                             |
+| Guest online           | Firebase Anonymous Auth                    | Falls back to local guest if Firebase is blocked.                                     |
+| Progress               | `progress/{uid}`                           | Uses XP-aware best-save selection.                                                    |
+| Leaderboard            | `leaderboards/all-modes/scores/{uid}`      | Client-submitted total-XP row, sanity checked, includes `playerRow`, not cheat-proof. |
+| Lobby chat             | `chatRooms/lobby/messages`                 | Uses Firestore realtime listeners.                                                    |
+| Firebase lobbies       | `lobbies/{code}`                           | Create/join/share code plus membership subscription, not authoritative racing.        |
+| Feedback               | `feedback/{feedbackId}`                    | 2500-character limit.                                                                 |
+| Friends                | `friendRequests` and `friends/{uid}/items` | Basic request/accept architecture.                                                    |
+| Diagnostics            | `diagnostics/{uid}`                        | Used by Online -> Run Firebase Test.                                                  |
+
+## Current UI And Diagnostics Contract
+
+The normal game should not say "Firebase" except inside developer areas.
+
+Expected player-facing Online tab behavior:
+
+- the Online tab status uses generic "online services" language
+- guest flow says "online guest" or "Guest Offline"
+- room button says `Create Online Lobby`
+- lobby state says chat/invites are active and live racing needs a dedicated game server
+- queue button is disabled as `Live Queue Unavailable` in Firebase mode
+- feedback copy says feedback saves online when signed in or online guest
+
+Expected developer/diagnostic behavior:
+
+- Advanced Server settings may mention Firebase and legacy WebSocket fallback.
+- `Run Firebase Test` may mention `Backend mode firebase`, `Firebase project infernodrift4-online`, diagnostics, Firestore, chat, leaderboard, and `firebase_no_authoritative_websocket`.
+- `render_game_to_text().online` exposes backend mode, transport, Firebase status, legacy import status, leaderboard `playerRow`, room/lobby state, feedback status, and diagnostics.
 
 ## Testing Checklist
 
 Before shipping online/backend changes, run the relevant local checks:
 
 ```bash
+node --check script.js
+node --check firebase-online.js
+node --check smoke_firebase_live.mjs
 npm run typecheck
 npm test
 npm run build
@@ -216,10 +284,12 @@ npm run smoke
 npm run test:e2e
 ```
 
-Use the old server smoke only when intentionally touching legacy WebSocket behavior:
+Use these legacy checks only when intentionally touching legacy WebSocket/Worker behavior:
 
 ```bash
 npm run smoke:online-local
+npm run worker:check
+npm run worker:types
 ```
 
 After publishing to GitHub Pages, test the public URL with cache-bust:
@@ -237,6 +307,21 @@ Expected live smoke shape:
 - Firebase lobby code is created
 - diagnostics are `ok`
 - WebSocket state is `firebase_no_authoritative_websocket`
+- the smoke verifies account create/sign-in, XP/progress sync, leaderboard `playerRow`, logout/sign-in restore, chat/lobby invite, second-client lobby join, diagnostics, and honest non-authoritative WebSocket state
+
+For player-facing copy checks after UI/backend wording changes, run a live or local browser text audit that removes `.advanced-online-settings` before scanning the page text for `Firebase` / `FireBase`. The expected result outside Advanced/developer areas is no provider-name match.
+
+Recent known-good validation from the current Firebase cleanup/publish path:
+
+- `npm run typecheck`
+- `npm test` with 42 tests
+- `npm run build`
+- `npm run smoke`
+- `npm run smoke:firebase`
+- `npm run smoke:firebase-live`
+- develop-web-game Playwright client against `http://127.0.0.1:4173/index.html`
+- public smoke against `https://canimal4.github.io/InfernoDrift/?v=279a8fd`
+- GitHub Actions for commit `279a8fd`: CI, Deploy GitHub Pages, Pages build/deployment, and peer sync all passed
 
 ## Deployment Rules For Future Codex Chats
 
@@ -244,14 +329,30 @@ For normal ID4 backend/online work:
 
 1. Update Firebase client code and Firestore rules.
 2. Run tests.
-3. Publish Firestore rules to Firebase.
+3. Publish Firestore rules to Firebase with `firebase deploy --only firestore:rules` when CLI auth is available, or manually in the Firebase Console when it is not.
 4. Push the repo so GitHub Pages deploys.
 5. Verify the public GitHub Pages URL.
 6. If old account save data changed in Cloudflare D1, refresh `legacy-cloudflare-progress.json` and ship it with the client.
+7. If player-facing assets are cached, bump the `script.js?v=...` query in `index.html` and verify the live page serves the new query.
 
 Do not deploy Cloudflare or Replit as part of normal Firebase backend work.
 
 Only touch Cloudflare when the task explicitly says to work on the legacy authoritative WebSocket server or Worker fallback. Only touch Replit if the owner explicitly asks for historical reference cleanup.
+
+## Recent Migration Commits To Understand First
+
+These commits define the current Firebase transition baseline:
+
+- `0edaccc` - made Firebase the default online backend.
+- `196ad6c` - fixed Firebase account sign-in flow.
+- `22f001a` - added Firebase lobby and progress migration support.
+- `c9f664c` - restored legacy Cloudflare saves into Firebase.
+- `e8b743f` - fixed Firebase lobby join flow.
+- `c675ed5` - cache-busted Firebase lobby modules.
+- `18f2709` - hardened Firebase progress/leaderboard parity.
+- `279a8fd` - removed provider-name wording from normal player-facing online UI.
+
+If a new chat sees old guidance saying the default server is Workers or Replit, treat that guidance as stale unless the current repo contradicts this file.
 
 ## Safety Rules
 
