@@ -28,6 +28,7 @@ const howtoList = document.getElementById("howto-list");
 const nextBtn = document.getElementById("next-btn");
 const retryBtn = document.getElementById("retry-btn");
 const helpBtn = document.getElementById("help-btn");
+const resultNavButtons = document.querySelectorAll(".result-nav");
 const boostBar = document.getElementById("boost-bar");
 const shieldBar = document.getElementById("shield-bar");
 const statusLabelNodes = document.querySelectorAll(".status .pill .label");
@@ -127,6 +128,7 @@ const garageResetView = document.getElementById("garage-reset-view");
 const loadoutSlots = document.getElementById("loadout-slots");
 const carClassSelect = document.getElementById("car-class-select");
 const garageClassSummary = document.getElementById("garage-class-summary");
+const garageMarket = document.getElementById("garage-market");
 const bodySelect = document.getElementById("body-select");
 const wheelSelect = document.getElementById("wheel-select");
 const styleSelect = document.getElementById("style-select");
@@ -331,6 +333,12 @@ const FEEDBACK_MESSAGE_LIMIT = 2500;
 const DAILY_GIFT_MIN_XP = 100;
 const DAILY_GIFT_MAX_XP = 1000;
 const DAILY_GIFT_STEP_XP = 25;
+const PROGRESSION_SCHEMA_VERSION = 3;
+const EMBER_CURRENCY_NAME = "Embers";
+const STARTER_COSMETIC_ID = "paintId-ember";
+const FOUNDER_TARGET_SCORE = 12500;
+const LEVEL_TRACK_WINDOW = 12;
+const DAILY_SPARKS_COUNT = 3;
 const ONLINE_PROTOCOL_VERSION = 1;
 const BACKEND_MODE_FIREBASE = "firebase";
 const BACKEND_MODE_WEBSOCKET = "websocket";
@@ -527,6 +535,16 @@ const DEFAULT_CUSTOMIZATION = {
   tintId: "smoke",
   spoilerId: "none",
   glowId: "cyan",
+  decalId: "none",
+  liveryId: "clean",
+  tireId: "street",
+  stanceId: "normal",
+  boostTrailId: "ember-trail",
+  exhaustId: "single-flame",
+  hornId: "classic",
+  goalExplosionId: "ember-pop",
+  plateId: "rookie",
+  finishId: "gloss",
 };
 const GARAGE_LOADOUT_IDS = ["slot-1", "slot-2", "slot-3"];
 const GARAGE_LOADOUT_NAMES = ["Street Heat", "Air Trick", "Arena Guard"];
@@ -2005,6 +2023,87 @@ const GLOW_OPTIONS = [
   },
 ];
 
+const DECAL_OPTIONS = [
+  { id: "none", name: "Clean", unlockLevel: 1, emberCost: 0, description: "No decal." },
+  { id: "flame-stripe", name: "Flame Stripe", unlockLevel: 3, emberCost: 120, description: "Bright side flame graphics." },
+  { id: "founder-star", name: "Founder Star", unlockLevel: 7, emberCost: 220, description: "Star badge door decal." },
+];
+
+const LIVERY_OPTIONS = [
+  { id: "clean", name: "Clean", unlockLevel: 1, emberCost: 0, description: "Solid arcade paint." },
+  { id: "heat-wave", name: "Heat Wave", unlockLevel: 4, emberCost: 160, description: "Layered orange body panels." },
+  { id: "night-racer", name: "Night Racer", unlockLevel: 9, emberCost: 280, description: "Dark panels with glowing accents." },
+];
+
+const TIRE_OPTIONS = [
+  { id: "street", name: "Street", unlockLevel: 1, emberCost: 0, description: "Standard asphalt tires." },
+  { id: "magma", name: "Magma", unlockLevel: 6, emberCost: 180, description: "Chunky tires with hot sidewalls." },
+  { id: "rally", name: "Rally", unlockLevel: 11, emberCost: 320, description: "Deep tread for rough arenas." },
+];
+
+const STANCE_OPTIONS = [
+  { id: "normal", name: "Normal", unlockLevel: 1, emberCost: 0, description: "Balanced height." },
+  { id: "low", name: "Low Drift", unlockLevel: 5, emberCost: 160, description: "Lower, faster-looking stance." },
+  { id: "lifted", name: "Lifted", unlockLevel: 8, emberCost: 220, description: "Raised monster-style stance." },
+];
+
+const BOOST_TRAIL_OPTIONS = [
+  { id: "ember-trail", name: "Ember Trail", unlockLevel: 1, emberCost: 0, color: 0xff8a4f, description: "Starter orange flame trail." },
+  { id: "blue-flare", name: "Blue Flare", unlockLevel: 2, emberCost: 130, color: 0x5feaff, description: "Cool blue boost streak." },
+  { id: "inferno-comet", name: "Inferno Comet", unlockLevel: 10, emberCost: 340, color: 0xffd35f, description: "Premium gold fire trail." },
+];
+
+const EXHAUST_OPTIONS = [
+  { id: "single-flame", name: "Single Flame", unlockLevel: 1, emberCost: 0, description: "One clean exhaust flame." },
+  { id: "twin-burst", name: "Twin Burst", unlockLevel: 4, emberCost: 150, description: "Twin rear flame pops." },
+  { id: "lava-spit", name: "Lava Spit", unlockLevel: 9, emberCost: 300, description: "Chunky hot exhaust sparks." },
+];
+
+const HORN_OPTIONS = [
+  { id: "classic", name: "Classic", unlockLevel: 1, emberCost: 0, description: "Short arcade honk." },
+  { id: "pin-crusher", name: "Pin Crusher", unlockLevel: 6, emberCost: 180, description: "Bowling-lane blast." },
+  { id: "victory-air", name: "Victory Air", unlockLevel: 12, emberCost: 330, description: "Big win fanfare horn." },
+];
+
+const GOAL_EXPLOSION_OPTIONS = [
+  { id: "ember-pop", name: "Ember Pop", unlockLevel: 1, emberCost: 0, color: 0xff8a4f, description: "Small fire score burst." },
+  { id: "inferno-burst", name: "Inferno Burst", unlockLevel: 10, emberCost: 360, color: 0xffd35f, description: "Large score fire bloom." },
+  { id: "blue-nova", name: "Blue Nova", unlockLevel: 13, emberCost: 420, color: 0x5feaff, description: "Cool shockwave goal burst." },
+];
+
+const PLATE_OPTIONS = [
+  { id: "rookie", name: "Rookie", unlockLevel: 1, emberCost: 0, description: "Starter nameplate." },
+  { id: "spark", name: "Spark", unlockLevel: 4, emberCost: 120, description: "Bright orange plate." },
+  { id: "legend", name: "Legend", unlockLevel: 15, emberCost: 500, description: "Long-term driver plate." },
+];
+
+const FINISH_OPTIONS = [
+  { id: "gloss", name: "Gloss", unlockLevel: 1, emberCost: 0, roughness: 0.32, metalness: 0.12, description: "Shiny arcade paint." },
+  { id: "matte", name: "Matte", unlockLevel: 5, emberCost: 140, roughness: 0.78, metalness: 0.05, description: "Soft non-glare finish." },
+  { id: "metallic", name: "Metallic", unlockLevel: 8, emberCost: 240, roughness: 0.28, metalness: 0.55, description: "Premium metal sparkle." },
+  { id: "lava-glow", name: "Lava Glow", unlockLevel: 14, emberCost: 520, roughness: 0.36, metalness: 0.3, description: "Hot glowing finish." },
+];
+
+const GARAGE_CATEGORIES = [
+  { key: "bodyId", label: "Body", options: BODY_OPTIONS },
+  { key: "paintId", label: "Paint", options: PAINT_OPTIONS },
+  { key: "accentId", label: "Accent", options: ACCENT_OPTIONS },
+  { key: "decalId", label: "Decal", options: DECAL_OPTIONS },
+  { key: "liveryId", label: "Livery", options: LIVERY_OPTIONS },
+  { key: "wheelId", label: "Wheels", options: WHEEL_OPTIONS },
+  { key: "tireId", label: "Tires", options: TIRE_OPTIONS },
+  { key: "spoilerId", label: "Spoiler", options: SPOILER_OPTIONS },
+  { key: "stanceId", label: "Stance", options: STANCE_OPTIONS },
+  { key: "glowId", label: "Underglow", options: GLOW_OPTIONS },
+  { key: "boostTrailId", label: "Boost Trail", options: BOOST_TRAIL_OPTIONS },
+  { key: "exhaustId", label: "Exhaust", options: EXHAUST_OPTIONS },
+  { key: "hornId", label: "Horn", options: HORN_OPTIONS },
+  { key: "goalExplosionId", label: "Goal Burst", options: GOAL_EXPLOSION_OPTIONS },
+  { key: "tintId", label: "Window Tint", options: TINT_OPTIONS },
+  { key: "plateId", label: "Nameplate", options: PLATE_OPTIONS },
+  { key: "finishId", label: "Finish", options: FINISH_OPTIONS },
+];
+
 const input = {
   left: false,
   right: false,
@@ -2317,19 +2416,234 @@ function normalizeDailyGift(value = {}, salt = makeDailyGiftSalt()) {
   };
 }
 
+function xpRequiredForLevel(level = 1) {
+  const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
+  return Math.round(400 + safeLevel * 150 + Math.pow(safeLevel, 1.55) * 120);
+}
+
+function getXPForLevel(level = 1) {
+  const targetLevel = Math.max(1, Math.floor(Number(level) || 1));
+  let total = 0;
+  for (let current = 1; current < targetLevel; current += 1) {
+    total += xpRequiredForLevel(current);
+  }
+  return total;
+}
+
+function getLevelFromXP(totalXp = 0) {
+  const xp = Math.max(0, Math.floor(Number(totalXp) || 0));
+  let level = 1;
+  while (level < 99 && xp >= getXPForLevel(level + 1)) level += 1;
+  return level;
+}
+
+function getXPProgressInCurrentLevel(totalXp = 0) {
+  const xp = Math.max(0, Math.floor(Number(totalXp) || 0));
+  const level = getLevelFromXP(xp);
+  const levelStart = getXPForLevel(level);
+  const nextLevelXp = getXPForLevel(level + 1);
+  const required = Math.max(1, nextLevelXp - levelStart);
+  const current = THREE.MathUtils.clamp(xp - levelStart, 0, required);
+  return {
+    level,
+    current,
+    required,
+    remaining: Math.max(0, required - current),
+    totalXp: xp,
+    levelStart,
+    nextLevelXp,
+    percent: current / required,
+  };
+}
+
+function getProgressionLevel(progress = state.progressionV2) {
+  return getLevelFromXP(getProgressionTotalXp(progress));
+}
+
+function getLevelRewards(level = 1) {
+  const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
+  const rewards = [];
+  const embers = 45 + safeLevel * 10 + (safeLevel % 5 === 0 ? 75 : 0);
+  rewards.push({ type: "embers", amount: embers, label: `+${embers} Embers` });
+  if (safeLevel === 2)
+    rewards.push({
+      type: "cosmetic",
+      id: "boostTrailId-blue-flare",
+      label: "Blue Flare Boost Trail",
+    });
+  if (safeLevel === 3)
+    rewards.push({
+      type: "cosmetic",
+      id: "decalId-flame-stripe",
+      label: "Flame Stripe Decal",
+    });
+  if (safeLevel === 5)
+    rewards.push({
+      type: "cosmetic",
+      id: "bodyId-muscle",
+      label: "Muscle Body",
+    });
+  if (safeLevel === 8)
+    rewards.push({
+      type: "cosmetic",
+      id: "wheelId-drift",
+      label: "Drift Wheels",
+    });
+  if (safeLevel === 10)
+    rewards.push({
+      type: "cosmetic",
+      id: "goalExplosionId-inferno-burst",
+      label: "Inferno Burst Goal Explosion",
+    });
+  if (safeLevel % 10 === 0)
+    rewards.push({
+      type: "title",
+      id: `level-${safeLevel}-driver`,
+      label: `Level ${safeLevel} Driver Title`,
+    });
+  return rewards;
+}
+
+function createDailySparks(seed = makeDailySeed()) {
+  const challengePool = [
+    {
+      id: "boost-10",
+      label: "Boost 10 times",
+      metric: "boosts",
+      target: 10,
+      xp: 90,
+      embers: 35,
+    },
+    {
+      id: "finish-race",
+      label: "Finish one Race",
+      metric: "finishMode:race",
+      target: 1,
+      xp: 120,
+      embers: 45,
+    },
+    {
+      id: "score-3000",
+      label: "Score 3,000 points",
+      metric: "score",
+      target: 3000,
+      xp: 140,
+      embers: 55,
+    },
+    {
+      id: "drift-10",
+      label: "Drift for 10 seconds",
+      metric: "driftSeconds",
+      target: 10,
+      xp: 110,
+      embers: 40,
+    },
+    {
+      id: "jump-3",
+      label: "Land 3 jumps",
+      metric: "jumps",
+      target: 3,
+      xp: 100,
+      embers: 40,
+    },
+    {
+      id: "ball-hit-5",
+      label: "Hit the Max ball 5 times",
+      metric: "ballHits",
+      target: 5,
+      xp: 130,
+      embers: 50,
+    },
+    {
+      id: "play-2-modes",
+      label: "Play 2 different modes",
+      metric: "uniqueModes",
+      target: 2,
+      xp: 150,
+      embers: 60,
+    },
+  ];
+  const start = Math.floor(hashStringToUnit(seed) * challengePool.length);
+  return Array.from({ length: DAILY_SPARKS_COUNT }, (_, index) => {
+    const template = challengePool[(start + index * 2) % challengePool.length];
+    return {
+      ...template,
+      seed,
+      progress: 0,
+      claimed: false,
+      completed: false,
+      modeIds: [],
+    };
+  });
+}
+
+function normalizeDailySparks(value = {}) {
+  const seed = makeDailySeed();
+  const source = value && typeof value === "object" ? value : {};
+  if (source.seed !== seed || !Array.isArray(source.items)) {
+    return { seed, items: createDailySparks(seed) };
+  }
+  const fresh = createDailySparks(seed);
+  return {
+    seed,
+    items: fresh.map((item) => {
+      const saved = source.items.find((candidate) => candidate?.id === item.id);
+      return {
+        ...item,
+        progress: Math.max(0, Number(saved?.progress) || 0),
+        claimed: Boolean(saved?.claimed),
+        completed: Boolean(saved?.completed),
+        modeIds: Array.isArray(saved?.modeIds) ? saved.modeIds.slice(0, 8) : [],
+      };
+    }),
+  };
+}
+
+function getDefaultOwnedCosmetics() {
+  return [
+    "bodyId-street",
+    "wheelId-grip",
+    "styleId-balanced",
+    "powerId-nitro_core",
+    "paintId-ember",
+    "accentId-carbon",
+    "tintId-smoke",
+    "spoilerId-none",
+    "glowId-cyan",
+    "decalId-none",
+    "liveryId-clean",
+    "tireId-street",
+    "stanceId-normal",
+    "boostTrailId-ember-trail",
+    "exhaustId-single-flame",
+    "hornId-classic",
+    "goalExplosionId-ember-pop",
+    "plateId-rookie",
+    "finishId-gloss",
+    STARTER_COSMETIC_ID,
+  ];
+}
+
 function createProgressionV2() {
   const dailySeed = makeDailySeed();
   const weeklySeed = makeWeeklySeed();
   const dailyGiftSalt = makeDailyGiftSalt();
   return {
-    schemaVersion: 2,
+    schemaVersion: PROGRESSION_SCHEMA_VERSION,
     xp: 0,
     totalXp: 0,
     level: 1,
+    embers: 0,
     medals: {},
     personalBests: {},
     ghostSamples: {},
     unlockedRewards: ["starter-loadout"],
+    ownedCosmetics: getDefaultOwnedCosmetics(),
+    claimedLevelRewards: [],
+    seenModeIntros: {},
+    tutorialComplete: false,
+    dailySparks: { seed: dailySeed, items: createDailySparks(dailySeed) },
+    recentRewards: [],
     rewardLog: [],
     dailyGiftSalt,
     dailyGift: createDailyGift(dailySeed, dailyGiftSalt),
@@ -2366,10 +2680,11 @@ function normalizeProgressionV2(value = {}) {
   const next = {
     ...base,
     ...source,
-    schemaVersion: 2,
+    schemaVersion: PROGRESSION_SCHEMA_VERSION,
     xp: totalXp,
     totalXp,
-    level: 1 + Math.floor(totalXp / 500),
+    level: getLevelFromXP(totalXp),
+    embers: Math.max(0, Math.floor(Number(source.embers) || 0)),
     medals:
       source.medals && typeof source.medals === "object"
         ? { ...base.medals, ...source.medals }
@@ -2385,6 +2700,21 @@ function normalizeProgressionV2(value = {}) {
     unlockedRewards: Array.isArray(source.unlockedRewards)
       ? [...new Set([...base.unlockedRewards, ...source.unlockedRewards])]
       : base.unlockedRewards,
+    ownedCosmetics: Array.isArray(source.ownedCosmetics)
+      ? [...new Set([...base.ownedCosmetics, ...source.ownedCosmetics])]
+      : base.ownedCosmetics,
+    claimedLevelRewards: Array.isArray(source.claimedLevelRewards)
+      ? [...new Set(source.claimedLevelRewards.map((item) => String(item)))]
+      : base.claimedLevelRewards,
+    seenModeIntros:
+      source.seenModeIntros && typeof source.seenModeIntros === "object"
+        ? { ...base.seenModeIntros, ...source.seenModeIntros }
+        : base.seenModeIntros,
+    tutorialComplete: Boolean(source.tutorialComplete),
+    dailySparks: normalizeDailySparks(source.dailySparks),
+    recentRewards: Array.isArray(source.recentRewards)
+      ? source.recentRewards.slice(-8)
+      : base.recentRewards,
     rewardLog: Array.isArray(source.rewardLog)
       ? source.rewardLog.slice(-12)
       : base.rewardLog,
@@ -2400,6 +2730,204 @@ function normalizeProgressionV2(value = {}) {
   return next;
 }
 
+function mergeProgressionV2(current, incoming) {
+  const existing = normalizeProgressionV2(current);
+  const next = normalizeProgressionV2(incoming);
+  const totalXp = Math.max(
+    getProgressionTotalXp(existing),
+    getProgressionTotalXp(next),
+  );
+  return normalizeProgressionV2({
+    ...next,
+    xp: totalXp,
+    totalXp,
+    level: getLevelFromXP(totalXp),
+    embers: Math.max(existing.embers || 0, next.embers || 0),
+    medals: { ...existing.medals, ...next.medals },
+    personalBests: { ...existing.personalBests, ...next.personalBests },
+    ghostSamples: { ...existing.ghostSamples, ...next.ghostSamples },
+    unlockedRewards: [
+      ...new Set([
+        ...(existing.unlockedRewards || []),
+        ...(next.unlockedRewards || []),
+      ]),
+    ],
+    ownedCosmetics: [
+      ...new Set([
+        ...(existing.ownedCosmetics || []),
+        ...(next.ownedCosmetics || []),
+      ]),
+    ],
+    claimedLevelRewards: [
+      ...new Set([
+        ...(existing.claimedLevelRewards || []),
+        ...(next.claimedLevelRewards || []),
+      ]),
+    ],
+    seenModeIntros: { ...existing.seenModeIntros, ...next.seenModeIntros },
+    tutorialComplete: Boolean(existing.tutorialComplete || next.tutorialComplete),
+    recentRewards: [
+      ...(next.recentRewards || []),
+      ...(existing.recentRewards || []),
+    ].slice(0, 8),
+  });
+}
+
+function addRecentReward(reward) {
+  const progression = state.progressionV2;
+  progression.recentRewards = [
+    { at: new Date().toISOString(), ...reward },
+    ...(Array.isArray(progression.recentRewards) ? progression.recentRewards : []),
+  ].slice(0, 8);
+}
+
+function ownCosmetic(cosmeticId) {
+  if (!cosmeticId) return false;
+  const progression = state.progressionV2;
+  if (!Array.isArray(progression.ownedCosmetics))
+    progression.ownedCosmetics = getDefaultOwnedCosmetics();
+  if (progression.ownedCosmetics.includes(cosmeticId)) return false;
+  progression.ownedCosmetics.push(cosmeticId);
+  return true;
+}
+
+function awardLevelRewards(oldLevel, newLevel, { quiet = false } = {}) {
+  const progression = state.progressionV2;
+  const earned = [];
+  for (let level = oldLevel + 1; level <= newLevel; level += 1) {
+    const claimId = `level-${level}`;
+    if (progression.claimedLevelRewards.includes(claimId)) continue;
+    progression.claimedLevelRewards.push(claimId);
+    getLevelRewards(level).forEach((reward) => {
+      if (reward.type === "embers") {
+        progression.embers += reward.amount;
+      } else if (reward.type === "cosmetic") {
+        ownCosmetic(reward.id);
+        if (!progression.unlockedRewards.includes(reward.id))
+          progression.unlockedRewards.push(reward.id);
+      } else if (reward.id && !progression.unlockedRewards.includes(reward.id)) {
+        progression.unlockedRewards.push(reward.id);
+      }
+      earned.push({ ...reward, level });
+    });
+  }
+  if (earned.length && !quiet) {
+    addRecentReward({
+      type: "level-up",
+      label: `Level ${newLevel}`,
+      rewards: earned,
+    });
+  }
+  return earned;
+}
+
+function awardXP(source, amount, metadata = {}) {
+  const progression = state.progressionV2;
+  const xpAmount = Math.max(0, Math.round(Number(amount) || 0));
+  const emberAmount = Math.max(0, Math.round(Number(metadata.embers) || 0));
+  const oldXp = getProgressionTotalXp(progression);
+  const oldLevel = getLevelFromXP(oldXp);
+  const totalXp = oldXp + xpAmount;
+  progression.xp = totalXp;
+  progression.totalXp = totalXp;
+  progression.level = getLevelFromXP(totalXp);
+  if (emberAmount > 0) progression.embers += emberAmount;
+  if (metadata.cosmeticId) ownCosmetic(metadata.cosmeticId);
+  const levelRewards = awardLevelRewards(oldLevel, progression.level);
+  const entry = {
+    modeId: metadata.modeId || source,
+    label: metadata.label || source,
+    medal: metadata.medal || "",
+    xp: xpAmount,
+    embers: emberAmount,
+    reward: metadata.reward || "",
+    at: new Date().toISOString(),
+  };
+  progression.rewardLog = [entry, ...progression.rewardLog].slice(0, 12);
+  if (xpAmount || emberAmount || metadata.cosmeticId) {
+    addRecentReward({
+      type: source,
+      label: entry.reward || entry.label,
+      xp: xpAmount,
+      embers: emberAmount,
+      cosmeticId: metadata.cosmeticId || "",
+    });
+  }
+  return {
+    oldXp,
+    totalXp,
+    xpGained: xpAmount,
+    embersGained: emberAmount,
+    oldLevel,
+    newLevel: progression.level,
+    levelRewards,
+  };
+}
+
+function updateDailySparksProgress(event = {}) {
+  const progression = state.progressionV2;
+  progression.dailySparks = normalizeDailySparks(progression.dailySparks);
+  let changed = false;
+  progression.dailySparks.items.forEach((spark) => {
+    if (spark.claimed) return;
+    let nextProgress = spark.progress;
+    if (spark.metric === "boosts" && event.boosts)
+      nextProgress += event.boosts;
+    if (spark.metric === "score" && Number.isFinite(event.score))
+      nextProgress = Math.max(nextProgress, event.score);
+    if (spark.metric === "driftSeconds" && event.driftSeconds)
+      nextProgress += event.driftSeconds;
+    if (spark.metric === "jumps" && event.jumps) nextProgress += event.jumps;
+    if (spark.metric === "ballHits" && event.ballHits)
+      nextProgress += event.ballHits;
+    if (
+      spark.metric.startsWith("finishMode:") &&
+      event.won &&
+      event.modeId === spark.metric.split(":")[1]
+    ) {
+      nextProgress += 1;
+    }
+    if (spark.metric === "uniqueModes" && event.modeId) {
+      const modeIds = new Set(spark.modeIds || []);
+      modeIds.add(event.modeId);
+      spark.modeIds = [...modeIds].slice(0, 8);
+      nextProgress = spark.modeIds.length;
+    }
+    nextProgress = Math.min(spark.target, Math.max(spark.progress, nextProgress));
+    if (nextProgress !== spark.progress) {
+      spark.progress = nextProgress;
+      changed = true;
+    }
+    const complete = spark.progress >= spark.target;
+    if (complete !== spark.completed) {
+      spark.completed = complete;
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+function claimDailySpark(id) {
+  const progression = state.progressionV2;
+  progression.dailySparks = normalizeDailySparks(progression.dailySparks);
+  const spark = progression.dailySparks.items.find((item) => item.id === id);
+  if (!spark || !spark.completed || spark.claimed) return false;
+  spark.claimed = true;
+  const award = awardXP("daily-spark", spark.xp, {
+    embers: spark.embers,
+    label: spark.label,
+    reward: `${spark.label} complete`,
+  });
+  setEffectToast(`${spark.label}: +${spark.xp} XP, +${spark.embers} Embers`, {
+    pulse: 0.45,
+  });
+  savePersistentState();
+  syncProgressionToBackend();
+  renderProgressPanel();
+  updateOnlineUi();
+  return award;
+}
+
 function createModeRunState() {
   return {
     id: GAME_MODE_ID33,
@@ -2408,8 +2936,18 @@ function createModeRunState() {
     markerIndex: 0,
     medalEarned: "",
     xpGained: 0,
+    embersGained: 0,
     rewardPreview: "",
     resultSummary: "",
+    levelRewards: [],
+    oldLevel: 1,
+    newLevel: 1,
+    boosts: 0,
+    driftSeconds: 0,
+    jumps: 0,
+    ballHits: 0,
+    boostHeld: false,
+    wasAirborne: false,
     lastTrick: "",
     comboTimer: 0,
     tagState: "evader",
@@ -2561,6 +3099,12 @@ const state = {
     firstVisit: false,
     recommendedMode: GAME_MODE_RACE,
     tipsVisible: false,
+  },
+  firstDrive: {
+    active: false,
+    step: 0,
+    startedAt: 0,
+    completed: false,
   },
   schoolGate: {
     active: false,
@@ -2930,11 +3474,12 @@ function getGarageUnlockLevel(unlock) {
   return 1 + worldIndex * 2 + Math.ceil(levelIndex / 2);
 }
 
+function getOptionUnlockLevel(option) {
+  return option?.unlockLevel ?? getGarageUnlockLevel(option?.unlock);
+}
+
 function getGarageProgressLevel(progress = getProgressSnapshot()) {
-  return Math.max(
-    1,
-    Number(progress?.progressionV2?.level ?? state.progressionV2?.level) || 1,
-  );
+  return getProgressionLevel(progress?.progressionV2 ?? state.progressionV2);
 }
 
 function isProgressAtLeast(progress, unlock) {
@@ -2948,7 +3493,7 @@ function getNextGarageUnlock(progress = getProgressSnapshot()) {
     .flat()
     .map((option) => ({
       option,
-      level: getGarageUnlockLevel(option.unlock),
+      level: getOptionUnlockLevel(option),
     }))
     .filter(({ level }) => level > currentLevel)
     .sort(
@@ -2965,21 +3510,14 @@ function getProgressSnapshot() {
 }
 
 function getGarageOptionGroups() {
-  return [
-    BODY_OPTIONS,
-    WHEEL_OPTIONS,
-    STYLE_OPTIONS,
-    POWER_OPTIONS,
-    PAINT_OPTIONS,
-    ACCENT_OPTIONS,
-    TINT_OPTIONS,
-    SPOILER_OPTIONS,
-    GLOW_OPTIONS,
-  ];
+  return GARAGE_CATEGORIES.map((category) => category.options);
 }
 
 function isOptionUnlocked(option, progress = getProgressSnapshot()) {
-  return isProgressAtLeast(progress, option.unlock);
+  return (
+    isProgressAtLeast(progress, option.unlock) &&
+    getGarageProgressLevel(progress) >= getOptionUnlockLevel(option)
+  );
 }
 
 function getUnlockedOptions(group, progress = getProgressSnapshot()) {
@@ -2998,6 +3536,74 @@ function getOptionById(group, id, fallbackId) {
     group.find((option) => option.id === fallbackId) ??
     group[0]
   );
+}
+
+function getCosmeticId(categoryKey, optionId) {
+  return `${categoryKey}-${optionId}`;
+}
+
+function isCosmeticOwned(cosmeticId) {
+  const owned = state.progressionV2.ownedCosmetics;
+  return Array.isArray(owned) && owned.includes(cosmeticId);
+}
+
+function getCosmeticPrice(option) {
+  if (Number.isFinite(option?.emberCost)) return Math.max(0, option.emberCost);
+  const level = getOptionUnlockLevel(option);
+  return level <= 1 ? 0 : 80 + level * 25;
+}
+
+function equipGarageCosmetic(categoryKey, optionId, { save = true } = {}) {
+  const category = GARAGE_CATEGORIES.find((item) => item.key === categoryKey);
+  if (!category) return { ok: false, reason: "unknown_category" };
+  const option = getOptionById(
+    category.options,
+    optionId,
+    DEFAULT_CUSTOMIZATION[categoryKey],
+  );
+  const cosmeticId = getCosmeticId(categoryKey, option.id);
+  if (!isOptionUnlocked(option))
+    return { ok: false, reason: getUnlockLabel(option) };
+  if (!isCosmeticOwned(cosmeticId))
+    return { ok: false, reason: "Buy it with Embers first." };
+  customization[categoryKey] = option.id;
+  applyPlayerCustomization();
+  if (save) savePersistentState();
+  setEffectToast(`${option.name} equipped`, { pulse: 0.22 });
+  return { ok: true, option, cosmeticId };
+}
+
+function buyGarageCosmetic(categoryKey, optionId) {
+  const category = GARAGE_CATEGORIES.find((item) => item.key === categoryKey);
+  if (!category) return { ok: false, reason: "unknown_category" };
+  const option = getOptionById(
+    category.options,
+    optionId,
+    DEFAULT_CUSTOMIZATION[categoryKey],
+  );
+  const cosmeticId = getCosmeticId(categoryKey, option.id);
+  if (!isOptionUnlocked(option))
+    return { ok: false, reason: getUnlockLabel(option) };
+  if (isCosmeticOwned(cosmeticId))
+    return { ok: false, reason: "Already owned." };
+  const price = getCosmeticPrice(option);
+  if (state.progressionV2.embers < price)
+    return { ok: false, reason: `Need ${price} Embers.` };
+  state.progressionV2.embers -= price;
+  ownCosmetic(cosmeticId);
+  addRecentReward({
+    type: "garage-buy",
+    label: option.name,
+    embers: -price,
+    cosmeticId,
+  });
+  equipGarageCosmetic(categoryKey, option.id, { save: false });
+  savePersistentState();
+  syncProgressionToBackend();
+  renderProgressPanel();
+  refreshCustomizationMenu();
+  setEffectToast(`${option.name} bought`, { pulse: 0.38 });
+  return { ok: true, option, cosmeticId, price };
 }
 
 function getActiveLoadoutIndex() {
@@ -3019,32 +3625,16 @@ function getActiveLoadout() {
 
 function copyCustomizationFromLoadout(loadout) {
   if (!loadout) return;
-  Object.assign(customization, {
-    bodyId: loadout.bodyId ?? DEFAULT_CUSTOMIZATION.bodyId,
-    wheelId: loadout.wheelId ?? DEFAULT_CUSTOMIZATION.wheelId,
-    styleId: loadout.styleId ?? DEFAULT_CUSTOMIZATION.styleId,
-    powerId: loadout.powerId ?? DEFAULT_CUSTOMIZATION.powerId,
-    paintId: loadout.paintId ?? DEFAULT_CUSTOMIZATION.paintId,
-    accentId: loadout.accentId ?? DEFAULT_CUSTOMIZATION.accentId,
-    tintId: loadout.tintId ?? DEFAULT_CUSTOMIZATION.tintId,
-    spoilerId: loadout.spoilerId ?? DEFAULT_CUSTOMIZATION.spoilerId,
-    glowId: loadout.glowId ?? DEFAULT_CUSTOMIZATION.glowId,
+  Object.keys(DEFAULT_CUSTOMIZATION).forEach((key) => {
+    customization[key] = loadout[key] ?? DEFAULT_CUSTOMIZATION[key];
   });
 }
 
 function syncActiveLoadoutFromCustomization() {
   const loadout = getActiveLoadout();
   if (!loadout) return;
-  Object.assign(loadout, {
-    bodyId: customization.bodyId,
-    wheelId: customization.wheelId,
-    styleId: customization.styleId,
-    powerId: customization.powerId,
-    paintId: customization.paintId,
-    accentId: customization.accentId,
-    tintId: customization.tintId,
-    spoilerId: customization.spoilerId,
-    glowId: customization.glowId,
+  Object.keys(DEFAULT_CUSTOMIZATION).forEach((key) => {
+    loadout[key] = customization[key];
   });
 }
 
@@ -3226,22 +3816,17 @@ function serializeControlBindings() {
 }
 
 function getUnlockLabel(option) {
-  if (!option.unlock) return "Unlocked";
-  return `Unlocks at XP Level ${getGarageUnlockLevel(option.unlock)}`;
+  const level = getOptionUnlockLevel(option);
+  if (level <= 1) return "Unlocked";
+  return `Unlocks at Level ${level}`;
 }
 
 function clampCustomizationToUnlocks(progress = getProgressSnapshot()) {
-  const groups = [
-    [BODY_OPTIONS, "bodyId", DEFAULT_CUSTOMIZATION.bodyId],
-    [WHEEL_OPTIONS, "wheelId", DEFAULT_CUSTOMIZATION.wheelId],
-    [STYLE_OPTIONS, "styleId", DEFAULT_CUSTOMIZATION.styleId],
-    [POWER_OPTIONS, "powerId", DEFAULT_CUSTOMIZATION.powerId],
-    [PAINT_OPTIONS, "paintId", DEFAULT_CUSTOMIZATION.paintId],
-    [ACCENT_OPTIONS, "accentId", DEFAULT_CUSTOMIZATION.accentId],
-    [TINT_OPTIONS, "tintId", DEFAULT_CUSTOMIZATION.tintId],
-    [SPOILER_OPTIONS, "spoilerId", DEFAULT_CUSTOMIZATION.spoilerId],
-    [GLOW_OPTIONS, "glowId", DEFAULT_CUSTOMIZATION.glowId],
-  ];
+  const groups = GARAGE_CATEGORIES.map((category) => [
+    category.options,
+    category.key,
+    DEFAULT_CUSTOMIZATION[category.key],
+  ]);
   for (const [group, key, fallbackId] of groups) {
     const selected = getOptionById(group, customization[key], fallbackId);
     if (isOptionUnlocked(selected, progress)) continue;
@@ -3304,6 +3889,16 @@ function getCurrentCustomization() {
       activeTeamSkin.glowId,
       DEFAULT_CUSTOMIZATION.glowId,
     ),
+    decal: getOptionById(DECAL_OPTIONS, customization.decalId, DEFAULT_CUSTOMIZATION.decalId),
+    livery: getOptionById(LIVERY_OPTIONS, customization.liveryId, DEFAULT_CUSTOMIZATION.liveryId),
+    tires: getOptionById(TIRE_OPTIONS, customization.tireId, DEFAULT_CUSTOMIZATION.tireId),
+    stance: getOptionById(STANCE_OPTIONS, customization.stanceId, DEFAULT_CUSTOMIZATION.stanceId),
+    boostTrail: getOptionById(BOOST_TRAIL_OPTIONS, customization.boostTrailId, DEFAULT_CUSTOMIZATION.boostTrailId),
+    exhaust: getOptionById(EXHAUST_OPTIONS, customization.exhaustId, DEFAULT_CUSTOMIZATION.exhaustId),
+    horn: getOptionById(HORN_OPTIONS, customization.hornId, DEFAULT_CUSTOMIZATION.hornId),
+    goalExplosion: getOptionById(GOAL_EXPLOSION_OPTIONS, customization.goalExplosionId, DEFAULT_CUSTOMIZATION.goalExplosionId),
+    plate: getOptionById(PLATE_OPTIONS, customization.plateId, DEFAULT_CUSTOMIZATION.plateId),
+    finish: getOptionById(FINISH_OPTIONS, customization.finishId, DEFAULT_CUSTOMIZATION.finishId),
   };
 }
 
@@ -3522,10 +4117,6 @@ function getProgressionTotalXp(progress = state.progressionV2) {
   );
 }
 
-function getProgressionLevel(progress = state.progressionV2) {
-  return 1 + Math.floor(getProgressionTotalXp(progress) / 500);
-}
-
 function ensureDailyGiftState(progress = state.progressionV2) {
   if (!progress || typeof progress !== "object") return createDailyGift();
   progress.dailyGiftSalt = normalizeDailyGiftSalt(progress.dailyGiftSalt);
@@ -3581,27 +4172,20 @@ function redeemDailyGift() {
     DAILY_GIFT_MAX_XP,
   );
   const progression = state.progressionV2;
-  const totalXp = getProgressionTotalXp(progression) + amount;
-  progression.xp = totalXp;
-  progression.totalXp = totalXp;
-  progression.level = getProgressionLevel(progression);
+  const embers = Math.max(20, Math.round(amount / 12));
+  const award = awardXP("daily-gift", amount, {
+    embers,
+    label: "Daily Gift",
+    reward: `Daily Gift +${amount} XP`,
+  });
   progression.dailyGift = {
     ...progression.dailyGift,
     claimed: true,
     claimedAt: new Date().toISOString(),
   };
-  progression.rewardLog = [
-    {
-      modeId: "daily-gift",
-      label: "Daily Gift",
-      medal: "Gift",
-      xp: amount,
-      reward: `Daily Gift +${amount} XP`,
-      at: progression.dailyGift.claimedAt,
-    },
-    ...progression.rewardLog,
-  ].slice(0, 12);
-  setEffectToast(`Daily Gift +${amount} XP`, { pulse: 0.34 });
+  setEffectToast(`Daily Gift +${amount} XP, +${embers} Embers`, {
+    pulse: 0.34,
+  });
   renderDailyGiftNotice();
   renderProgressPanel();
   refreshGamesUi();
@@ -3611,8 +4195,10 @@ function redeemDailyGift() {
   return {
     ok: true,
     amount,
+    embers,
     dailyGift: getDailyGiftSnapshot(),
     progression: structuredClone(progression),
+    award,
   };
 }
 
@@ -3698,17 +4284,7 @@ function buildPersistentSavePayload() {
       maxBoostVariant: devTuning.maxBoostVariant,
       worldModifier: devTuning.worldModifier,
     },
-    customization: {
-      bodyId: customization.bodyId,
-      wheelId: customization.wheelId,
-      styleId: customization.styleId,
-      powerId: customization.powerId,
-      paintId: customization.paintId,
-      accentId: customization.accentId,
-      tintId: customization.tintId,
-      spoilerId: customization.spoilerId,
-      glowId: customization.glowId,
-    },
+    customization: { ...customization },
     garage: serializeGarageState(),
     progressionV2: state.progressionV2,
     controlBindings: serializeControlBindings(),
@@ -3928,7 +4504,10 @@ function applyPersistentSavePayload(data, { forceProgression = true } = {}) {
         settings.exitLinkUrl = normalizeExitLinkUrl(data.settings.exitLinkUrl);
     }
     if (data.progressionV2 && typeof data.progressionV2 === "object") {
-      const nextProgression = normalizeProgressionV2(data.progressionV2);
+      const nextProgression = mergeProgressionV2(
+        state.progressionV2,
+        data.progressionV2,
+      );
       if (
         forceProgression ||
         getProgressionTotalXp(nextProgression) >= getProgressionTotalXp()
@@ -3957,24 +4536,10 @@ function applyPersistentSavePayload(data, { forceProgression = true } = {}) {
         devTuning.worldModifier = data.devTuning.worldModifier;
     }
     if (data.customization && typeof data.customization === "object") {
-      if (typeof data.customization.bodyId === "string")
-        customization.bodyId = data.customization.bodyId;
-      if (typeof data.customization.wheelId === "string")
-        customization.wheelId = data.customization.wheelId;
-      if (typeof data.customization.styleId === "string")
-        customization.styleId = data.customization.styleId;
-      if (typeof data.customization.powerId === "string")
-        customization.powerId = data.customization.powerId;
-      if (typeof data.customization.paintId === "string")
-        customization.paintId = data.customization.paintId;
-      if (typeof data.customization.accentId === "string")
-        customization.accentId = data.customization.accentId;
-      if (typeof data.customization.tintId === "string")
-        customization.tintId = data.customization.tintId;
-      if (typeof data.customization.spoilerId === "string")
-        customization.spoilerId = data.customization.spoilerId;
-      if (typeof data.customization.glowId === "string")
-        customization.glowId = data.customization.glowId;
+      Object.keys(DEFAULT_CUSTOMIZATION).forEach((key) => {
+        if (typeof data.customization[key] === "string")
+          customization[key] = data.customization[key];
+      });
     }
     const progressForGarage = {
       worldIndex: Number.isFinite(data.worldIndex) ? data.worldIndex : 0,
@@ -5332,7 +5897,7 @@ async function startFirebaseGuestSession() {
 }
 
 function submitStartAccount() {
-  if (startAccountSubmit) startAccountSubmit.textContent = "Create / Sign In";
+  if (startAccountSubmit) startAccountSubmit.textContent = "Login / Sign Up";
   if (startBtn) startBtn.textContent = "Play as Guest";
   if (isFirebaseBackendMode()) {
     submitFirebaseStartAccount();
@@ -5362,7 +5927,7 @@ function submitStartAccount() {
 }
 
 function startGuestProfile() {
-  if (startAccountSubmit) startAccountSubmit.textContent = "Create / Sign In";
+  if (startAccountSubmit) startAccountSubmit.textContent = "Login / Sign Up";
   if (startBtn) startBtn.textContent = "Play as Guest";
   onlineState.username = makeRandomGuestUsername();
   onlineState.profileMode = "guest";
@@ -8270,48 +8835,47 @@ function jumpToCampaignLevel(worldIndex, levelIndex) {
 function renderModeBoard() {
   if (!modeBoard) return;
   const activeId = normalizeGameModeId(settings.activeGameMode);
-  const groups = Object.keys(MODE_CATEGORY_LABELS)
-    .map((category) => [
-      category,
-      MODE_CATALOG.filter((mode) => mode.category === category),
-    ])
-    .filter(([, modes]) => modes.length > 0);
-  modeBoard.innerHTML = groups
-    .map(
-      ([category, modes]) => `
-        <section class="mode-group" aria-label="${MODE_CATEGORY_LABELS[category]} modes">
-          <div class="mode-group-title">${MODE_CATEGORY_LABELS[category]}</div>
-          <div class="games-grid">
-            ${modes
-              .map((mode) => {
-                const best = state.progressionV2.personalBests[mode.id];
-                const medal = state.progressionV2.medals[mode.id] ?? "New";
-                const length =
-                  mode.time > 0 ? `${mode.time}s run` : "Campaign heat";
-                const thumbPosition =
-                  MODE_THUMBNAIL_POSITIONS[mode.id] ?? "50% 50%";
-                const legacyId =
-                  mode.id === GAME_MODE_ID33
-                    ? ` id="game-card-id33"`
-                    : mode.id === GAME_MODE_MAX1
-                      ? ` id="game-card-max1"`
-                      : "";
-                return `
-                  <button${legacyId} class="game-card mode-card ${activeId === mode.id ? "active" : ""}" data-game-mode="${mode.id}" type="button">
-                    <div class="mode-card-art" data-scene="${mode.scene}" data-thumb="generated" style="--thumb-position: ${thumbPosition};" aria-hidden="true"></div>
-                    <div class="game-card-copy">
-                      <strong>${mode.label}</strong>
-                      <span>${mode.objective}</span>
-                      <small>${length} • ${mode.reward}</small>
-                      <em>${medal} medal${best ? ` • Best ${best.score}` : ""}</em>
-                    </div>
-                  </button>`;
-              })
-              .join("")}
-          </div>
-        </section>`,
-    )
-    .join("");
+  modeBoard.innerHTML = `
+    <section class="mode-group unified-modes" aria-label="InfernoDrift4 modes">
+      <div class="mode-group-title">Choose a Drive</div>
+      <div class="games-grid unified-games-grid">
+        ${MODE_CATALOG.map((mode, index) => {
+          const best = state.progressionV2.personalBests[mode.id];
+          const medal = state.progressionV2.medals[mode.id] ?? "New";
+          const length = mode.time > 0 ? `${Math.max(1, Math.round(mode.time / 60))}-${Math.max(2, Math.round(mode.time / 45))} min` : "2 min";
+          const thumbPosition = MODE_THUMBNAIL_POSITIONS[mode.id] ?? "50% 50%";
+          const difficulty =
+            mode.category === "campaign" || mode.id === GAME_MODE_RACE
+              ? "Easy"
+              : mode.category === "arena" || mode.category === "chase"
+                ? "Medium"
+                : "Medium";
+          const tag =
+            mode.id === GAME_MODE_RACE
+              ? "Recommended"
+              : index >= MODE_CATALOG.length - 3
+                ? "Daily-ready"
+                : MODE_CATEGORY_LABELS[mode.category] || "Mode";
+          const legacyId =
+            mode.id === GAME_MODE_ID33
+              ? ` id="game-card-id33"`
+              : mode.id === GAME_MODE_MAX1
+                ? ` id="game-card-max1"`
+                : "";
+          return `
+            <button${legacyId} class="game-card mode-card ${activeId === mode.id ? "active" : ""}" data-game-mode="${mode.id}" type="button">
+              <div class="mode-card-art" data-scene="${mode.scene}" data-thumb="generated" style="--thumb-position: ${thumbPosition};" aria-hidden="true"></div>
+              <div class="mode-card-copy">
+                <div class="mode-card-tags"><em>${tag}</em><em>${difficulty}</em><em>${length}</em></div>
+                <strong>${mode.label}</strong>
+                <span>${mode.objective}</span>
+                <small>Rewards: XP + Embers + ${mode.reward}</small>
+                <em>${medal}${best ? ` • Best ${best.score}` : ""}</em>
+              </div>
+            </button>`;
+        }).join("")}
+      </div>
+    </section>`;
 }
 
 function refreshGamesUi() {
@@ -8325,6 +8889,9 @@ function refreshGamesUi() {
   if (startBtn) {
     startBtn.textContent = "Play as Guest";
   }
+  if (startHereBtn) startHereBtn.textContent = "PLAY NOW";
+  if (startAccountSubmit) startAccountSubmit.textContent = "Login / Sign Up";
+  if (tutorialBtn) tutorialBtn.textContent = "Start Tutorial";
   if (overlaySubtitle) {
     overlaySubtitle.textContent = isMaxMode()
       ? `${maxProfile.label} arena rules. Faster cars, cleaner reads, stronger squad play, and smarter goal pressure.`
@@ -8539,6 +9106,7 @@ function openModeHelp() {
 function closeModeHelp({ resume = true } = {}) {
   state.modeHelpOpen = false;
   if (modeHelpCard) modeHelpCard.hidden = true;
+  if (modeHelpResume) modeHelpResume.textContent = "Resume";
   document.body.classList.remove("mode-help-open");
   if (resume && state.modeHelpWasRunning) state.running = true;
   state.modeHelpWasRunning = false;
@@ -8615,50 +9183,69 @@ function refreshModeCopy() {
 
 function renderProgressPanel() {
   if (!progressPanel) return;
-  const world = getWorld();
-  const level = getLevel();
   const progression = state.progressionV2;
+  progression.dailySparks = normalizeDailySparks(progression.dailySparks);
   const dailyGift = getDailyGiftSnapshot(progression);
-  const clearedWorlds = state.worldIndex;
-  const clearedLevels = state.levelIndex;
-  const totalLevels = worldData.reduce(
-    (sum, item) => sum + item.levels.length,
-    0,
-  );
-  const clearedTotal =
-    worldData
-      .slice(0, state.worldIndex)
-      .reduce((sum, item) => sum + item.levels.length, 0) + state.levelIndex;
-  const percent = Math.round(
-    (clearedTotal / Math.max(1, totalLevels - 1)) * 100,
-  );
-  const lockedParts = getLockedGarageOptionCount();
   const medals = Object.values(progression.medals);
   const bests = Object.entries(progression.personalBests)
     .sort(([, a], [, b]) => (b.score ?? 0) - (a.score ?? 0))
     .slice(0, 3);
-  const recentReward =
-    progression.rewardLog[0]?.reward ??
-    "Finish a run to preview the next reward.";
-  const nextGarageUnlock = getNextGarageUnlock();
-  const dailyMode = getModeDefinition(progression.daily.modeId);
-  const weeklyMode = getModeDefinition(progression.weekly.modeId);
   const totalXp = getProgressionTotalXp(progression);
-  const xpIntoLevel = totalXp % 500;
-  const nextRecommended =
-    bests.length === 0 ? "Campaign Survival" : MODE_BY_ID[GAME_MODE_RACE].label;
+  const xpProgress = getXPProgressInCurrentLevel(totalXp);
+  const levelStart = Math.max(1, xpProgress.level - 2);
+  const levelNodes = Array.from({ length: LEVEL_TRACK_WINDOW }, (_, index) => {
+    const levelNumber = levelStart + index;
+    const rewards = getLevelRewards(levelNumber);
+    const complete = levelNumber < xpProgress.level;
+    const current = levelNumber === xpProgress.level;
+    return `
+      <button class="level-node${complete ? " complete" : ""}${current ? " current" : ""}" type="button" data-level-node="${levelNumber}">
+        <span>Lv ${levelNumber}</span>
+        <strong>${rewards.map((reward) => reward.type === "embers" ? "Embers" : reward.label).slice(0, 2).join(" + ")}</strong>
+      </button>`;
+  }).join("");
+  const sparks = progression.dailySparks.items
+    .map(
+      (spark) => `
+        <div class="spark-card${spark.completed ? " complete" : ""}">
+          <span>Daily Spark</span>
+          <strong>${spark.label}</strong>
+          <div class="spark-progress"><span style="width:${Math.min(100, (spark.progress / Math.max(1, spark.target)) * 100)}%"></span></div>
+          <em>${Math.floor(spark.progress)}/${spark.target} · +${spark.xp} XP · +${spark.embers} Embers</em>
+          <button class="ghost daily-spark-claim" data-daily-spark="${spark.id}" type="button" ${spark.completed && !spark.claimed ? "" : "disabled"}>${spark.claimed ? "Claimed" : "Claim"}</button>
+        </div>`,
+    )
+    .join("");
+  const nextReward = getLevelRewards(xpProgress.level + 1)
+    .map((reward) => reward.label)
+    .join(" + ");
+  const bestScore = bests[0]?.[1]?.score ?? 0;
   progressPanel.innerHTML = `
-    <div class="progress-card progress-card-wide"><span>Total XP</span><strong>Level ${getProgressionLevel(progression)}</strong><span>${xpIntoLevel}/500 XP to next level • ${totalXp} XP across every game and minigame</span></div>
-    <div class="progress-card"><span>Daily Gift</span><strong>+${dailyGift.amount} XP</strong><span>${dailyGift.available ? "Ready to redeem from the glowing gift." : "Claimed today. Come back tomorrow."}</span></div>
-    <div class="progress-card"><span>Current Zone</span><strong>${world.name}</strong><span>${level.name}</span></div>
-    <div class="progress-card"><span>Campaign Map</span><strong>${percent}%</strong><span>${clearedWorlds + 1} zones reached, ${clearedLevels + 1} current heat</span></div>
-    <div class="progress-card"><span>Medals</span><strong>${medals.length}</strong><span>${medals.slice(-4).join(" / ") || "Earn your first medal."}</span></div>
-    <div class="progress-card"><span>Daily</span><strong>${dailyMode.label}</strong><span>${Math.floor(progression.daily.progress)}/${progression.daily.target} • ${progression.daily.complete ? "Complete" : "Open"}</span></div>
-    <div class="progress-card"><span>Weekly</span><strong>${weeklyMode.label}</strong><span>${Math.floor(progression.weekly.progress)}/${progression.weekly.target} • ${progression.weekly.complete ? "Complete" : "Open"}</span></div>
-    <div class="progress-card"><span>Best Runs</span><strong>${bests[0] ? `${getModeDefinition(bests[0][0]).label}` : "No best yet"}</strong><span>${bests.map(([modeId, best]) => `${getModeDefinition(modeId).label}: ${best.score}`).join(" • ") || "Start any mode to set a best."}</span></div>
-    <div class="progress-card"><span>Garage Unlocks</span><strong>${lockedParts} locked</strong><span>${nextGarageUnlock ? `${nextGarageUnlock.option.name} at XP Level ${nextGarageUnlock.level}` : recentReward}</span></div>
-    <div class="progress-card progress-card-wide"><span>Next Run</span><strong>${nextRecommended}</strong><span>Short runs, fast restarts, and visible reward previews keep progress moving.</span></div>
+    <section class="driver-track-hero">
+      <div>
+        <span>Driver Track</span>
+        <strong>Level ${xpProgress.level}</strong>
+        <em>${xpProgress.current}/${xpProgress.required} XP to Level ${xpProgress.level + 1} · ${totalXp.toLocaleString()} lifetime XP</em>
+      </div>
+      <div class="ember-wallet"><span>${EMBER_CURRENCY_NAME}</span><strong>${(progression.embers || 0).toLocaleString()}</strong></div>
+      <div class="driver-xp-bar"><span style="width:${Math.round(xpProgress.percent * 100)}%"></span></div>
+      <p>Next reward: ${nextReward || "More Embers"}</p>
+    </section>
+    <section class="level-track" aria-label="Level reward track">${levelNodes}</section>
+    <section class="daily-sparks-panel">
+      <div class="progress-section-title"><strong>Daily Sparks</strong><span>${dailyGift.available ? `Daily Gift ready: +${dailyGift.amount} XP` : "Daily Gift claimed"}</span></div>
+      <div class="daily-sparks-grid">${sparks}</div>
+    </section>
+    <section class="progress-proof-grid">
+      <div class="progress-card"><span>Today’s Top Drivers</span><strong>${onlineState.leaderboard?.[0]?.username || "Local warmup"}</strong><span>${onlineState.leaderboard?.length ? "From online rankings" : "Online services load when available"}</span></div>
+      <div class="progress-card"><span>Your Best Score</span><strong>${bestScore.toLocaleString()}</strong><span>${bests[0] ? getModeDefinition(bests[0][0]).label : "Finish any mode to set one"}</span></div>
+      <div class="progress-card"><span>Beat the Founder</span><strong>${FOUNDER_TARGET_SCORE.toLocaleString()}</strong><span>${bestScore >= FOUNDER_TARGET_SCORE ? "Founder target beaten" : "Score higher in any mode"}</span></div>
+      <div class="progress-card"><span>Medals</span><strong>${medals.length}</strong><span>${medals.slice(-4).join(" / ") || "Earn your first medal"}</span></div>
+    </section>
   `;
+  progressPanel.querySelectorAll(".daily-spark-claim").forEach((button) => {
+    bindPressAction(button, () => claimDailySpark(button.dataset.dailySpark));
+  });
 }
 
 function renderGarageLoadouts() {
@@ -8690,6 +9277,69 @@ function renderGarageLoadouts() {
     const summary = getClassSummary();
     garageClassSummary.innerHTML = `<strong>${summary.name}</strong><span>${summary.description}</span>`;
   }
+}
+
+function renderGarageMarket() {
+  if (!garageMarket) return;
+  const progress = getProgressSnapshot();
+  const embers = state.progressionV2.embers || 0;
+  garageMarket.innerHTML = `
+    <div class="garage-market-header">
+      <div>
+        <div class="custom-section-title">Cosmetic Browser</div>
+        <strong>${embers.toLocaleString()} ${EMBER_CURRENCY_NAME}</strong>
+      </div>
+      <span>Buy with earned Embers. Owned parts equip instantly.</span>
+    </div>
+    ${GARAGE_CATEGORIES.map((category) => {
+      const cards = category.options
+        .map((option) => {
+          const cosmeticId = getCosmeticId(category.key, option.id);
+          const owned = isCosmeticOwned(cosmeticId);
+          const unlocked = isOptionUnlocked(option, progress);
+          const equipped = customization[category.key] === option.id;
+          const price = getCosmeticPrice(option);
+          const swatch =
+            option.color !== undefined
+              ? `#${option.color.toString(16).padStart(6, "0")}`
+              : category.key === "finishId"
+                ? "#d9f6ff"
+                : "#ff8a4f";
+          const action = equipped
+            ? "Equipped"
+            : !unlocked
+              ? getUnlockLabel(option)
+              : owned
+                ? "Equip"
+                : `${price} Embers`;
+          return `
+            <button class="garage-option-card${equipped ? " equipped" : ""}${!unlocked ? " locked" : ""}" data-garage-key="${category.key}" data-garage-option="${option.id}" type="button">
+              <span class="garage-swatch" style="--swatch:${swatch}"></span>
+              <strong>${option.name}</strong>
+              <span>${option.description || getUnlockLabel(option)}</span>
+              <em>${owned ? "Owned" : unlocked ? "Buy" : "Locked"} · ${action}</em>
+            </button>`;
+        })
+        .join("");
+      return `
+        <section class="garage-category-row">
+          <div class="garage-category-title">${category.label}</div>
+          <div class="garage-option-row">${cards}</div>
+        </section>`;
+    }).join("")}
+  `;
+  garageMarket.querySelectorAll(".garage-option-card").forEach((button) => {
+    bindPressAction(button, () => {
+      const key = button.dataset.garageKey;
+      const optionId = button.dataset.garageOption;
+      const cosmeticId = getCosmeticId(key, optionId);
+      const result = isCosmeticOwned(cosmeticId)
+        ? equipGarageCosmetic(key, optionId)
+        : buyGarageCosmetic(key, optionId);
+      if (!result.ok) setEffectToast(result.reason || "Locked");
+      renderGarageMarket();
+    });
+  });
 }
 
 function renderControlsUi() {
@@ -8928,13 +9578,20 @@ class Car {
     }
     this.wheels = [];
     this.visualConfig = config;
+    const finish = config.finish ?? {};
+    const finishRoughness = finish.roughness ?? 0.38;
+    const finishMetalness = finish.metalness ?? 0.18;
     const primaryMat = new THREE.MeshStandardMaterial({
       color: config.primary,
-      roughness: 0.4,
+      roughness: finishRoughness,
+      metalness: finishMetalness,
+      emissive: finish.emissive ?? 0x000000,
+      emissiveIntensity: finish.emissiveIntensity ?? 0,
     });
     const accentMat = new THREE.MeshStandardMaterial({
       color: config.accent,
-      roughness: 0.5,
+      roughness: Math.min(0.8, finishRoughness + 0.1),
+      metalness: finishMetalness,
     });
     const lightMat = new THREE.MeshStandardMaterial({
       color: 0xffd4b5,
@@ -8963,11 +9620,14 @@ class Car {
       opacity: 0.86,
     });
 
+    const rideHeight = config.rideHeight ?? 0;
+    const bodyWidth = config.bodyScale[0];
+    const bodyLength = config.bodyScale[2];
     const body = new THREE.Mesh(
       new THREE.BoxGeometry(...config.bodyScale),
       primaryMat,
     );
-    body.position.y = 0.45 + (config.bodyScale[1] - 0.5) * 0.3;
+    body.position.y = 0.45 + rideHeight + (config.bodyScale[1] - 0.5) * 0.3;
 
     const hood = new THREE.Mesh(
       new THREE.BoxGeometry(...config.hoodScale),
@@ -8975,7 +9635,7 @@ class Car {
     );
     hood.position.set(
       0,
-      0.65 + (config.hoodScale[1] - 0.35) * 0.4,
+      0.65 + rideHeight + (config.hoodScale[1] - 0.35) * 0.4,
       0.8 + (config.hoodScale[2] - 1.2) * 0.2,
     );
 
@@ -8983,7 +9643,11 @@ class Car {
       new THREE.BoxGeometry(...config.cabinScale),
       glassMat,
     );
-    cabin.position.set(0, 0.85 + (config.cabinScale[1] - 0.45) * 0.4, -0.08);
+    cabin.position.set(
+      0,
+      0.85 + rideHeight + (config.cabinScale[1] - 0.45) * 0.4,
+      -0.08,
+    );
 
     const trunk = new THREE.Mesh(
       new THREE.BoxGeometry(...config.trunkScale),
@@ -8991,11 +9655,47 @@ class Car {
     );
     trunk.position.set(
       0,
-      0.62 + (config.trunkScale[1] - 0.3) * 0.32,
+      0.62 + rideHeight + (config.trunkScale[1] - 0.3) * 0.32,
       -1.2 - (config.trunkScale[2] - 0.8) * 0.3,
     );
 
     this.visualRoot.add(body, hood, cabin, trunk);
+
+    const nose = new THREE.Mesh(
+      new THREE.BoxGeometry(bodyWidth * 0.84, 0.18, 0.18),
+      primaryMat.clone(),
+    );
+    nose.position.set(0, 0.38 + rideHeight, bodyLength / 2 + 0.04);
+    const rearBumper = nose.clone();
+    rearBumper.position.z = -bodyLength / 2 - 0.04;
+    const sideSkirtGeo = new THREE.BoxGeometry(0.12, 0.2, bodyLength * 0.86);
+    const sideSkirtL = new THREE.Mesh(sideSkirtGeo, accentMat.clone());
+    const sideSkirtR = sideSkirtL.clone();
+    sideSkirtL.position.set(-bodyWidth / 2 - 0.04, 0.36 + rideHeight, 0);
+    sideSkirtR.position.set(bodyWidth / 2 + 0.04, 0.36 + rideHeight, 0);
+    this.visualRoot.add(nose, rearBumper, sideSkirtL, sideSkirtR);
+
+    const decalMat = new THREE.MeshBasicMaterial({
+      color: config.decalColor ?? 0xffffff,
+      transparent: true,
+      opacity: config.decalOpacity ?? 0.82,
+    });
+    if (config.decalStyle && config.decalStyle !== "none") {
+      const stripeWidth =
+        config.decalStyle === "double" ? bodyWidth * 0.16 : bodyWidth * 0.24;
+      const stripeGeo = new THREE.BoxGeometry(stripeWidth, 0.018, bodyLength * 0.82);
+      const stripe = new THREE.Mesh(stripeGeo, decalMat);
+      stripe.position.set(0, 0.72 + rideHeight, 0.08);
+      this.visualRoot.add(stripe);
+      if (config.decalStyle === "double") {
+        const stripeL = stripe.clone();
+        const stripeR = stripe.clone();
+        stripeL.position.x = -bodyWidth * 0.18;
+        stripeR.position.x = bodyWidth * 0.18;
+        this.visualRoot.add(stripeL, stripeR);
+        stripe.visible = false;
+      }
+    }
 
     if (
       config.spoiler === "street" ||
@@ -9006,14 +9706,14 @@ class Car {
         new THREE.BoxGeometry(1.22, 0.08, 0.52),
         accentMat.clone(),
       );
-      spoiler.position.set(0, 1.08, -1.75);
+      spoiler.position.set(0, 1.08 + rideHeight, -1.75);
       const spoilerStandL = new THREE.Mesh(
         new THREE.BoxGeometry(0.08, 0.22, 0.08),
         accentMat.clone(),
       );
       const spoilerStandR = spoilerStandL.clone();
-      spoilerStandL.position.set(-0.38, 0.94, -1.66);
-      spoilerStandR.position.set(0.38, 0.94, -1.66);
+      spoilerStandL.position.set(-0.38, 0.94 + rideHeight, -1.66);
+      spoilerStandR.position.set(0.38, 0.94 + rideHeight, -1.66);
       this.visualRoot.add(spoiler, spoilerStandL, spoilerStandR);
       if (config.spoiler === "fin") {
         spoiler.scale.set(0.78, 1, 0.7);
@@ -9021,7 +9721,7 @@ class Car {
           new THREE.BoxGeometry(0.14, 0.42, 0.08),
           accentMat.clone(),
         );
-        fin.position.set(0, 1.18, -1.72);
+        fin.position.set(0, 1.18 + rideHeight, -1.72);
         this.visualRoot.add(fin);
       }
       if (config.spoiler === "street") {
@@ -9042,12 +9742,22 @@ class Car {
       12,
     );
     const wheelOffsets = [
-      [-0.9, 0.25, 1.1],
-      [0.9, 0.25, 1.1],
-      [-0.9, 0.25, -1.1],
-      [0.9, 0.25, -1.1],
+      [-bodyWidth / 2 + 0.03, 0.25 + rideHeight, bodyLength * 0.34],
+      [bodyWidth / 2 - 0.03, 0.25 + rideHeight, bodyLength * 0.34],
+      [-bodyWidth / 2 + 0.03, 0.25 + rideHeight, -bodyLength * 0.34],
+      [bodyWidth / 2 - 0.03, 0.25 + rideHeight, -bodyLength * 0.34],
     ];
     wheelOffsets.forEach(([x, y, z]) => {
+      const fender = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, 0.28, 0.72),
+        accentMat.clone(),
+      );
+      fender.position.set(
+        x < 0 ? x - 0.04 : x + 0.04,
+        y + config.wheelRadius * 0.28,
+        z,
+      );
+      this.visualRoot.add(fender);
       const wheel = new THREE.Mesh(wheelGeo, wheelMat);
       wheel.rotation.z = Math.PI / 2;
       wheel.position.set(x, y + (config.wheelRadius - 0.35) * 0.35, z);
@@ -9061,15 +9771,52 @@ class Car {
     const lightGeo = new THREE.BoxGeometry(0.2 * config.lightScale, 0.15, 0.1);
     const lightLeft = new THREE.Mesh(lightGeo, lightMat);
     const lightRight = lightLeft.clone();
-    lightLeft.position.set(-0.55, 0.55, 1.7);
-    lightRight.position.set(0.55, 0.55, 1.7);
+    lightLeft.position.set(-bodyWidth * 0.32, 0.55 + rideHeight, bodyLength / 2 + 0.08);
+    lightRight.position.set(bodyWidth * 0.32, 0.55 + rideHeight, bodyLength / 2 + 0.08);
 
     const tailGeo = new THREE.BoxGeometry(0.22 * config.lightScale, 0.1, 0.1);
     const tailLeft = new THREE.Mesh(tailGeo, tailMat);
     const tailRight = tailLeft.clone();
-    tailLeft.position.set(-0.55, 0.55, -1.7);
-    tailRight.position.set(0.55, 0.55, -1.7);
+    tailLeft.position.set(-bodyWidth * 0.32, 0.55 + rideHeight, -bodyLength / 2 - 0.08);
+    tailRight.position.set(bodyWidth * 0.32, 0.55 + rideHeight, -bodyLength / 2 - 0.08);
     this.visualRoot.add(lightLeft, lightRight, tailLeft, tailRight);
+
+    const exhaustMat = new THREE.MeshStandardMaterial({
+      color: 0x1a2028,
+      roughness: 0.28,
+      metalness: 0.68,
+      emissive: config.exhaustColor ?? 0xff6b2f,
+      emissiveIntensity: 0.3,
+    });
+    const exhaustGeo = new THREE.BoxGeometry(0.18, 0.14, 0.32);
+    const exhaustL = new THREE.Mesh(exhaustGeo, exhaustMat);
+    const exhaustR = exhaustL.clone();
+    const exhaustSpread = config.exhaustStyle === "dual" ? bodyWidth * 0.28 : 0;
+    exhaustL.position.set(-exhaustSpread, 0.3 + rideHeight, -bodyLength / 2 - 0.24);
+    exhaustR.position.set(exhaustSpread, 0.3 + rideHeight, -bodyLength / 2 - 0.24);
+    this.visualRoot.add(exhaustL);
+    if (config.exhaustStyle === "dual") this.visualRoot.add(exhaustR);
+
+    const boostFlame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.18, 0.58, 12),
+      new THREE.MeshBasicMaterial({
+        color: config.boostColor ?? 0xff8a4f,
+        transparent: true,
+        opacity: 0.58,
+      }),
+    );
+    boostFlame.rotation.x = -Math.PI / 2;
+    boostFlame.position.set(0, 0.31 + rideHeight, -bodyLength / 2 - 0.58);
+    this.visualRoot.add(boostFlame);
+
+    if (config.plateText) {
+      const plate = new THREE.Mesh(
+        new THREE.BoxGeometry(0.72, 0.18, 0.035),
+        new THREE.MeshBasicMaterial({ color: 0xffd680 }),
+      );
+      plate.position.set(0, 0.55 + rideHeight, -bodyLength / 2 - 0.14);
+      this.visualRoot.add(plate);
+    }
 
     const glow = new THREE.Mesh(
       new THREE.CylinderGeometry(1.05, 1.3, 0.02, 18),
@@ -9363,13 +10110,49 @@ function renderGaragePreview() {
 }
 
 function getCarVisualConfig(loadout = getCurrentCustomization()) {
+  const defaults = getCurrentCustomization();
+  loadout = {
+    ...defaults,
+    ...loadout,
+    body: loadout.body ?? defaults.body,
+    wheels: loadout.wheels ?? defaults.wheels,
+    paint: loadout.paint ?? defaults.paint,
+    accent: loadout.accent ?? defaults.accent,
+    tint: loadout.tint ?? defaults.tint,
+    spoiler: loadout.spoiler ?? defaults.spoiler,
+    glow: loadout.glow ?? defaults.glow,
+    decal: loadout.decal ?? defaults.decal,
+    livery: loadout.livery ?? defaults.livery,
+    tires: loadout.tires ?? defaults.tires,
+    stance: loadout.stance ?? defaults.stance,
+    boostTrail: loadout.boostTrail ?? defaults.boostTrail,
+    exhaust: loadout.exhaust ?? defaults.exhaust,
+    finish: loadout.finish ?? defaults.finish,
+    plate: loadout.plate ?? defaults.plate,
+  };
+  const liveryAccent =
+    loadout.livery.id === "night-racer"
+      ? 0x121827
+      : loadout.livery.id === "heat-wave"
+        ? 0xffb15f
+        : loadout.accent.color;
+  const decalStyle =
+    loadout.decal.id === "flame-stripe"
+      ? "single"
+      : loadout.decal.id === "founder-star"
+        ? "double"
+        : "none";
   return {
     ...loadout.body.visual,
     primary: loadout.paint.color,
-    accent: loadout.accent.color,
+    accent: liveryAccent,
     tintColor: loadout.tint.color,
-    wheelRadius: loadout.wheels.visual.radius,
-    wheelWidth: loadout.wheels.visual.width,
+    wheelRadius:
+      loadout.wheels.visual.radius +
+      (loadout.tires.id === "magma" ? 0.03 : loadout.tires.id === "rally" ? 0.05 : 0),
+    wheelWidth:
+      loadout.wheels.visual.width +
+      (loadout.tires.id === "rally" ? 0.05 : loadout.tires.id === "magma" ? 0.03 : 0),
     wheelColor: loadout.wheels.visual.color,
     rimColor: loadout.wheels.visual.rim,
     spoiler:
@@ -9377,6 +10160,23 @@ function getCarVisualConfig(loadout = getCurrentCustomization()) {
         ? "wing"
         : loadout.spoiler.style,
     glowColor: loadout.glow.color,
+    rideHeight:
+      loadout.stance.id === "lifted" ? 0.16 : loadout.stance.id === "low" ? -0.08 : 0,
+    boostColor: loadout.boostTrail.color ?? loadout.glow.color,
+    exhaustColor:
+      loadout.exhaust.id === "lava-spit" ? 0xffd35f : loadout.boostTrail.color,
+    exhaustStyle: loadout.exhaust.id === "twin-burst" ? "dual" : "single",
+    decalStyle,
+    decalColor:
+      loadout.decal.id === "founder-star" ? 0xffd35f : loadout.accent.color,
+    decalOpacity: loadout.decal.id === "none" ? 0 : 0.82,
+    finish: {
+      roughness: loadout.finish.roughness,
+      metalness: loadout.finish.metalness,
+      emissive: loadout.finish.id === "lava-glow" ? 0x331006 : 0x000000,
+      emissiveIntensity: loadout.finish.id === "lava-glow" ? 0.28 : 0,
+    },
+    plateText: loadout.plate.name,
   };
 }
 
@@ -13107,6 +13907,7 @@ function refreshCustomizationMenu() {
         : "All loadout parts unlocked. Mix bodies, wheels, handling, and powers freely.";
   }
   renderGarageLoadouts();
+  renderGarageMarket();
   refreshGaragePreview();
 }
 
@@ -14708,6 +15509,7 @@ function resolveMaxBumps() {
     maxMode.ball.position.y = car.position.y + ny * minDist;
     maxMode.ball.position.z = car.position.z + nz * minDist;
     recordMaxBallTouch(car, preVelocity, maxMode.ballVelocity.clone());
+    if (car === player) state.modeRun.ballHits += 1;
     spawnFx(
       maxMode.ball.position.clone(),
       new THREE.Vector3(nx * 2.4, 1.8, nz * 2.4),
@@ -15607,10 +16409,10 @@ function awardModeProgression({ won = true, reason = "" } = {}) {
   const xpGained = won
     ? 120 + Math.round(score / 18) + Math.round(modeProgressPercent() * 80)
     : 30 + Math.round(modeProgressPercent() * 40);
+  const embersGained = won
+    ? 18 + Math.round(score / 220) + (medal === "Inferno" ? 45 : medal === "Gold" ? 25 : 0)
+    : Math.max(5, Math.round(modeProgressPercent() * 14));
   const progression = state.progressionV2;
-  progression.xp = getProgressionTotalXp(progression) + xpGained;
-  progression.totalXp = progression.xp;
-  progression.level = getProgressionLevel(progression);
   progression.medals[key] = medal;
   const previousBest = progression.personalBests[mode.id]?.score ?? 0;
   if (score >= previousBest) {
@@ -15632,31 +16434,57 @@ function awardModeProgression({ won = true, reason = "" } = {}) {
       });
   }
   updateChallengeProgress(mode, score, won);
-  progression.rewardLog = [
-    {
-      modeId: mode.id,
-      label: mode.label,
-      medal,
-      xp: xpGained,
-      reward: won ? mode.reward : reason || "Retry for the medal",
-      at: new Date().toISOString(),
-    },
-    ...progression.rewardLog,
-  ].slice(0, 8);
+  updateDailySparksProgress({
+    modeId: mode.id,
+    won,
+    score,
+    boosts: state.modeRun.boosts,
+    driftSeconds: Math.floor(state.modeRun.driftSeconds),
+    jumps: state.modeRun.jumps,
+    ballHits: state.modeRun.ballHits,
+  });
+  const award = awardXP("mode-run", xpGained, {
+    embers: embersGained,
+    modeId: mode.id,
+    label: mode.label,
+    medal,
+    reward: won ? mode.reward : reason || "Retry for the medal",
+  });
   state.modeRun.medalEarned = medal;
-  state.modeRun.xpGained = xpGained;
-  state.modeRun.xpTotalAfter = progression.xp;
+  state.modeRun.xpGained = award.xpGained;
+  state.modeRun.embersGained = award.embersGained;
+  state.modeRun.xpTotalAfter = award.totalXp;
+  state.modeRun.oldLevel = award.oldLevel;
+  state.modeRun.newLevel = award.newLevel;
+  state.modeRun.levelRewards = award.levelRewards;
   state.modeRun.resultSummary = won
-    ? `${medal} medal, +${xpGained} XP, ${mode.reward}`
-    : `${reason || "Objective failed"}, +${xpGained} XP`;
+    ? `${medal} medal, +${xpGained} XP, +${embersGained} Embers, ${mode.reward}`
+    : `${reason || "Objective failed"}, +${xpGained} XP, +${embersGained} Embers`;
   savePersistentState();
   renderDailyGiftNotice();
   syncProgressionToBackend();
-  return { medal, xpGained };
+  return { medal, xpGained, embersGained, award };
 }
 
 function getModeResultRows(won = true) {
   const mode = getModeDefinition();
+  const xpProgress = getXPProgressInCurrentLevel(getProgressionTotalXp());
+  const sparkDone =
+    state.progressionV2.dailySparks?.items?.filter(
+      (spark) => spark.completed && !spark.claimed,
+    ).length ?? 0;
+  const baseRewardRows = [
+    ["XP", `+${state.modeRun.xpGained || 0}`],
+    [EMBER_CURRENCY_NAME, `+${state.modeRun.embersGained || 0}`],
+    [
+      "Next Level",
+      `${xpProgress.current}/${xpProgress.required} XP`,
+    ],
+    [
+      "Daily Sparks",
+      sparkDone ? `${sparkDone} ready to claim` : "Keep driving",
+    ],
+  ];
   if (mode.id === GAME_MODE_BATTLE) {
     return [
       ["Mode", mode.label],
@@ -15666,8 +16494,7 @@ function getModeResultRows(won = true) {
         `${state.modeRun.battle.blueScore}-${state.modeRun.battle.redScore}`,
       ],
       ["Ammo", `${Math.round(player.battleAmmo ?? 0)}/${BATTLE_RULES.maxAmmo}`],
-      ["XP", `+${state.modeRun.xpGained || 0}`],
-      ["Total XP", `${state.modeRun.xpTotalAfter || getProgressionTotalXp()}`],
+      ...baseRewardRows,
       ["Reward", won ? mode.reward : "Practice cover and reload timing"],
     ];
   }
@@ -15677,16 +16504,14 @@ function getModeResultRows(won = true) {
       ["Frame", `${state.modeRun.bowling.frame}/${BOWLING_RULES.frames}`],
       ["Bowling Score", `${state.modeRun.bowling.totalScore}`],
       ["Last Roll", `${state.modeRun.bowling.lastRollPins} pins`],
-      ["XP", `+${state.modeRun.xpGained || 0}`],
-      ["Total XP", `${state.modeRun.xpTotalAfter || getProgressionTotalXp()}`],
+      ...baseRewardRows,
       ["Reward", won ? mode.reward : "Line up the launch earlier"],
     ];
   }
   return [
     ["Mode", mode.label],
     ["Medal", state.modeRun.medalEarned || (won ? "Clear" : "Attempt")],
-    ["XP", `+${state.modeRun.xpGained || 0}`],
-    ["Total XP", `${state.modeRun.xpTotalAfter || getProgressionTotalXp()}`],
+    ...baseRewardRows,
     [
       "Objective",
       `${Math.floor(state.modeRun.progress)}/${Math.floor(state.modeRun.target || 1)}`,
@@ -15699,10 +16524,10 @@ function getModeResultRows(won = true) {
 function completeModeRun() {
   if (!state.running) return;
   const mode = getModeDefinition();
-  const { medal, xpGained } = awardModeProgression({ won: true });
+  const { medal, xpGained, embersGained } = awardModeProgression({ won: true });
   showMessage(
     `${mode.label} Complete`,
-    `${mode.objective} ${medal} medal earned, +${xpGained} XP. ${mode.reward} is now previewed in Progress.`,
+    `${mode.objective} ${medal} medal earned, +${xpGained} XP and +${embersGained} Embers. ${mode.reward} is now previewed in Progress.`,
     "Run Again",
     "restart-current",
     getModeResultRows(true),
@@ -17338,6 +18163,13 @@ function stepGame(dt) {
     updateTransientEffects(dt);
 
     updatePlayer(dt);
+    if (input.boost && !state.modeRun.boostHeld) state.modeRun.boosts += 1;
+    state.modeRun.boostHeld = Boolean(input.boost);
+    if (input.drift && Math.abs(player.speed) > 8)
+      state.modeRun.driftSeconds += dt;
+    if (player.airborne && !state.modeRun.wasAirborne) state.modeRun.jumps += 1;
+    state.modeRun.wasAirborne = Boolean(player.airborne);
+    updateFirstDriveTutorial();
     updateBots(dt);
     updateHunterThreatFeedback();
     if (isMaxMode()) {
@@ -18389,6 +19221,21 @@ function startRun(resetLives = false) {
   state.running = true;
   savePersistentState();
   resetLevel();
+  maybeShowModeIntro();
+}
+
+function maybeShowModeIntro() {
+  if (state.firstDrive.active) return false;
+  const mode = getModeDefinition();
+  state.progressionV2.seenModeIntros =
+    state.progressionV2.seenModeIntros || {};
+  if (state.progressionV2.seenModeIntros[mode.id]) return false;
+  state.progressionV2.seenModeIntros[mode.id] = true;
+  savePersistentState();
+  openModeHelp();
+  state.modeHelpWasRunning = true;
+  if (modeHelpResume) modeHelpResume.textContent = "Got it - Start";
+  return true;
 }
 
 function readOnboardingState() {
@@ -18431,6 +19278,75 @@ function startFirstRace() {
     "First Race selected. Drive through gates, finish a lap, and press R if you want an instant retry.",
   );
   startGuestProfile();
+}
+
+const FIRST_DRIVE_STEPS = [
+  { label: "Steer left and right", test: () => Math.abs(input.touchSteer || state.steerSmoothed) > 0.22 || input.left || input.right },
+  { label: "Boost", test: () => state.modeRun.boosts >= 1 },
+  { label: "Jump", test: () => state.modeRun.jumps >= 1 || player.position.y > 0.2 },
+  { label: "Drift", test: () => state.modeRun.driftSeconds > 0.35 },
+  { label: "Collect the reward gate", test: () => state.modeRun.progress > 0 },
+  { label: "Finish", test: () => state.elapsed - state.firstDrive.startedAt > 18 },
+];
+
+function startFirstDriveTutorial() {
+  settings.activeGameMode = GAME_MODE_RACE;
+  if (onlineRoomMode) onlineRoomMode.value = GAME_MODE_RACE;
+  state.firstDrive = {
+    active: true,
+    step: 0,
+    startedAt: 0,
+    completed: false,
+  };
+  setStartAccountStatus("First Drive started. Follow one prompt at a time.");
+  startGuestProfile();
+}
+
+function finishFirstDriveTutorial() {
+  if (!state.firstDrive.active || state.progressionV2.tutorialComplete) {
+    state.firstDrive.active = false;
+    return;
+  }
+  state.firstDrive.active = false;
+  state.firstDrive.completed = true;
+  state.progressionV2.tutorialComplete = true;
+  const award = awardXP("first-drive", 180, {
+    embers: 75,
+    cosmeticId: STARTER_COSMETIC_ID,
+    label: "First Drive",
+    reward: "Starter cosmetic unlocked",
+  });
+  savePersistentState();
+  syncProgressionToBackend();
+  showMessage(
+    "First Drive Complete",
+    `Nice driving. You earned +${award.xpGained} XP, +${award.embersGained} Embers, and a starter cosmetic.`,
+    "Keep Driving",
+    "restart-current",
+    [
+      ["Tutorial", "Complete"],
+      ["XP", `+${award.xpGained}`],
+      [EMBER_CURRENCY_NAME, `+${award.embersGained}`],
+      ["Reward", "Starter cosmetic"],
+    ],
+  );
+}
+
+function updateFirstDriveTutorial() {
+  if (!state.firstDrive.active || !state.running) return;
+  if (!state.firstDrive.startedAt) state.firstDrive.startedAt = state.elapsed;
+  const step = FIRST_DRIVE_STEPS[state.firstDrive.step];
+  if (!step) {
+    finishFirstDriveTutorial();
+    return;
+  }
+  setEffectToast(`First Drive: ${step.label}`, { pulse: 0.08 });
+  if (step.test()) {
+    state.firstDrive.step += 1;
+    const next = FIRST_DRIVE_STEPS[state.firstDrive.step];
+    if (next) setEffectToast(`Nice. Next: ${next.label}`, { pulse: 0.28 });
+    else finishFirstDriveTutorial();
+  }
 }
 
 function dispatchGameAction(action) {
@@ -18489,7 +19405,12 @@ function showMessage(
   rows = null,
 ) {
   messageTitle.textContent = title;
-  messageBody.textContent = body;
+  const levelUpText =
+    state.modeRun.newLevel > state.modeRun.oldLevel
+      ? ` Level up: ${state.modeRun.oldLevel} → ${state.modeRun.newLevel}. Rewards: ${state.modeRun.levelRewards.map((reward) => reward.label).join(", ")}.`
+      : "";
+  messageBody.textContent = `${body}${levelUpText}`;
+  message.classList.toggle("level-up-reveal", Boolean(levelUpText));
   nextBtn.textContent = nextLabel;
   retryBtn.hidden = action === "retry" || action === "restart-current";
   if (messageStats) {
@@ -18510,10 +19431,10 @@ function showMessage(
 
 function completeLevel() {
   if (isMaxMode()) {
-    const { medal, xpGained } = awardModeProgression({ won: true });
+    const { medal, xpGained, embersGained } = awardModeProgression({ won: true });
     showMessage(
       "Blue Team Wins",
-      `Arena complete. ${medal} medal earned, +${xpGained} XP. Press Enter to replay.`,
+      `Arena complete. ${medal} medal earned, +${xpGained} XP and +${embersGained} Embers. Press Enter to replay.`,
       "Replay",
       "restart-current",
       getModeResultRows(true),
@@ -18535,8 +19456,8 @@ function completeLevel() {
   state.worldIndex = currentWorld;
   state.levelIndex = currentLevel;
   const isLastLevel = state.levelIndex === world.levels.length - 1;
-  const { medal, xpGained } = awardModeProgression({ won: true });
-  const runSummary = `Score ${Math.floor(state.score)}. Best chain x${state.bestCombo.toFixed(1)}. Near-miss streak ${state.bestNearMissStreak}. ${state.lastLandingGrade ? `${state.lastLandingGrade}. ` : ""}Press Enter for the next heat.`;
+  const { medal, xpGained, embersGained } = awardModeProgression({ won: true });
+  const runSummary = `Score ${Math.floor(state.score)}. +${embersGained} Embers. Best chain x${state.bestCombo.toFixed(1)}. Near-miss streak ${state.bestNearMissStreak}. ${state.lastLandingGrade ? `${state.lastLandingGrade}. ` : ""}Press Enter for the next heat.`;
   if (isLastLevel) {
     const isLastWorld = state.worldIndex === worldData.length - 1;
     if (isLastWorld) {
@@ -18956,9 +19877,7 @@ bindPressAction(startHereBtn, () => startFirstRace());
 bindPressAction(startAccountSubmit, () => submitStartAccount());
 bindPressAction(schoolLeave, () => leaveFromSchoolGate());
 bindPressAction(schoolContinue, () => continuePastSchoolGate());
-bindPressAction(tutorialBtn, () => {
-  tips.style.display = tips.style.display === "none" ? "grid" : "none";
-});
+bindPressAction(tutorialBtn, () => startFirstDriveTutorial());
 bindPressAction(nextBtn, () => {
   dispatchGameAction("message-next");
 });
@@ -18971,6 +19890,14 @@ bindPressAction(retryBtn, () => {
   }
 });
 bindPressAction(helpBtn, () => openModeHelp());
+resultNavButtons.forEach((button) => {
+  bindPressAction(button, () => {
+    message.classList.remove("show");
+    state.running = false;
+    document.body.classList.remove("playing");
+    setMenuOpen(true, button.dataset.resultTab || "games");
+  });
+});
 bindPressAction(modeHelpResume, () => closeModeHelp({ resume: true }));
 bindPressAction(modeHelpRestart, () => {
   closeModeHelp({ resume: false });
@@ -19701,6 +20628,11 @@ window.render_game_to_text = () => {
         accent: currentCustomization.accent.id,
         tint: currentCustomization.tint.id,
         glow: currentCustomization.glow.id,
+        body: currentCustomization.body.id,
+        decal: currentCustomization.decal.id,
+        livery: currentCustomization.livery.id,
+        boostTrail: currentCustomization.boostTrail.id,
+        finish: currentCustomization.finish.id,
       },
     },
     hud: {
@@ -19769,6 +20701,23 @@ window.render_game_to_text = () => {
         classId: loadout.classId,
         paintId: loadout.paintId,
         glowId: loadout.glowId,
+      })),
+      market: GARAGE_CATEGORIES.map((category) => ({
+        key: category.key,
+        label: category.label,
+        options: category.options.map((option) => {
+          const cosmeticId = getCosmeticId(category.key, option.id);
+          return {
+            id: option.id,
+            cosmeticId,
+            name: option.name,
+            owned: isCosmeticOwned(cosmeticId),
+            equipped: customization[category.key] === option.id,
+            unlocked: isOptionUnlocked(option),
+            emberCost: getCosmeticPrice(option),
+            unlockLevel: getOptionUnlockLevel(option),
+          };
+        }),
       })),
     },
     radar: radarSnapshot,
@@ -19963,9 +20912,30 @@ window.render_game_to_text = () => {
       levelIndex: state.levelIndex,
       world: getWorld().name,
       level: getLevel().name,
-      levelNumber: state.progressionV2.level,
+      schemaVersion: state.progressionV2.schemaVersion,
+      levelNumber: getProgressionLevel(),
       xp: state.progressionV2.xp,
       totalXp: getProgressionTotalXp(),
+      embers: state.progressionV2.embers,
+      xpProgress: getXPProgressInCurrentLevel(getProgressionTotalXp()),
+      nextReward: getLevelRewards(
+        getXPProgressInCurrentLevel(getProgressionTotalXp()).level + 1,
+      ),
+      levelTrack: Array.from({ length: 8 }, (_, index) => {
+        const current = getProgressionLevel();
+        const level = Math.max(1, current - 1 + index);
+        return {
+          level,
+          current: level === current,
+          complete: level < current,
+          rewards: getLevelRewards(level),
+        };
+      }),
+      dailySparks: state.progressionV2.dailySparks,
+      tutorialComplete: Boolean(state.progressionV2.tutorialComplete),
+      seenModeIntros: state.progressionV2.seenModeIntros,
+      ownedCosmetics: state.progressionV2.ownedCosmetics,
+      recentRewards: state.progressionV2.recentRewards,
       medals: state.progressionV2.medals,
       personalBests: state.progressionV2.personalBests,
       daily: state.progressionV2.daily,
@@ -20211,6 +21181,22 @@ window.__infernodriftTestApi = {
     selectGarageLoadout(loadoutId, { save: false });
     return serializeGarageState();
   },
+  buyGarageCosmetic: (categoryKey, optionId) =>
+    buyGarageCosmetic(categoryKey, optionId),
+  equipGarageCosmetic: (categoryKey, optionId) =>
+    equipGarageCosmetic(categoryKey, optionId),
+  getDailySparksState: () => structuredClone(state.progressionV2.dailySparks),
+  claimDailySpark: (id) => claimDailySpark(id),
+  startFirstDriveTutorial: () => {
+    startFirstDriveTutorial();
+    return {
+      active: state.firstDrive.active,
+      step: state.firstDrive.step,
+      mode: getPublicModeId(),
+    };
+  },
+  applySavePayloadForTest: (payload, options = {}) =>
+    applyPersistentSavePayload(payload, options),
   getGaragePreviewState: () => ({
     ready: garageState.preview.ready,
     yaw: garageState.preview.yaw,

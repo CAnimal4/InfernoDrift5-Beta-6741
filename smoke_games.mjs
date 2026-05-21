@@ -34,6 +34,14 @@ await page.evaluate((username) => {
 }, smokeUsername);
 await page.waitForTimeout(1200);
 
+assert.equal(await page.locator("#start-here-btn").textContent(), "PLAY NOW");
+assert.equal(
+  await page.locator("#start-account-submit").textContent(),
+  "Login / Sign Up",
+);
+assert.equal(await page.locator("#start-btn").textContent(), "Play as Guest");
+assert.equal(await page.locator("#tutorial-btn").textContent(), "Start Tutorial");
+
 const schoolGateProbe = await page.evaluate(() => {
   const api = window.__infernodriftTestApi;
   const mondayClass = api.getSchoolGateStatus("2026-05-18T09:00:00");
@@ -669,6 +677,9 @@ const phase3Progress = await page.evaluate(() =>
 );
 assert.ok(phase3Progress.xp > 0);
 assert.equal(phase3Progress.totalXp, phase3Progress.xp);
+assert.ok(phase3Progress.embers > 0);
+assert.ok(Array.isArray(phase3Progress.ownedCosmetics));
+assert.ok(Array.isArray(phase3Progress.claimedLevelRewards));
 const dailyGiftProgress = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   const before = window.__infernodriftTestApi.getDailyGiftState();
@@ -690,6 +701,9 @@ assert.equal(dailyGiftProgress.second.ok, false);
 assert.equal(dailyGiftProgress.textState.dailyGift.claimed, true);
 assert.equal(dailyGiftProgress.textState.dailyGift.available, false);
 assert.equal(dailyGiftProgress.textState.dailyGiftNoticeVisible, false);
+assert.ok(dailyGiftProgress.textState.embers >= dailyGiftProgress.first.embers);
+assert.ok(Array.isArray(dailyGiftProgress.textState.dailySparks.items));
+assert.equal(dailyGiftProgress.textState.dailySparks.items.length, 3);
 const dailyGiftDistribution = await page.evaluate(() =>
   window.__infernodriftTestApi.sampleDailyGiftRolls(1200),
 );
@@ -756,6 +770,50 @@ assert.equal(garageUnlockState.unlockRule, "xp-level");
 assert.equal(garageUnlockState.xpLevel, 1);
 assert.ok(garageUnlockState.lockedCount > 0);
 assert.ok(garageUnlockState.nextUnlock.level >= 2);
+assert.ok(garageUnlockState.market.length >= 12);
+assert.ok(
+  garageUnlockState.market.some(
+    (category) =>
+      category.key === "boostTrailId" &&
+      category.options.some((option) => option.id === "blue-flare"),
+  ),
+);
+const garageBuyState = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetLocalProgressionForTest();
+  window.__infernodriftTestApi.applySavePayloadForTest(
+    { progressionV2: { xp: 12000, totalXp: 12000, embers: 500 } },
+    { forceProgression: true },
+  );
+  const buy = window.__infernodriftTestApi.buyGarageCosmetic(
+    "boostTrailId",
+    "blue-flare",
+  );
+  const duplicate = window.__infernodriftTestApi.buyGarageCosmetic(
+    "boostTrailId",
+    "blue-flare",
+  );
+  const equipLocked = window.__infernodriftTestApi.equipGarageCosmetic(
+    "goalExplosionId",
+    "blue-nova",
+  );
+  const state = JSON.parse(window.render_game_to_text());
+  return { buy, duplicate, equipLocked, garage: state.garage, skin: state.player.skin };
+});
+assert.equal(garageBuyState.buy.ok, true);
+assert.equal(garageBuyState.duplicate.reason, "Already owned.");
+assert.equal(garageBuyState.equipLocked.ok, false);
+assert.equal(garageBuyState.skin.boostTrail, "blue-flare");
+assert.ok(
+  garageBuyState.garage.market
+    .find((category) => category.key === "boostTrailId")
+    .options.find((option) => option.id === "blue-flare").equipped,
+);
+const tutorialState = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetLocalProgressionForTest();
+  return window.__infernodriftTestApi.startFirstDriveTutorial();
+});
+assert.equal(tutorialState.active, true);
+assert.equal(tutorialState.mode, "race");
 assert.ok(phase3Progress.personalBests.race);
 await page.waitForTimeout(1500);
 await page.screenshot({

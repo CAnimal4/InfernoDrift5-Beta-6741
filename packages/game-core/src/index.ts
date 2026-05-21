@@ -142,11 +142,158 @@ export interface RadarEntity {
 export interface ProgressionState {
   xp: number;
   level: number;
+  embers: number;
   medals: Record<string, string>;
   unlocked: string[];
   rewardLog: string[];
+  claimedLevelRewards: number[];
   dailySeed: string;
   weeklySeed: string;
+}
+
+export interface LevelProgress {
+  level: number;
+  current: number;
+  required: number;
+  remaining: number;
+  totalXp: number;
+  levelStart: number;
+  nextLevelXp: number;
+  percent: number;
+}
+
+export type LevelReward =
+  | { type: "embers"; amount: number; label: string }
+  | { type: "cosmetic"; id: string; label: string }
+  | { type: "title"; id: string; label: string };
+
+export function xpRequiredForLevel(level: number): number {
+  const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
+  return Math.round(400 + safeLevel * 150 + Math.pow(safeLevel, 1.55) * 120);
+}
+
+export function getXPForLevel(level: number): number {
+  const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
+  let total = 0;
+  for (let current = 1; current < safeLevel; current += 1) {
+    total += xpRequiredForLevel(current);
+  }
+  return total;
+}
+
+export function getLevelFromXP(totalXp: number): number {
+  const xp = Math.max(0, Math.floor(Number(totalXp) || 0));
+  let level = 1;
+  let threshold = xpRequiredForLevel(level);
+  let consumed = 0;
+  while (xp >= consumed + threshold && level < 999) {
+    consumed += threshold;
+    level += 1;
+    threshold = xpRequiredForLevel(level);
+  }
+  return level;
+}
+
+export function getXPProgressInCurrentLevel(totalXp: number): LevelProgress {
+  const xp = Math.max(0, Math.floor(Number(totalXp) || 0));
+  const level = getLevelFromXP(xp);
+  const levelStart = getXPForLevel(level);
+  const nextLevelXp = getXPForLevel(level + 1);
+  const required = Math.max(1, nextLevelXp - levelStart);
+  const current = Math.min(required, Math.max(0, xp - levelStart));
+  return {
+    level,
+    current,
+    required,
+    remaining: Math.max(0, required - current),
+    totalXp: xp,
+    levelStart,
+    nextLevelXp,
+    percent: current / required,
+  };
+}
+
+export function getLevelRewards(level: number): LevelReward[] {
+  const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
+  const embers = 45 + safeLevel * 10 + (safeLevel % 5 === 0 ? 75 : 0);
+  const rewards: LevelReward[] = [
+    { type: "embers", amount: embers, label: `+${embers} Embers` },
+  ];
+  if (safeLevel === 2)
+    rewards.push({
+      type: "cosmetic",
+      id: "boostTrailId-blue-flare",
+      label: "Blue Flare Boost Trail",
+    });
+  if (safeLevel === 3)
+    rewards.push({
+      type: "cosmetic",
+      id: "decalId-flame-stripe",
+      label: "Flame Stripe Decal",
+    });
+  if (safeLevel === 5)
+    rewards.push({
+      type: "cosmetic",
+      id: "bodyId-muscle",
+      label: "Muscle Body",
+    });
+  if (safeLevel === 8)
+    rewards.push({ type: "cosmetic", id: "wheelId-drift", label: "Drift Wheels" });
+  if (safeLevel === 10)
+    rewards.push({
+      type: "cosmetic",
+      id: "goalExplosionId-inferno-burst",
+      label: "Inferno Burst Goal Explosion",
+    });
+  if (safeLevel % 10 === 0)
+    rewards.push({
+      type: "title",
+      id: `level-${safeLevel}-driver`,
+      label: `Level ${safeLevel} Driver Title`,
+    });
+  return rewards;
+}
+
+export function awardLevelRewards(
+  progression: ProgressionState,
+  oldLevel: number,
+  newLevel: number,
+): LevelReward[] {
+  const rewards: LevelReward[] = [];
+  for (let level = Math.max(1, oldLevel + 1); level <= newLevel; level += 1) {
+    if (progression.claimedLevelRewards.includes(level)) continue;
+    progression.claimedLevelRewards.push(level);
+    for (const reward of getLevelRewards(level)) {
+      rewards.push(reward);
+      if (reward.type === "embers") progression.embers += reward.amount;
+      if (
+        (reward.type === "cosmetic" || reward.type === "title") &&
+        !progression.unlocked.includes(reward.id)
+      ) {
+        progression.unlocked.push(reward.id);
+      }
+    }
+  }
+  return rewards;
+}
+
+export function awardXP(
+  progression: ProgressionState,
+  amount: number,
+  source = "gameplay",
+): { xpAwarded: number; oldLevel: number; newLevel: number; rewards: LevelReward[] } {
+  const xpAwarded = Math.max(0, Math.round(Number(amount) || 0));
+  const oldLevel = getLevelFromXP(progression.xp);
+  progression.xp += xpAwarded;
+  const newLevel = getLevelFromXP(progression.xp);
+  progression.level = newLevel;
+  const rewards = awardLevelRewards(progression, oldLevel, newLevel);
+  progression.rewardLog = [
+    `${source}:+${xpAwarded}xp`,
+    ...rewards.map((reward) => `reward:${reward.label}`),
+    ...progression.rewardLog,
+  ].slice(0, 12);
+  return { xpAwarded, oldLevel, newLevel, rewards };
 }
 
 export interface GameState {
@@ -668,6 +815,9 @@ export function migrateSave(value: unknown): {
     progression: {
       ...fallback.progression,
       ...(record.progression ?? {}),
+      xp: Math.max(0, Math.floor(Number(record.progression?.xp) || 0)),
+      level: getLevelFromXP(Number(record.progression?.xp) || 0),
+      embers: Math.max(0, Math.floor(Number(record.progression?.embers) || 0)),
       medals: { ...(record.progression?.medals ?? {}) },
       unlocked: Array.isArray(record.progression?.unlocked)
         ? record.progression!.unlocked!
@@ -675,6 +825,11 @@ export function migrateSave(value: unknown): {
       rewardLog: Array.isArray(record.progression?.rewardLog)
         ? record.progression!.rewardLog!
         : fallback.progression.rewardLog,
+      claimedLevelRewards: Array.isArray(
+        record.progression?.claimedLevelRewards,
+      )
+        ? record.progression!.claimedLevelRewards!
+        : fallback.progression.claimedLevelRewards,
     },
   };
 }
@@ -720,9 +875,11 @@ function createProgression(): ProgressionState {
   return {
     xp: 0,
     level: 1,
+    embers: 0,
     medals: {},
     unlocked: ["balanced", "basic-wheels", "ember-paint", "quick-chat"],
     rewardLog: [],
+    claimedLevelRewards: [],
     dailySeed: new Date().toISOString().slice(0, 10),
     weeklySeed: weeklySeed(new Date()),
   };
@@ -1508,8 +1665,7 @@ function completeRun(
       Math.round(state.objective.progress * 3)
     : 35 +
       Math.round(Math.min(state.objective.progress, state.objective.target));
-  state.progression.xp += xpAward;
-  state.progression.level = 1 + Math.floor(state.progression.xp / 500);
+  const xpResult = awardXP(state.progression, xpAward, state.mode);
   const unlocks = won ? rewardsForRun(state, medal) : [];
   for (const unlock of unlocks) {
     if (!state.progression.unlocked.includes(unlock))
@@ -1517,6 +1673,7 @@ function completeRun(
   }
   state.progression.rewardLog = [
     `${state.mode}:${won ? medal : "Failed"}:+${xpAward}xp`,
+    ...xpResult.rewards.map((reward) => `level:${reward.label}`),
     ...unlocks.map((unlock) => `unlock:${unlock}`),
     ...state.progression.rewardLog,
   ].slice(0, 12);

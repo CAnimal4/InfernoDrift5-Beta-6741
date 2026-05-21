@@ -352,6 +352,12 @@ These commits define the current Firebase transition baseline:
 - `18f2709` - hardened Firebase progress/leaderboard parity.
 - `279a8fd` - removed provider-name wording from normal player-facing online UI.
 
+## Progression Economy Note
+
+The shipped static client now stores the progression/economy refresh inside `progressionV2` schema version 3 in the existing `progress/{uid}.payload` document. New fields include `embers`, `ownedCosmetics`, `claimedLevelRewards`, `dailySparks`, `seenModeIntros`, `tutorialComplete`, and `recentRewards`.
+
+Do not add Firestore top-level fields for these unless a future feature genuinely needs indexed/queryable data. Keep leaderboard ranking sourced from `progressionV2.totalXp`, and preserve the highest total XP when merging local, Firebase, and legacy saves.
+
 If a new chat sees old guidance saying the default server is Workers or Replit, treat that guidance as stale unless the current repo contradicts this file.
 
 ## Safety Rules

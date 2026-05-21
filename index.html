@@ -17,7 +17,7 @@
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="style.css?v=20260520-rank-tiers" />
+    <link rel="stylesheet" href="style.css?v=20260520-progression-garage" />
   </head>
   <body>
     <div id="game-wrap">
@@ -132,7 +132,7 @@
             and stay ahead of relentless hunter bots.
           </p>
           <div class="account-start-card" id="account-start-card">
-            <div class="custom-section-title">Start Profile</div>
+            <div class="custom-section-title">Start Driving</div>
             <div class="account-start-grid">
               <label class="field">
                 <span>Username</span>
@@ -148,13 +148,15 @@
               </label>
             </div>
             <div class="cta-row">
-              <button class="primary" id="start-here-btn" type="button">Start Here: First Race</button>
-              <button class="primary" id="start-account-submit" type="button">Create / Sign In</button>
+              <button class="primary play-now-btn" id="start-here-btn" type="button">PLAY NOW</button>
+            </div>
+            <div class="cta-row secondary-start-actions">
+              <button class="primary soft-primary" id="start-account-submit" type="button">Login / Sign Up</button>
               <button class="ghost" id="start-btn" type="button">Play as Guest</button>
-              <button class="ghost" id="tutorial-btn" type="button">Quick Tips</button>
+              <button class="ghost" id="tutorial-btn" type="button">Start Tutorial</button>
             </div>
             <p class="hint" id="start-account-status">
-              Guest names are random and temporary for online identity. Accounts require a configured InfernoDrift4 backend.
+              Start instantly as a guest. Login saves progress online when online services are available.
             </p>
           </div>
           <div class="overlay-notes">
@@ -191,6 +193,9 @@
             <button class="primary" id="next-btn">Next</button>
             <button class="ghost" id="retry-btn">Retry</button>
             <button class="ghost" id="help-btn" type="button">Help</button>
+            <button class="ghost result-nav" data-result-tab="customize" type="button">Garage</button>
+            <button class="ghost result-nav" data-result-tab="progress" type="button">Progress</button>
+            <button class="ghost result-nav" data-result-tab="games" type="button">Main Menu</button>
           </div>
         </div>
       </div>
@@ -225,6 +230,7 @@
               <div class="mode-brief" id="mode-brief"></div>
             </section>
             <section class="tab-panel" id="tab-customize">
+              <div class="garage-market" id="garage-market" aria-label="Garage cosmetic browser"></div>
               <div class="garage-shell">
                 <div class="garage-preview-card">
                   <div class="custom-section-title">Preview Bay</div>
@@ -295,7 +301,7 @@
                 </div>
               </div>
               <div class="custom-stats" id="custom-stats"></div>
-              <p class="hint" id="custom-hint">Garage changes apply instantly and unlock more parts as you clear worlds.</p>
+              <p class="hint" id="custom-hint">Garage changes apply instantly. Earn Embers by playing, then buy and equip new parts here.</p>
             </section>
             <section class="tab-panel" id="tab-progress">
               <div class="progress-grid" id="progress-panel"></div>
@@ -732,6 +738,6 @@
       </div>
     </div>
 
-    <script type="module" src="script.js?v=20260520-online-copy-cleanup"></script>
+    <script type="module" src="script.js?v=20260520-progression-garage"></script>
   </body>
 </html>

@@ -3,8 +3,14 @@ import assert from "node:assert/strict";
 import {
   createInitialGameState,
   createRadar,
+  getLevelFromXP,
+  getLevelRewards,
+  getXPForLevel,
+  getXPProgressInCurrentLevel,
+  migrateSave,
   startGame,
   stepGame,
+  xpRequiredForLevel,
   type GameState,
   type InputFrame,
   type ModeId,
@@ -32,6 +38,34 @@ function advance(state: GameState, seconds: number, frame = input()): void {
   const steps = Math.ceil(seconds / 0.05);
   for (let index = 0; index < steps; index += 1) stepGame(state, frame, 0.05);
 }
+
+test("progression curve scales levels, progress, rewards, and migrated Embers", () => {
+  assert.equal(xpRequiredForLevel(1), 670);
+  assert.ok(xpRequiredForLevel(8) > xpRequiredForLevel(2));
+  assert.equal(getXPForLevel(1), 0);
+  assert.equal(getLevelFromXP(0), 1);
+  assert.equal(getLevelFromXP(getXPForLevel(3)), 3);
+
+  const progress = getXPProgressInCurrentLevel(getXPForLevel(4) + 120);
+  assert.equal(progress.level, 4);
+  assert.equal(progress.current, 120);
+  assert.ok(progress.required > progress.current);
+
+  const rewards = getLevelRewards(5);
+  assert.ok(rewards.some((reward) => reward.type === "embers"));
+  assert.ok(
+    rewards.some(
+      (reward) => reward.type === "cosmetic" && reward.id === "bodyId-muscle",
+    ),
+  );
+
+  const migrated = migrateSave({
+    progression: { xp: getXPForLevel(4) + 12, level: 99, embers: 140 },
+  });
+  assert.equal(migrated.progression.level, 4);
+  assert.equal(migrated.progression.embers, 140);
+  assert.deepEqual(migrated.progression.claimedLevelRewards, []);
+});
 
 test("radar exposes IDs, labels, priority, threat, closing speed, and normalized position", () => {
   const state = playing("boss");

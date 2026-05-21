@@ -297,3 +297,13 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Made old usernames with spaces valid in the Firebase wrapper and mapped spaces to dots in the derived Firebase Auth email, so legacy names like `Tosh the Sigma` and `Squawking parrot` can keep working.
 - Added automatic sign-in recovery: if a matching legacy username exists in the bundled manifest, Firebase sign-in can create the missing Firebase Auth account and then silently import the higher-XP old Cloudflare save into Firestore. No manual recovery button is required.
 - Published updated Firestore rules in the Firebase Console at 7:16 PM to allow the legacy username shape while keeping Auth-gated writes and field restrictions.
+
+2026-05-20 progression, Garage, and first-time flow refresh:
+
+- Upgraded `progressionV2` to schema version 3 with a formula XP curve, derived level, Embers, owned cosmetics, claimed level rewards, Daily Sparks, first-mode intro tracking, tutorial completion, and recent reward history.
+- Added mirrored pure progression utilities in `packages/game-core/src/index.ts` for XP curve lookup, level progress, level rewards, XP awards, and level reward claiming.
+- Rebuilt the first screen around a clear `PLAY NOW` action with smaller `Login / Sign Up`, `Play as Guest`, and `Start Tutorial` actions. Guest/offline play remains available when online services fail.
+- Added the First Drive tutorial entry path, unified Play mode cards, Driver Track progress UI, Daily Sparks panel, level-up reward reveal, result XP/Ember feedback, and first-time mode explanation overlays.
+- Reworked Garage into visual category carousels backed by cosmetic metadata, Ember purchase/equip guards, owned/equipped/locked/buy states, and expanded categories for body, colors, decals, livery, wheels, tires, spoiler, stance, underglow, boost trail, exhaust, horn, goal burst, tint, nameplate, and finish.
+- Improved the stylized low-poly car visual with cleaner bumpers, side skirts, fenders, dynamic ride height, decals, finish materials, exhaust, boost flame anchors, and safer fallbacks for partial remote-player cosmetic payloads.
+- Kept new economy fields inside the existing Firebase progress save payload; no Firestore top-level rule changes were required.
