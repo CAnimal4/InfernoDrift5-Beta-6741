@@ -21,6 +21,13 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Extended the Firebase live smoke to use a second browser context/account, join from the shared invite path, and verify the host sees the joiner in the lobby.
 - Validation passed for this repair: `node --check script.js`, `node --check firebase-online.js`, `node --check smoke_firebase_live.mjs`, `node --test tests/firebase-online.test.mjs`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke:firebase-live`, `npm run smoke:firebase`, `npm run smoke`, `npm run smoke:online-local`, `npm run test:e2e`, `npm run lint`, `npm run worker:check`, `npm run worker:types`, and the develop-web-game Playwright client with screenshots reviewed at `output/web-game/firebase-room-join/shot-2.png`.
 
+2026-05-20 Firebase old-backend regression audit:
+
+- Reviewed the Build InfernoDrift4 thread notes for old backend fixes: global total-XP progression, canonical account leaderboard rows, profile/save restore without downgrading XP, room-share reliability, global lobby chat history, feedback truthfulness, friend request visibility, and cache-busted Pages deploys.
+- Fixed a Firebase parity gap: account sign-in now immediately refreshes the saved progress into Firestore and writes the canonical total-XP leaderboard row, matching the old Worker behavior that repaired missing/stale leaderboard rows on auth/profile restore.
+- Fixed another Firebase parity gap: leaderboard reads now return the signed-in player's own `playerRow` even when that user is outside the top leaderboard page.
+- Extended the live Firebase smoke so a fresh account redeems XP, syncs it, sees it in the Firebase leaderboard, logs out, signs back in, and confirms the same XP is restored and still present as the player's leaderboard row.
+
 2026-05-13:
 
 - Started from `main` at `bc965cf`; current worktree was clean.

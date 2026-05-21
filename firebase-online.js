@@ -463,6 +463,9 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     await loadUserProfile(user.uid);
     state.authStatus = "signed-in";
     const progress = await getProgress();
+    if (progress?.payload) {
+      await syncProgress(progress.payload, { silent: true });
+    }
     return {
       user: makeUserPayload(user.uid, internals.userProfile),
       sessionToken: user.uid,
@@ -593,9 +596,15 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       ),
     );
     const leaderboard = rows.docs.map(mapLeaderboardDoc);
-    const playerRow = state.uid
+    let playerRow = state.uid
       ? leaderboard.find((row) => row.userId === state.uid) || null
       : null;
+    if (state.uid && !playerRow) {
+      const ownScore = await firestore.getDoc(
+        firestore.doc(internals.db, "leaderboards", mode, "scores", state.uid),
+      );
+      playerRow = ownScore.exists() ? mapLeaderboardDoc(ownScore) : null;
+    }
     state.leaderboardStatus = "ready";
     emit("leaderboard.snapshot", { leaderboard, playerRow });
     return { leaderboard, playerRow };
