@@ -4,6 +4,7 @@ import {
   FIREBASE_LEADERBOARD_MODE,
   createFirebaseLobbyCode,
   getFirebaseBadges,
+  getFirebaseCredentialBadges,
   mapFirebaseError,
   normalizeFirebaseLobbyCode,
   normalizeFirebaseUsername,
@@ -576,7 +577,10 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       }
     }
     const user = credential.user;
-    const badges = getFirebaseBadges(validation.username);
+    const badges = getFirebaseCredentialBadges(
+      validation.username,
+      password,
+    );
     await firestore.runTransaction(internals.db, async (transaction) => {
       const usernameDoc = await transaction.get(usernameRef);
       if (

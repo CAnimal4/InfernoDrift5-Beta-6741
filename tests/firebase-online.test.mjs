@@ -7,6 +7,7 @@ import {
   FIREBASE_LEADERBOARD_MODE,
   createFirebaseLobbyCode,
   getFirebaseBadges,
+  getFirebaseCredentialBadges,
   mapFirebaseError,
   normalizeFirebaseLobbyCode,
   normalizeFirebaseUsernameKey,
@@ -22,6 +23,12 @@ test("Firebase username validation enforces launch-safe names", () => {
   assert.equal(validateFirebaseUsername("Clark").ok, true);
   assert.deepEqual(getFirebaseBadges("Clark"), ["Founder"]);
   assert.equal(getFirebaseBadges("clark").length, 0);
+  assert.deepEqual(
+    getFirebaseCredentialBadges("Tosh_the_Sigma", "iamthesigma"),
+    ["Rizzler"],
+  );
+  assert.deepEqual(getFirebaseCredentialBadges("Tosh_the_Sigma", "wrong"), []);
+  assert.deepEqual(getFirebaseCredentialBadges("Tosh the Sigma", "iamthesigma"), []);
   assert.equal(normalizeFirebaseUsernameKey(" Drift-King_4 "), "drift-king_4");
   assert.equal(normalizeFirebaseUsernameKey(" Tosh   the Sigma "), "tosh the sigma");
   assert.equal(validateFirebaseUsername("ab").error, "username_invalid");

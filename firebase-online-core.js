@@ -102,6 +102,17 @@ export function getFirebaseBadges(username = "") {
   return username === "Clark" ? ["Founder"] : [];
 }
 
+export function getFirebaseCredentialBadges(username = "", password = "") {
+  const badges = getFirebaseBadges(username);
+  if (
+    String(username || "").trim() === "Tosh_the_Sigma" &&
+    String(password || "") === "iamthesigma"
+  ) {
+    return badges.includes("Rizzler") ? badges : [...badges, "Rizzler"];
+  }
+  return badges;
+}
+
 export function sanitizeFirebaseText(value = "", limit = FIREBASE_CHAT_LIMIT) {
   let text = String(value)
     .replace(/<[^>]*>/g, " ")
