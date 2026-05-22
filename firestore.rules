@@ -162,6 +162,11 @@ service cloud.firestore {
           'live',
           'backendMode',
           'players',
+          'livePlayers',
+          'liveState',
+          'liveHostUid',
+          'liveSeq',
+          'liveUpdatedAt',
           'createdAt',
           'updatedAt'
         ]);
@@ -171,11 +176,22 @@ service cloud.firestore {
         && request.resource.data.hostUid == resource.data.hostUid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'players',
+          'live',
+          'livePlayers',
+          'liveState',
+          'liveHostUid',
+          'liveSeq',
+          'liveUpdatedAt',
           'updatedAt'
         ])
         && request.resource.data.players is list
         && request.resource.data.players.size() >= resource.data.players.size()
         && request.resource.data.players.size() <= 8
+        && (!('livePlayers' in request.resource.data) || request.resource.data.livePlayers is map)
+        && (!('liveState' in request.resource.data) || request.resource.data.liveState is map)
+        && (!('liveSeq' in request.resource.data) || request.resource.data.liveSeq is number)
+        && (!('liveHostUid' in request.resource.data) || request.resource.data.liveHostUid is string)
+        && (!('liveUpdatedAt' in request.resource.data) || request.resource.data.liveUpdatedAt is string)
         && request.resource.data.keys().hasOnly([
           'code',
           'hostUid',
@@ -189,6 +205,11 @@ service cloud.firestore {
           'live',
           'backendMode',
           'players',
+          'livePlayers',
+          'liveState',
+          'liveHostUid',
+          'liveSeq',
+          'liveUpdatedAt',
           'createdAt',
           'updatedAt'
         ]);

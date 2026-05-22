@@ -1030,6 +1030,53 @@ assert.equal(roomJoinState.mode, "battle-arena");
 assert.equal(roomJoinState.running, true);
 assert.equal(roomJoinState.ui.screen, "playing");
 assert.equal(roomJoinState.online.room.code, "BTTL7");
+assert.equal(roomJoinState.online.room.liveRole, "host");
+const maxLiveState = await page.evaluate(() => {
+  window.__infernodriftTestApi.simulateRoomJoinForTest({
+    code: "MAX77",
+    mode: "max-arena",
+    ownId: "client-user",
+    hostUid: "host-user",
+    liveHostUid: "host-user",
+  });
+  return window.__infernodriftTestApi.simulateFirebaseLiveSnapshotForTest({
+    code: "MAX77",
+    mode: "max-arena",
+    ownId: "client-user",
+    liveSeq: 5,
+  });
+});
+assert.equal(maxLiveState.mode, "max-arena");
+assert.equal(maxLiveState.online.room.liveRole, "client");
+assert.equal(maxLiveState.online.firebaseLive.appliedSeq, 5);
+assert.equal(maxLiveState.hud.score.blue, 2);
+assert.equal(maxLiveState.hud.score.red, 1);
+assert.equal(maxLiveState.ball.x, 5);
+assert.equal(maxLiveState.humanPlayers.length, 1);
+const battleLiveState = await page.evaluate(() => {
+  window.__infernodriftTestApi.simulateRoomJoinForTest({
+    code: "BTT88",
+    mode: "battle-arena",
+    ownId: "client-user",
+    hostUid: "host-user",
+    liveHostUid: "host-user",
+  });
+  return window.__infernodriftTestApi.simulateFirebaseLiveSnapshotForTest({
+    code: "BTT88",
+    mode: "battle-arena",
+    ownId: "client-user",
+    liveSeq: 8,
+  });
+});
+assert.equal(battleLiveState.mode, "battle-arena");
+assert.equal(battleLiveState.battle.score.blue, 1);
+assert.match(battleLiveState.battle.flagMessage, /Blue flag point/);
+const levelRevealState = await page.evaluate(() =>
+  window.__infernodriftTestApi.forceLevelUpRevealForTest(),
+);
+assert.equal(levelRevealState.visible, true);
+assert.match(levelRevealState.text, /Level Up/);
+assert.match(levelRevealState.text, /Next reward/i);
 assert.ok(phase3Progress.personalBests.race);
 await page.waitForTimeout(1500);
 await page.screenshot({

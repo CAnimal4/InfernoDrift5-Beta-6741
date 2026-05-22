@@ -516,18 +516,18 @@ const MAX_GOAL_HEIGHT = 19;
 const MAX_GOAL_DEPTH = 18;
 const MAX_GOAL_LINE_Z = MAX_ARENA_HALF_LENGTH - 26;
 const MAX_BALL_RADIUS = 4.2;
-const MAX_BALL_DRAG = 0.996;
-const MAX_BALL_BOUNCE = 0.78;
-const MAX_CAR_BUMP_FORCE = 16;
-const MAX_MODE_SPEED_MULT = 1.02;
-const MAX_MODE_TURN_MULT = 1.06;
+const MAX_BALL_DRAG = 0.9968;
+const MAX_BALL_BOUNCE = 0.7;
+const MAX_CAR_BUMP_FORCE = 12;
+const MAX_MODE_SPEED_MULT = 1.04;
+const MAX_MODE_TURN_MULT = 1.16;
 const MAX_HEALTH_MAX = 100;
 const MAX_STUN_DURATION = 1.15;
 const MAX_HEALTH_REFILL_RATE = 18;
-const MAX_BALL_LUNGE_RANGE = 54;
-const MAX_BALL_LUNGE_COOLDOWN = 0.8;
-const MAX_BOT_LUNGE_RANGE = 42;
-const MAX_BOT_LUNGE_COOLDOWN = 1.1;
+const MAX_BALL_LUNGE_RANGE = 64;
+const MAX_BALL_LUNGE_COOLDOWN = 0.66;
+const MAX_BOT_LUNGE_RANGE = 38;
+const MAX_BOT_LUNGE_COOLDOWN = 1.25;
 const DEFAULT_CUSTOMIZATION = {
   bodyId: "street",
   wheelId: "grip",
@@ -1100,17 +1100,17 @@ const MAX_BOOST_VARIANTS = [
 ];
 const MAX_BALL_TUNING = {
   kickoffSpeed: 0,
-  dragGrounded: 0.9952,
+  dragGrounded: 0.9966,
   dragAirborne: 0.9969,
-  groundRetention: 0.988,
-  bounceY: 0.56,
-  wallBounce: 0.74,
-  carImpulseBase: 7.8,
-  carImpulseSpeedMult: 0.4,
-  boostImpulseBonus: 5.6,
-  verticalImpulseBase: 0.28,
-  verticalImpulseSpeedMult: 1.7,
-  minHitForce: 7.4,
+  groundRetention: 0.992,
+  bounceY: 0.48,
+  wallBounce: 0.66,
+  carImpulseBase: 7.2,
+  carImpulseSpeedMult: 0.34,
+  boostImpulseBonus: 6.4,
+  verticalImpulseBase: 0.22,
+  verticalImpulseSpeedMult: 1.36,
+  minHitForce: 6.8,
 };
 const MAX_GOAL_RULES = {
   frontPlaneOffset: 2,
@@ -1138,10 +1138,10 @@ const MAX_WALL_RIDE_RULES = {
   stickSpeed: 44,
 };
 const MAX_GOAL_AIM_RULES = {
-  baseBias: 2.8,
-  speedBiasMult: 0.08,
-  lateralDampen: 0.9,
-  verticalDampen: 0.94,
+  baseBias: 4.2,
+  speedBiasMult: 0.11,
+  lateralDampen: 0.82,
+  verticalDampen: 0.9,
 };
 const MAX_DIFFICULTY_PROFILES = {
   [MAX_DIFFICULTY_SUPER_EASY]: {
@@ -1205,11 +1205,11 @@ const MAX_DIFFICULTY_PROFILES = {
     player: {
       speedMult: 1.02,
       accelMult: 1.12,
-      steerFilter: 5.1,
-      turnMult: 0.95,
-      turnAssistBase: 0.9,
-      turnAssistLowSpeedBonus: 0.32,
-      moveHeadingLerp: 0.98,
+      steerFilter: 4.7,
+      turnMult: 1.02,
+      turnAssistBase: 1.02,
+      turnAssistLowSpeedBonus: 0.46,
+      moveHeadingLerp: 1.08,
     },
     camera: {
       distanceMult: 0.82,
@@ -1240,18 +1240,18 @@ const MAX_DIFFICULTY_PROFILES = {
       skillMult: 0.86,
       reactionLead: 0.48,
       recoveryLead: 0.24,
-      supportSpacing: 64,
+      supportSpacing: 70,
       emergencyDropDepth: 62,
       boostTriggerRange: 50,
-      lungeRateMult: 0.66,
-      pressureMult: 0.88,
+      lungeRateMult: 0.5,
+      pressureMult: 0.8,
       passingBias: 0.22,
       rotationMemoryWeight: 0.2,
       teamPressureBase: 0.96,
       reactionWeight: 0.9,
       attackSpeedBonus: -2,
-      topSpeedMult: 0.9,
-      separationRadius: 66,
+      topSpeedMult: 0.86,
+      separationRadius: 74,
     },
   },
   [MAX_DIFFICULTY_CLASSIC]: {
@@ -1260,11 +1260,11 @@ const MAX_DIFFICULTY_PROFILES = {
     player: {
       speedMult: 1.08,
       accelMult: 1.18,
-      steerFilter: 5.6,
-      turnMult: 1.02,
-      turnAssistBase: 0.98,
-      turnAssistLowSpeedBonus: 0.4,
-      moveHeadingLerp: 1.02,
+      steerFilter: 5,
+      turnMult: 1.12,
+      turnAssistBase: 1.1,
+      turnAssistLowSpeedBonus: 0.56,
+      moveHeadingLerp: 1.14,
     },
     camera: {
       distanceMult: 0.88,
@@ -1295,18 +1295,18 @@ const MAX_DIFFICULTY_PROFILES = {
       skillMult: 1,
       reactionLead: 0.58,
       recoveryLead: 0.3,
-      supportSpacing: 58,
+      supportSpacing: 66,
       emergencyDropDepth: 56,
       boostTriggerRange: 42,
-      lungeRateMult: 0.96,
-      pressureMult: 1,
+      lungeRateMult: 0.74,
+      pressureMult: 0.9,
       passingBias: 0.28,
       rotationMemoryWeight: 0.24,
       teamPressureBase: 1.06,
       reactionWeight: 1,
-      attackSpeedBonus: 2,
-      topSpeedMult: 0.98,
-      separationRadius: 60,
+      attackSpeedBonus: 0,
+      topSpeedMult: 0.92,
+      separationRadius: 70,
     },
   },
   [MAX_DIFFICULTY_BRUTAL]: {
@@ -2285,6 +2285,11 @@ const onlineState = {
   pending: [],
   inputSeq: 0,
   lastSnapshotAt: 0,
+  firebaseLiveSeq: 0,
+  firebaseLiveLastPublishAt: 0,
+  firebaseLiveLastApplySeq: 0,
+  firebaseLiveStatus: "idle",
+  firebaseLiveError: "",
   lastFeedbackStatus: "not_configured",
   lastFeedbackError: "",
   lastFeedbackDelivery: "not_configured",
@@ -7075,6 +7080,15 @@ function handleOnlineMessage(raw) {
 }
 
 function updateRemoteSnapshotsFromRoom(room) {
+  applyFirebaseLiveRoomState(room);
+  const livePlayers =
+    room?.livePlayers && typeof room.livePlayers === "object"
+      ? Object.values(room.livePlayers)
+      : [];
+  if (livePlayers.length) {
+    updateRemoteSnapshotsFromMatchLike(livePlayers);
+    return;
+  }
   const players = Array.isArray(room?.players) ? room.players : [];
   const currentId = onlineState.user?.id;
   setRemoteHumanPlayers(
@@ -7093,6 +7107,121 @@ function updateRemoteSnapshotsFromRoom(room) {
         speed: 0,
       })),
   );
+}
+
+function updateRemoteSnapshotsFromMatchLike(players = []) {
+  const currentId = onlineState.user?.id;
+  setRemoteHumanPlayers(
+    players
+      .filter((remote) => remote?.id && remote.id !== currentId)
+      .map((remote, index) => ({
+        id: remote.id || remote.uid,
+        username: remote.username,
+        badge: remote.badge || "",
+        moderator: Boolean(remote.moderator),
+        team: remote.team || (index % 2 === 0 ? "blue" : "red"),
+        x: Number(remote.x ?? player.position.x + 8 + index * 4),
+        y: Number(remote.y ?? 0),
+        z: Number(remote.z ?? player.position.z + 8 + index * 4),
+        heading: Number(remote.heading ?? 0),
+        speed: Number(remote.speed ?? 0),
+        airborne: Boolean(remote.airborne),
+        backflip: Boolean(remote.backflip),
+        barrelRoll: Boolean(remote.barrelRoll),
+        boost: Boolean(remote.boost),
+        demolished: Boolean(remote.demolished),
+        health: Number(remote.health ?? 0),
+        cosmetics: remote.cosmetics || null,
+      })),
+  );
+}
+
+function applyBotLiveSnapshots(botsState = []) {
+  if (!Array.isArray(botsState) || botsState.length === 0) return;
+  botsState.slice(0, bots.length).forEach((data, index) => {
+    const bot = bots[index];
+    if (!bot) return;
+    const x = Number(data.x);
+    const y = Number(data.y);
+    const z = Number(data.z);
+    if (Number.isFinite(x) && Number.isFinite(z)) {
+      bot.setPosition(x, Number.isFinite(y) ? y : bot.position.y, z);
+    }
+    if (Number.isFinite(Number(data.heading))) {
+      bot.heading = Number(data.heading);
+      bot.moveHeading = bot.heading;
+    }
+    if (Number.isFinite(Number(data.speed))) bot.speed = Number(data.speed) / SPEED_TO_MPH_MULT;
+    bot.team = data.team || bot.team;
+    if (isBattleMode()) bot.battleHealth = Number(data.health ?? bot.battleHealth);
+    if (isMaxMode()) bot.maxHealth = Number(data.health ?? bot.maxHealth);
+    bot.setDemolished(Boolean(data.demolished));
+  });
+}
+
+function applyBattleFlagLiveState(flag, data) {
+  if (!flag || !data || typeof data !== "object") return;
+  const x = Number(data.x);
+  const y = Number(data.y);
+  const z = Number(data.z);
+  if (Number.isFinite(x) && Number.isFinite(z)) {
+    flag.group.position.set(x, Number.isFinite(y) ? y : 0, z);
+  }
+  flag.carrier = null;
+  flag.group.userData.carrier = null;
+}
+
+function applyFirebaseLiveRoomState(room = onlineState.room) {
+  if (!isFirebaseLiveRoom(room)) return;
+  const liveState = room.liveState;
+  const seq = Math.max(Number(room.liveSeq || 0), Number(liveState?.seq || 0));
+  if (!liveState || !seq || seq <= onlineState.firebaseLiveLastApplySeq) return;
+  if (isFirebaseLiveHost(room)) {
+    onlineState.firebaseLiveLastApplySeq = seq;
+    return;
+  }
+  onlineState.firebaseLiveLastApplySeq = seq;
+  onlineState.firebaseLiveStatus = "following";
+  if (Number.isFinite(Number(liveState.timeLeft))) {
+    state.timeLeft = Number(liveState.timeLeft);
+  }
+  if (isMaxMode() && liveState.max) {
+    maxMode.blueScore = Math.max(0, Math.floor(Number(liveState.max.blueScore) || 0));
+    maxMode.redScore = Math.max(0, Math.floor(Number(liveState.max.redScore) || 0));
+    if (maxMode.ball && liveState.max.ball) {
+      const ball = liveState.max.ball;
+      maxMode.ball.position.set(
+        Number(ball.x) || 0,
+        Number(ball.y) || MAX_BALL_RADIUS,
+        Number(ball.z) || 0,
+      );
+      maxMode.ballVelocity.set(
+        Number(ball.vx) || 0,
+        Number(ball.vy) || 0,
+        Number(ball.vz) || 0,
+      );
+    }
+  }
+  if (isBattleMode() && liveState.battle) {
+    state.modeRun.battle.blueScore = Math.max(
+      0,
+      Math.floor(Number(liveState.battle.blueScore) || 0),
+    );
+    state.modeRun.battle.redScore = Math.max(
+      0,
+      Math.floor(Number(liveState.battle.redScore) || 0),
+    );
+    state.modeRun.battle.flagMessage = liveState.battle.message || "";
+    applyBattleFlagLiveState(getBattleFlag("blue"), liveState.battle.blueFlag);
+    applyBattleFlagLiveState(getBattleFlag("red"), liveState.battle.redFlag);
+  }
+  if (getModeDefinition().id === GAME_MODE_TIME_TRIAL && liveState.timeTrial) {
+    state.modeRun.progress = Math.max(
+      state.modeRun.progress || 0,
+      Number(liveState.timeTrial.progress) || 0,
+    );
+  }
+  applyBotLiveSnapshots(liveState.bots);
 }
 
 function updateRemoteSnapshotsFromMatch() {
@@ -7131,7 +7260,194 @@ function removeEmptyPayloadFields(payload) {
   return payload;
 }
 
+function serializeLocalLivePlayerSnapshot() {
+  const mode = getModeDefinition();
+  const battle = state.modeRun?.battle || {};
+  const cosmetics = {
+    bodyId: customization.bodyId,
+    wheelId: customization.wheelId,
+    styleId: customization.styleId,
+    powerId: customization.powerId,
+    paintId: customization.paintId,
+    accentId: customization.accentId,
+    tintId: customization.tintId,
+    spoilerId: customization.spoilerId,
+    glowId: customization.glowId,
+    classId: getActiveLoadout()?.classId || "balanced",
+  };
+  return removeEmptyPayloadFields({
+    id: onlineState.user?.id || "",
+    uid: onlineState.user?.id || "",
+    username: onlineState.user?.username || onlineState.username || "Player",
+    mode: mode.id,
+    team: isBattleMode() || isMaxMode() ? "blue" : "neutral",
+    x: Number(player.position.x.toFixed(2)),
+    y: Number(player.position.y.toFixed(2)),
+    z: Number(player.position.z.toFixed(2)),
+    heading: Number(player.heading.toFixed(4)),
+    speed: Math.round(Math.abs(player.speed) * SPEED_TO_MPH_MULT),
+    throttle: input.throttle ? 1 : input.brake ? -1 : 0,
+    steer: Number(getSteer().toFixed(3)),
+    drift: Boolean(input.drift),
+    boost: Boolean(input.boost),
+    airborne: isCarAirborne(player),
+    backflip: Boolean(player.backflipActive),
+    barrelRoll: Boolean(player.barrelRollActive),
+    demolished: Boolean(player.demolished),
+    health: isBattleMode()
+      ? Math.round(player.battleHealth ?? 0)
+      : isMaxMode()
+        ? Math.round(player.maxHealth ?? MAX_HEALTH_MAX)
+        : 0,
+    score: Math.floor(state.score),
+    progress: Number((state.modeRun?.progress || 0).toFixed(2)),
+    checkpoint: Math.floor(state.modeRun?.progress || 0),
+    battleFlag: player.battleCarryingFlag || "",
+    ammo: Math.round(battle.ammo || player.battleAmmo || 0),
+    cosmetics,
+  });
+}
+
+function serializeBotLiveSnapshots() {
+  return bots.slice(0, 10).map((bot) => ({
+    id: String(bot.botId || bot.role || "bot"),
+    username: bot.role || `Bot ${bot.botId || ""}`.trim(),
+    team: bot.team || "neutral",
+    role: bot.role || "",
+    x: Number(bot.position.x.toFixed(2)),
+    y: Number(bot.position.y.toFixed(2)),
+    z: Number(bot.position.z.toFixed(2)),
+    heading: Number(bot.heading.toFixed(4)),
+    speed: Math.round(Math.abs(bot.speed || 0) * SPEED_TO_MPH_MULT),
+    boost: (bot.maxBoostTimer ?? 0) > 0.05,
+    airborne: isCarAirborne(bot),
+    demolished: Boolean(bot.demolished),
+    health: Math.round(
+      isBattleMode()
+        ? (bot.battleHealth ?? BATTLE_RULES.maxHealth)
+        : (bot.maxHealth ?? MAX_HEALTH_MAX),
+    ),
+  }));
+}
+
+function serializeBattleFlagLiveState(flag) {
+  if (!flag) return null;
+  return {
+    team: flag.team,
+    carrier:
+      flag.carrier === player
+        ? onlineState.user?.id || "player"
+        : flag.carrier?.botId
+          ? `bot-${flag.carrier.botId}`
+          : "",
+    x: Number(flag.group.position.x.toFixed(2)),
+    y: Number(flag.group.position.y.toFixed(2)),
+    z: Number(flag.group.position.z.toFixed(2)),
+    home: flag.group.position.distanceTo(flag.home) <= 2.5,
+  };
+}
+
+function serializeFirebaseLiveStateSnapshot() {
+  const mode = getModeDefinition();
+  const players = [serializeLocalLivePlayerSnapshot()].concat(
+    [...remotePlayers.values()].map((remote) => ({
+      id: remote.id,
+      uid: remote.id,
+      username: remote.username,
+      team: remote.team,
+      x: Number(remote.car.position.x.toFixed(2)),
+      y: Number(remote.car.position.y.toFixed(2)),
+      z: Number(remote.car.position.z.toFixed(2)),
+      heading: Number(remote.car.heading.toFixed(4)),
+      speed: Math.round(Math.abs(remote.speed || 0)),
+      boost: Boolean(remote.boost),
+      airborne: Boolean(remote.airborne),
+      backflip: Boolean(remote.backflip),
+      barrelRoll: Boolean(remote.barrelRoll),
+      demolished: Boolean(remote.car.demolished),
+    })),
+  );
+  return removeEmptyPayloadFields({
+    mode: mode.id,
+    hostUid: onlineState.user?.id || "",
+    seq: onlineState.firebaseLiveSeq,
+    clock: Number(state.elapsed.toFixed(2)),
+    timeLeft: Number(state.timeLeft.toFixed(2)),
+    score: isMaxMode()
+      ? { blue: maxMode.blueScore, red: maxMode.redScore }
+      : isBattleMode()
+        ? {
+            blue: state.modeRun.battle.blueScore,
+            red: state.modeRun.battle.redScore,
+          }
+        : { player: Math.floor(state.score) },
+    players,
+    bots: serializeBotLiveSnapshots(),
+    max: isMaxMode()
+      ? {
+          ball: maxMode.ball
+            ? {
+                x: Number(maxMode.ball.position.x.toFixed(2)),
+                y: Number(maxMode.ball.position.y.toFixed(2)),
+                z: Number(maxMode.ball.position.z.toFixed(2)),
+                vx: Number(maxMode.ballVelocity.x.toFixed(2)),
+                vy: Number(maxMode.ballVelocity.y.toFixed(2)),
+                vz: Number(maxMode.ballVelocity.z.toFixed(2)),
+              }
+            : null,
+          blueScore: maxMode.blueScore,
+          redScore: maxMode.redScore,
+        }
+      : null,
+    battle: isBattleMode()
+      ? {
+          blueScore: state.modeRun.battle.blueScore,
+          redScore: state.modeRun.battle.redScore,
+          blueFlag: serializeBattleFlagLiveState(getBattleFlag("blue")),
+          redFlag: serializeBattleFlagLiveState(getBattleFlag("red")),
+          message: state.modeRun.battle.flagMessage || "",
+        }
+      : null,
+    timeTrial:
+      mode.id === GAME_MODE_TIME_TRIAL
+        ? {
+            progress: Number((state.modeRun.progress || 0).toFixed(2)),
+            target: Number((state.modeRun.target || 0).toFixed(2)),
+            bestPlayer: onlineState.user?.username || onlineState.username,
+          }
+        : null,
+  });
+}
+
+function sendFirebaseLiveRoomFrame() {
+  if (!isFirebaseLiveRoom() || !state.running || !firebaseOnline) return;
+  const now = performance.now();
+  if (now - onlineState.firebaseLiveLastPublishAt < 180) return;
+  onlineState.firebaseLiveLastPublishAt = now;
+  onlineState.firebaseLiveSeq += 1;
+  const isHost = isFirebaseLiveHost();
+  const liveState = isHost ? serializeFirebaseLiveStateSnapshot() : null;
+  firebaseOnline
+    .updateLobbyLiveState(onlineState.room.code, {
+      player: serializeLocalLivePlayerSnapshot(),
+      state: liveState,
+    })
+    .then((room) => {
+      onlineState.firebaseLiveStatus = isHost ? "hosting" : "joined";
+      onlineState.firebaseLiveError = "";
+      if (room) onlineState.room = room;
+    })
+    .catch((error) => {
+      onlineState.firebaseLiveStatus = "error";
+      onlineState.firebaseLiveError = describeOnlineError(error?.message || "");
+    });
+}
+
 function sendOnlineInputFrame(dt = 1 / 60) {
+  if (isFirebaseLiveRoom()) {
+    sendFirebaseLiveRoomFrame();
+    return;
+  }
   if (!isOnlineSocketOpen() || !onlineState.room || !state.running) return;
   onlineState.inputSeq += 1;
   if (onlineState.inputSeq % 4 !== 0) return;
@@ -7209,7 +7525,8 @@ function showChatNotice(message) {
     .replace(/[<>]/g, "")
     .trim();
   if (!text || from === "System") return;
-  if (chatNoticeFrom) chatNoticeFrom.textContent = from.slice(0, 24);
+  if (chatNoticeFrom)
+    chatNoticeFrom.textContent = `${message.direct ? "DM from " : "Chat from "}${from}`.slice(0, 34);
   if (chatNoticeText) {
     chatNoticeText.textContent =
       text.length > 96 ? `${text.slice(0, 93).trim()}...` : text;
@@ -7218,7 +7535,7 @@ function showChatNotice(message) {
   chatNotice.dataset.dmUsername = message.direct ? from : "";
   chatNotice.hidden = false;
   if (onlineState.chatNoticeTimer) clearTimeout(onlineState.chatNoticeTimer);
-  onlineState.chatNoticeTimer = window.setTimeout(() => hideChatNotice(), 5000);
+  onlineState.chatNoticeTimer = window.setTimeout(() => hideChatNotice(), 9000);
 }
 
 function pushOnlineChatMessage(message, { notify = true } = {}) {
@@ -7293,6 +7610,42 @@ function isFirebaseLobbyRoom(room = onlineState.room) {
   return Boolean(room?.firebaseLobby);
 }
 
+function isFirebaseLiveMode(mode = onlineState.room?.mode || settings.activeGameMode) {
+  return [GAME_MODE_MAX1, GAME_MODE_BATTLE, GAME_MODE_TIME_TRIAL].includes(
+    normalizeGameModeId(mode),
+  );
+}
+
+function isFirebaseLiveRoom(room = onlineState.room) {
+  return Boolean(
+    isFirebaseBackendMode() &&
+      room?.firebaseLobby &&
+      room?.code &&
+      isFirebaseLiveMode(room.mode),
+  );
+}
+
+function getFirebaseLiveHostUid(room = onlineState.room) {
+  if (!room) return "";
+  const activeIds = (Array.isArray(room.players) ? room.players : [])
+    .map((entry) => String(entry.uid || entry.id || ""))
+    .filter(Boolean)
+    .sort();
+  const liveHost = String(room.liveHostUid || "");
+  if (liveHost && activeIds.includes(liveHost)) return liveHost;
+  const lobbyHost = String(room.hostUid || room.host || "");
+  if (lobbyHost && activeIds.includes(lobbyHost)) return lobbyHost;
+  return (
+    activeIds[0] ||
+    ""
+  );
+}
+
+function isFirebaseLiveHost(room = onlineState.room) {
+  const ownId = String(onlineState.user?.id || "");
+  return Boolean(ownId && ownId === getFirebaseLiveHostUid(room));
+}
+
 function getLatestJoinableRoomInvite() {
   const currentCode = onlineState.room?.code || "";
   for (let i = onlineState.chatMessages.length - 1; i >= 0; i -= 1) {
@@ -7319,7 +7672,7 @@ async function createFirebaseLobbyRoom() {
     handleOnlineMessage(JSON.stringify({ type: "room.snapshot", room }));
     pushOnlineChatMessage({
       from: "System",
-      text: `Online lobby ${room.code} created. Chat and invites work here; live racing still needs a dedicated game server.`,
+      text: `Online lobby ${room.code} created. Firebase live room sync is active for Max, Battle, and Time Trials.`,
       quick: true,
       roomInvite: {
         code: room.code,
@@ -10899,6 +11252,7 @@ function setRemoteHumanPlayers(players = []) {
     remote.speed = Number.isFinite(Number(playerData.speed))
       ? Number(playerData.speed)
       : 0;
+    remote.car.speed = remote.speed / SPEED_TO_MPH_MULT;
     if (!remote.visible) {
       remote.car.setPosition(x, y, z);
       remote.visible = true;
@@ -15863,7 +16217,16 @@ function updateDemolishedCar(car, dt) {
 
 function resolveMaxBumps() {
   const ballTuning = getMaxBallTuning();
-  const cars = [player, ...bots].filter((car) => !car.demolished);
+  const remoteMaxCars =
+    isFirebaseLiveRoom() && isFirebaseLiveHost()
+      ? [...remotePlayers.values()].map((remote) => {
+          remote.car.team = remote.team || "blue";
+          return remote.car;
+        })
+      : [];
+  const cars = [player, ...bots, ...remoteMaxCars].filter(
+    (car) => !car.demolished,
+  );
   for (let i = 0; i < cars.length; i += 1) {
     for (let j = i + 1; j < cars.length; j += 1) {
       const a = cars[i];
@@ -17087,7 +17450,14 @@ function recordGhostSample(dt) {
 }
 
 function allBattleCars() {
-  return [player, ...bots].filter(
+  const remoteBattleCars =
+    isFirebaseLiveRoom() && isFirebaseLiveHost()
+      ? [...remotePlayers.values()].map((remote) => {
+          remote.car.team = remote.team;
+          return remote.car;
+        })
+      : [];
+  return [player, ...bots, ...remoteBattleCars].filter(
     (car) => car.team === "blue" || car.team === "red",
   );
 }
@@ -19880,6 +20250,56 @@ function getResultRows() {
   ];
 }
 
+function renderLevelUpReveal(oldLevel, newLevel, rewards = []) {
+  if (!messageStats?.parentElement || newLevel <= oldLevel) return;
+  messageStats.parentElement
+    .querySelectorAll(".level-reward-reveal")
+    .forEach((node) => node.remove());
+  const xpProgress = getXPProgressInCurrentLevel(getProgressionTotalXp());
+  const nextRewards = getLevelRewards(newLevel + 1)
+    .slice(0, 2)
+    .map((reward) => reward.label)
+    .join(" + ");
+  const rewardCards = (Array.isArray(rewards) ? rewards : [])
+    .map(
+      (reward) =>
+        `<span class="level-reward-card">${reward.type === "embers" ? "Embers" : "Unlock"}<strong>${reward.label}</strong></span>`,
+    )
+    .join("");
+  const reveal = document.createElement("div");
+  reveal.className = "level-reward-reveal";
+  reveal.innerHTML = `
+    <div class="level-reward-burst" aria-hidden="true">
+      <i></i><i></i><i></i><i></i><i></i><i></i>
+    </div>
+    <div class="level-reward-title">
+      <span>Level Up</span>
+      <strong>${oldLevel} &rarr; ${newLevel}</strong>
+    </div>
+    <div class="level-reward-progress">
+      <span>Next Level</span>
+      <strong>${xpProgress.current}/${xpProgress.required} XP</strong>
+      <div><i style="width:${Math.round(xpProgress.percent * 100)}%"></i></div>
+    </div>
+    <div class="level-reward-cards">${rewardCards || "<span class=\"level-reward-card\">Reward<strong>Progress saved</strong></span>"}</div>
+    <p class="level-reward-next">Next reward: ${nextRewards || `Level ${newLevel + 1} Embers`}</p>
+  `;
+  messageStats.before(reveal);
+  state.screenPulse = Math.max(state.screenPulse, 0.92);
+  state.cameraShake = Math.max(state.cameraShake, 0.25);
+  for (let i = 0; i < 42; i += 1) {
+    spawnFx(
+      player.position
+        .clone()
+        .add(new THREE.Vector3((Math.random() - 0.5) * 5, 1 + Math.random() * 2, (Math.random() - 0.5) * 5)),
+      new THREE.Vector3((Math.random() - 0.5) * 4, 2 + Math.random() * 3, (Math.random() - 0.5) * 4),
+      Math.random() < 0.5 ? 0xffc457 : 0x56e9ff,
+      1.1,
+      0.52,
+    );
+  }
+}
+
 function showMessage(
   title,
   body,
@@ -19890,10 +20310,13 @@ function showMessage(
   messageTitle.textContent = title;
   const levelUpText =
     state.modeRun.newLevel > state.modeRun.oldLevel
-      ? ` Level up: ${state.modeRun.oldLevel} → ${state.modeRun.newLevel}. Rewards: ${state.modeRun.levelRewards.map((reward) => reward.label).join(", ")}.`
+      ? ` Level up! Rewards are revealed below.`
       : "";
   messageBody.textContent = `${body}${levelUpText}`;
   message.classList.toggle("level-up-reveal", Boolean(levelUpText));
+  message
+    .querySelectorAll(".level-reward-reveal")
+    .forEach((node) => node.remove());
   nextBtn.textContent = nextLabel;
   retryBtn.hidden = action === "retry" || action === "restart-current";
   if (messageStats) {
@@ -19905,6 +20328,13 @@ function showMessage(
           `<div class="result-stat"><span>${label}</span><strong>${value}</strong></div>`,
       )
       .join("");
+  }
+  if (state.modeRun.newLevel > state.modeRun.oldLevel) {
+    renderLevelUpReveal(
+      state.modeRun.oldLevel,
+      state.modeRun.newLevel,
+      state.modeRun.levelRewards,
+    );
   }
   message.classList.add("show");
   document.body.classList.remove("playing");
@@ -21554,8 +21984,17 @@ window.render_game_to_text = () => {
             members: onlineState.room.players || [],
             players: onlineState.room.players?.length ?? 0,
             bots: onlineState.room.bots ?? 0,
+            liveHostUid: getFirebaseLiveHostUid(onlineState.room),
+            liveRole: isFirebaseLiveHost(onlineState.room) ? "host" : "client",
+            liveSeq: onlineState.room.liveSeq || 0,
           }
         : null,
+      firebaseLive: {
+        status: onlineState.firebaseLiveStatus,
+        seq: onlineState.firebaseLiveSeq,
+        appliedSeq: onlineState.firebaseLiveLastApplySeq,
+        error: onlineState.firebaseLiveError,
+      },
       leaderboard: displayLeaderboard.slice(0, 10).map((row, index) => ({
         ...row,
         tier: getLeaderboardTier(row, index),
@@ -21582,7 +22021,7 @@ window.render_game_to_text = () => {
       },
       lastError: onlineState.lastError,
       note: isFirebaseBackendMode()
-        ? "Firebase is the primary online-lite backend; authoritative live rooms need a separate server and stay unavailable here."
+        ? "Firebase is the primary backend. Max, Battle, and Time Trial rooms share live host-simulated state; this is not server-authoritative anti-cheat."
         : onlineState.backendUrl
           ? "Static client keeps offline play stable and uses configured backend for online rooms."
           : "Static client is playable offline; live rooms require a configured backend URL.",
@@ -21720,7 +22159,14 @@ window.__infernodriftTestApi = {
     return JSON.parse(window.render_game_to_text()).online.leaderboard;
   },
   simulateRoomJoinForTest: (room = {}) => {
+    if (room.firebaseLobby !== false) onlineState.backendMode = BACKEND_MODE_FIREBASE;
     onlineState.pendingRoomJoinLaunch = true;
+    if (room.ownId || !onlineState.user) {
+      onlineState.user = {
+        id: room.ownId || "test-user",
+        username: onlineState.username || "SmokeRacer",
+      };
+    }
     handleOnlineMessage(
       JSON.stringify({
         type: "room.snapshot",
@@ -21729,13 +22175,102 @@ window.__infernodriftTestApi = {
           mode: normalizeGameModeId(room.mode || GAME_MODE_BATTLE),
           playlist: room.playlist || "private",
           firebaseLobby: Boolean(room.firebaseLobby ?? true),
-          live: false,
-          players: room.players || [],
+          live: Boolean(room.live ?? true),
+          hostUid: room.hostUid || onlineState.user.id,
+          liveHostUid: room.liveHostUid || room.hostUid || onlineState.user.id,
+          liveSeq: room.liveSeq || 0,
+          liveState: room.liveState || null,
+          livePlayers: room.livePlayers || {},
+          players: room.players || [
+            {
+              id: onlineState.user.id,
+              uid: onlineState.user.id,
+              username: onlineState.user.username,
+            },
+          ],
           bots: room.bots ?? 0,
         },
       }),
     );
     return JSON.parse(window.render_game_to_text());
+  },
+  simulateFirebaseLiveSnapshotForTest: (room = {}) => {
+    onlineState.backendMode = BACKEND_MODE_FIREBASE;
+    if (room.ownId || !onlineState.user) {
+      onlineState.user = {
+        id: room.ownId || "client-user",
+        username: onlineState.username || "SmokeRacer",
+      };
+    }
+    onlineState.firebaseLiveLastApplySeq = 0;
+    const mode = normalizeGameModeId(room.mode || settings.activeGameMode);
+    handleOnlineMessage(
+      JSON.stringify({
+        type: "room.snapshot",
+        room: {
+          code: String(room.code || "LIVE7").toUpperCase(),
+          mode,
+          playlist: "firebase-live",
+          firebaseLobby: true,
+          live: true,
+          hostUid: room.hostUid || "host-user",
+          liveHostUid: room.liveHostUid || "host-user",
+          liveSeq: room.liveSeq || 1,
+          players: room.players || [
+            { id: onlineState.user.id, uid: onlineState.user.id, username: onlineState.user.username },
+            { id: "host-user", uid: "host-user", username: "Host" },
+          ],
+          livePlayers: room.livePlayers || {
+            "host-user": {
+              id: "host-user",
+              uid: "host-user",
+              username: "Host",
+              team: mode === GAME_MODE_TIME_TRIAL ? "neutral" : "red",
+              x: 16,
+              y: 0,
+              z: -22,
+              heading: 0.4,
+              speed: 38,
+              boost: true,
+            },
+          },
+          liveState: room.liveState || {
+            mode,
+            hostUid: "host-user",
+            seq: room.liveSeq || 1,
+            timeLeft: 155,
+            score: mode === GAME_MODE_MAX1 ? { blue: 2, red: 1 } : { blue: 1, red: 0 },
+            players: [],
+            bots: [{ id: "bot-a", team: "red", x: -12, y: 0, z: 18, heading: 1.1, speed: 24, health: 88 }],
+            max:
+              mode === GAME_MODE_MAX1
+                ? { blueScore: 2, redScore: 1, ball: { x: 5, y: MAX_BALL_RADIUS, z: -8, vx: 1.5, vy: 0, vz: 2.25 } }
+                : null,
+            battle:
+              mode === GAME_MODE_BATTLE
+                ? { blueScore: 1, redScore: 0, message: "Blue flag point" }
+                : null,
+            timeTrial:
+              mode === GAME_MODE_TIME_TRIAL
+                ? { progress: 3, target: 8, bestPlayer: "Host" }
+                : null,
+          },
+        },
+      }),
+    );
+    return JSON.parse(window.render_game_to_text());
+  },
+  forceLevelUpRevealForTest: () => {
+    state.modeRun.oldLevel = 1;
+    state.modeRun.newLevel = 2;
+    state.modeRun.levelRewards = getLevelRewards(2);
+    state.modeRun.xpGained = 999;
+    state.modeRun.embersGained = 65;
+    showMessage("Level Complete", "Test run complete.", "Continue", "message-next", getModeResultRows(true));
+    return {
+      visible: Boolean(document.querySelector(".level-reward-reveal")),
+      text: document.querySelector(".level-reward-reveal")?.textContent || "",
+    };
   },
   simulateSentDirectMessageForTest: ({
     username = "TestFriend",

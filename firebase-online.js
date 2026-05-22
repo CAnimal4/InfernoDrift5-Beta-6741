@@ -25,6 +25,14 @@ const CHAT_HISTORY_LIMIT = 40;
 const FRIEND_QUERY_LIMIT = 50;
 const CHAT_COOLDOWN_MS = 1700;
 const FIREBASE_LOBBY_MAX_PLAYERS = 8;
+const FIREBASE_LIVE_MODES = new Set([
+  "infernodriftmax1",
+  "max-arena",
+  "battle-arena",
+  "time-trial",
+]);
+const FIREBASE_LIVE_PLAYER_LIMIT = 8;
+const FIREBASE_LIVE_STATE_LIMIT = 12000;
 
 let sdkPromise = null;
 
@@ -174,15 +182,182 @@ function mapLobbyDoc(snapshot) {
     teamSize: Number(data.teamSize) || 2,
     size: Number(data.size) || FIREBASE_LOBBY_MAX_PLAYERS,
     botFill: data.botFill !== false,
-    bots: 0,
+    bots: Array.isArray(data.liveState?.bots) ? data.liveState.bots.length : 0,
     private: true,
-    live: false,
+    live: Boolean(data.live || data.liveState),
     firebaseLobby: true,
     backendMode: FIREBASE_BACKEND_MODE,
     hostUid: data.hostUid || "",
     hostUsername: data.hostUsername || "",
     players,
+    liveHostUid: data.liveHostUid || data.hostUid || "",
+    liveSeq: Math.max(0, Math.floor(Number(data.liveSeq || 0))),
+    liveUpdatedAt: data.liveUpdatedAt || "",
+    liveState:
+      data.liveState && typeof data.liveState === "object"
+        ? data.liveState
+        : null,
+    livePlayers:
+      data.livePlayers && typeof data.livePlayers === "object"
+        ? data.livePlayers
+        : {},
   };
+}
+
+function isLiveLobbyMode(mode) {
+  return FIREBASE_LIVE_MODES.has(String(mode || ""));
+}
+
+function trimLivePayload(value, fallback = {}) {
+  const text = JSON.stringify(value ?? fallback);
+  if (text.length <= FIREBASE_LIVE_STATE_LIMIT) return value ?? fallback;
+  return fallback;
+}
+
+function sanitizeLivePlayerSnapshot(input = {}, uid = "") {
+  const n = (value, fallback = 0, digits = 2) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? Number(number.toFixed(digits)) : fallback;
+  };
+  return trimLivePayload(
+    {
+      id: String(input.id || uid).slice(0, 80),
+      uid: String(input.uid || uid).slice(0, 80),
+      username: normalizeFirebaseUsername(input.username || "Player"),
+      team: ["blue", "red", "neutral"].includes(input.team)
+        ? input.team
+        : "neutral",
+      x: n(input.x),
+      y: n(input.y),
+      z: n(input.z),
+      heading: n(input.heading, 0, 4),
+      speed: Math.max(0, Math.min(260, Math.round(Number(input.speed) || 0))),
+      boost: Boolean(input.boost),
+      drift: Boolean(input.drift),
+      airborne: Boolean(input.airborne),
+      backflip: Boolean(input.backflip),
+      barrelRoll: Boolean(input.barrelRoll),
+      demolished: Boolean(input.demolished),
+      health: Math.max(0, Math.min(999, Math.round(Number(input.health) || 0))),
+      score: Math.max(0, Math.floor(Number(input.score) || 0)),
+      progress: Math.max(0, Number(n(input.progress))),
+      checkpoint: Math.max(0, Math.floor(Number(input.checkpoint) || 0)),
+      cosmetics:
+        input.cosmetics && typeof input.cosmetics === "object"
+          ? Object.fromEntries(
+              Object.entries(input.cosmetics)
+                .slice(0, 18)
+                .map(([key, value]) => [
+                  String(key).slice(0, 32),
+                  String(value || "").slice(0, 48),
+                ]),
+            )
+          : null,
+      at: nowIso(),
+    },
+    {
+      id: String(uid).slice(0, 80),
+      uid: String(uid).slice(0, 80),
+      username: "Player",
+      team: "neutral",
+      x: 0,
+      y: 0,
+      z: 0,
+      heading: 0,
+      speed: 0,
+      at: nowIso(),
+    },
+  );
+}
+
+function sanitizeLiveStateSnapshot(input = {}) {
+  if (!input || typeof input !== "object") return null;
+  const n = (value, fallback = 0, digits = 2) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? Number(number.toFixed(digits)) : fallback;
+  };
+  const sanitizeCar = (car = {}) => ({
+    id: String(car.id || car.uid || car.botId || "").slice(0, 80),
+    username: String(car.username || car.name || "Player").slice(0, 24),
+    team: ["blue", "red", "neutral"].includes(car.team) ? car.team : "neutral",
+    x: n(car.x),
+    y: n(car.y),
+    z: n(car.z),
+    heading: n(car.heading, 0, 4),
+    speed: Math.max(0, Math.min(260, Math.round(Number(car.speed) || 0))),
+    boost: Boolean(car.boost),
+    airborne: Boolean(car.airborne),
+    backflip: Boolean(car.backflip),
+    barrelRoll: Boolean(car.barrelRoll),
+    demolished: Boolean(car.demolished),
+    health: Math.max(0, Math.min(999, Math.round(Number(car.health) || 0))),
+    role: String(car.role || "").slice(0, 24),
+  });
+  return trimLivePayload(
+    {
+      mode: String(input.mode || "").slice(0, 40),
+      hostUid: String(input.hostUid || "").slice(0, 80),
+      seq: Math.max(0, Math.floor(Number(input.seq || 0))),
+      clock: Math.max(0, Number(n(input.clock))),
+      timeLeft: Math.max(0, Number(n(input.timeLeft))),
+      score: input.score && typeof input.score === "object" ? input.score : {},
+      players: Array.isArray(input.players)
+        ? input.players.slice(0, FIREBASE_LIVE_PLAYER_LIMIT).map(sanitizeCar)
+        : [],
+      bots: Array.isArray(input.bots)
+        ? input.bots.slice(0, 12).map(sanitizeCar)
+        : [],
+      max:
+        input.max && typeof input.max === "object"
+          ? {
+              ball: input.max.ball
+                ? {
+                    x: n(input.max.ball.x),
+                    y: n(input.max.ball.y, 4.2),
+                    z: n(input.max.ball.z),
+                    vx: n(input.max.ball.vx),
+                    vy: n(input.max.ball.vy),
+                    vz: n(input.max.ball.vz),
+                  }
+                : null,
+              blueScore: Math.max(
+                0,
+                Math.floor(Number(input.max.blueScore) || 0),
+              ),
+              redScore: Math.max(
+                0,
+                Math.floor(Number(input.max.redScore) || 0),
+              ),
+            }
+          : null,
+      battle:
+        input.battle && typeof input.battle === "object"
+          ? {
+              blueScore: Math.max(
+                0,
+                Math.floor(Number(input.battle.blueScore) || 0),
+              ),
+              redScore: Math.max(
+                0,
+                Math.floor(Number(input.battle.redScore) || 0),
+              ),
+              blueFlag: input.battle.blueFlag || null,
+              redFlag: input.battle.redFlag || null,
+              message: String(input.battle.message || "").slice(0, 80),
+            }
+          : null,
+      timeTrial:
+        input.timeTrial && typeof input.timeTrial === "object"
+          ? {
+              progress: Math.max(0, Number(n(input.timeTrial.progress))),
+              target: Math.max(0, Number(n(input.timeTrial.target))),
+              bestPlayer: String(input.timeTrial.bestPlayer || "").slice(0, 24),
+            }
+          : null,
+      updatedAtClient: nowIso(),
+    },
+    null,
+  );
 }
 
 export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
@@ -900,6 +1075,75 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     return joinedRoom;
   }
 
+  async function updateLobbyLiveState(
+    code,
+    { player = null, state: liveState = null } = {},
+  ) {
+    requireReady();
+    if (!state.uid) throw new Error("sign_in_required");
+    const validation = validateFirebaseLobbyCode(code);
+    if (!validation.ok) throw new Error(validation.error);
+    const { firestore } = internals.sdk;
+    const ref = firestore.doc(
+      internals.db,
+      LOBBY_COLLECTION_ID,
+      validation.code,
+    );
+    let mappedRoom = null;
+    await firestore.runTransaction(internals.db, async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists()) throw new Error("room_not_found");
+      const data = snapshot.data() || {};
+      const players = Array.isArray(data.players) ? data.players : [];
+      if (!players.some((entry) => entry.uid === state.uid)) {
+        throw new Error("room_not_joined");
+      }
+      if (!isLiveLobbyMode(data.mode)) throw new Error("room_live_unsupported");
+      const nextLivePlayers =
+        data.livePlayers && typeof data.livePlayers === "object"
+          ? { ...data.livePlayers }
+          : {};
+      if (player) {
+        nextLivePlayers[state.uid] = sanitizeLivePlayerSnapshot(
+          {
+            ...player,
+            uid: state.uid,
+            id: state.uid,
+            username: state.username || player.username || "Player",
+          },
+          state.uid,
+        );
+      }
+      Object.keys(nextLivePlayers).forEach((uid) => {
+        if (!players.some((entry) => entry.uid === uid)) {
+          delete nextLivePlayers[uid];
+        }
+      });
+      const cleanState = sanitizeLiveStateSnapshot(liveState);
+      const patch = {
+        live: true,
+        livePlayers: nextLivePlayers,
+        liveUpdatedAt: nowIso(),
+        updatedAt: firestore.serverTimestamp(),
+      };
+      if (cleanState) {
+        patch.liveState = cleanState;
+        patch.liveHostUid = state.uid;
+        patch.liveSeq = Math.max(
+          Number(data.liveSeq || 0) + 1,
+          Number(cleanState.seq || 0),
+        );
+      }
+      transaction.set(ref, patch, { merge: true });
+      mappedRoom = mapLobbyDoc({
+        id: snapshot.id,
+        data: () => ({ ...data, ...patch }),
+      });
+    });
+    if (mappedRoom) emit("room.snapshot", { room: mappedRoom });
+    return mappedRoom;
+  }
+
   async function submitFeedback(payload = {}) {
     requireReady();
     if (!state.uid) throw new Error("sign_in_required");
@@ -1141,6 +1385,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     submitLeaderboard,
     createLobby,
     joinLobby,
+    updateLobbyLiveState,
     subscribeChat,
     unsubscribeRealtime,
     sendChat,
