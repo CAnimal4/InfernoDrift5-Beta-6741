@@ -5,9 +5,12 @@ import {
   FIREBASE_CHAT_LIMIT,
   FIREBASE_FEEDBACK_LIMIT,
   FIREBASE_LEADERBOARD_MODE,
+  FIREBASE_PASSWORD_BADGE_ACCOUNTS,
+  FIREBASE_STATIC_BADGE_ACCOUNTS,
   createFirebaseLobbyCode,
   getFirebaseBadges,
   getFirebaseCredentialBadges,
+  getFirebasePasswordBadgeAccount,
   isFirebaseCredentialUsername,
   mapFirebaseError,
   normalizeFirebaseLobbyCode,
@@ -20,6 +23,10 @@ import {
   validateFirebaseScore,
   validateFirebaseUsername,
 } from "../firebase-online-core.js";
+import {
+  chooseLatestSavePayload,
+  mergeFirebaseSavePayload,
+} from "../firebase-online.js";
 
 test("Firebase username validation enforces launch-safe names", () => {
   assert.equal(validateFirebaseUsername("Clark").ok, true);
@@ -44,7 +51,19 @@ test("Firebase username validation enforces launch-safe names", () => {
   assert.deepEqual(getFirebaseCredentialBadges("Tosh_the_Sigma", "wrong"), []);
   assert.deepEqual(getFirebaseCredentialBadges("Joshua", "wrong"), []);
   assert.deepEqual(getFirebaseCredentialBadges("MODERATOR", "wrong"), []);
-  assert.deepEqual(getFirebaseCredentialBadges("Tosh the Sigma", "iamthesigma"), []);
+  assert.deepEqual(getFirebaseCredentialBadges("Tosh the Sigma", "iamthesigma"), ["Rizzler"]);
+  assert.deepEqual(
+    FIREBASE_STATIC_BADGE_ACCOUNTS.map((entry) => entry.username),
+    ["Clark", "JFine"],
+  );
+  assert.deepEqual(
+    FIREBASE_PASSWORD_BADGE_ACCOUNTS.map((entry) => entry.username),
+    ["Tosh_the_Sigma", "Joshua", "MODERATOR"],
+  );
+  assert.equal(
+    getFirebasePasswordBadgeAccount("Tosh the Sigma", "iamthesigma")?.username,
+    "Tosh_the_Sigma",
+  );
   assert.equal(normalizeFirebaseUsernameKey(" Drift-King_4 "), "drift-king_4");
   assert.equal(normalizeFirebaseUsernameKey(" Tosh   the Sigma "), "tosh the sigma");
   assert.equal(validateFirebaseUsername("ab").error, "username_invalid");
@@ -68,6 +87,7 @@ test("Firebase username validation enforces launch-safe names", () => {
   );
   assert.equal(validateFirebaseUsername("MODERATOR").error, "username_rejected");
   assert.equal(isFirebaseCredentialUsername("MODERATOR"), true);
+  assert.equal(isFirebaseCredentialUsername("Tosh the Sigma"), true);
   assert.equal(isFirebaseCredentialUsername("moderator"), false);
   assert.equal(
     validateFirebaseAccountCredentials(
@@ -75,6 +95,10 @@ test("Firebase username validation enforces launch-safe names", () => {
       "thefoxjumpedoverthelazyriver",
     ).ok,
     true,
+  );
+  assert.equal(
+    validateFirebaseAccountCredentials("Tosh the Sigma", "iamthesigma").username,
+    "Tosh_the_Sigma",
   );
   assert.equal(
     validateFirebaseAccountCredentials("MODERATOR", "wrongpass").error,
@@ -95,6 +119,62 @@ test("Firebase username validation enforces launch-safe names", () => {
   assert.equal(
     usernameToFirebaseEmail("Tosh the Sigma"),
     "id4.tosh.the.sigma@infernodrift4.firebaseapp.com",
+  );
+});
+
+test("Firebase account save merge keeps highest XP and newest device state", () => {
+  const olderServer = {
+    saveMeta: { updatedAtMs: 1_000 },
+    customization: { bodyId: "street", paintId: "ember" },
+    garage: { activeLoadoutId: "loadout-a" },
+    progressionV2: {
+      totalXp: 9000,
+      xp: 9000,
+      embers: 80,
+      ownedCosmetics: ["bodyId-street"],
+      dailyGift: { seed: "2026-05-23", claimed: false },
+      dailySparks: {
+        seed: "2026-05-23",
+        items: [{ id: "boost", progress: 2, claimed: false }],
+      },
+    },
+  };
+  const newerDevice = {
+    saveMeta: { updatedAtMs: 2_000 },
+    customization: { bodyId: "monster", paintId: "cyan" },
+    garage: { activeLoadoutId: "loadout-b" },
+    progressionV2: {
+      totalXp: 8500,
+      xp: 8500,
+      embers: 140,
+      ownedCosmetics: ["paintId-cyan"],
+      dailyGift: { seed: "2026-05-23", claimed: true, claimedAt: "now" },
+      dailySparks: {
+        seed: "2026-05-23",
+        items: [{ id: "boost", progress: 5, claimed: true }],
+      },
+    },
+  };
+  const merged = mergeFirebaseSavePayload(olderServer, newerDevice);
+  assert.equal(merged.progressionV2.totalXp, 9000);
+  assert.equal(merged.progressionV2.xp, 9000);
+  assert.equal(merged.progressionV2.embers, 140);
+  assert.equal(merged.customization.bodyId, "monster");
+  assert.equal(merged.garage.activeLoadoutId, "loadout-b");
+  assert.deepEqual(
+    new Set(merged.progressionV2.ownedCosmetics),
+    new Set(["bodyId-street", "paintId-cyan"]),
+  );
+  assert.equal(merged.progressionV2.dailyGift.claimed, true);
+  assert.equal(merged.progressionV2.dailySparks.items[0].progress, 5);
+  assert.equal(merged.progressionV2.dailySparks.items[0].claimed, true);
+
+  assert.equal(
+    chooseLatestSavePayload(olderServer, {
+      customization: { bodyId: "stale-no-date" },
+      progressionV2: { totalXp: 1, xp: 1, embers: 1 },
+    }).customization.bodyId,
+    "street",
   );
 });
 

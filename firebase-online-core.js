@@ -40,21 +40,35 @@ const MILD_REPLACEMENTS = [
   { pattern: /(^|[^a-z0-9])s[\W_]*h[\W_]*[i1!l|][\W_]*t(?=$|[^a-z0-9])/gi, replacement: "stuff" },
 ];
 
-const FIREBASE_CREDENTIAL_BADGES = [
+export const FIREBASE_STATIC_BADGE_ACCOUNTS = [
+  {
+    username: "Clark",
+    badges: ["Founder"],
+  },
+  {
+    username: "JFine",
+    badges: ["Advanced Player"],
+  },
+];
+
+export const FIREBASE_PASSWORD_BADGE_ACCOUNTS = [
   {
     username: "Tosh_the_Sigma",
+    aliases: ["Tosh the Sigma"],
     password: "iamthesigma",
-    badge: "Rizzler",
+    badges: ["Rizzler"],
   },
   {
     username: "Joshua",
+    aliases: [],
     password: "footballcards",
-    badge: "Advanced Player",
+    badges: ["Advanced Player"],
   },
   {
     username: "MODERATOR",
+    aliases: [],
     password: "thefoxjumpedoverthelazyriver",
-    badge: "MOD",
+    badges: ["MOD"],
   },
 ];
 
@@ -144,18 +158,29 @@ export function validateFirebaseUsername(value = "") {
 }
 
 function hasFirebaseCredentialAccess(username = "", password = "") {
-  const cleanUsername = normalizeFirebaseUsername(username);
-  const rawPassword = String(password || "");
-  return FIREBASE_CREDENTIAL_BADGES.some(
-    (entry) =>
-      cleanUsername === entry.username && rawPassword === entry.password,
-  );
+  return Boolean(getFirebasePasswordBadgeAccount(username, password));
 }
 
 export function isFirebaseCredentialUsername(username = "") {
   const cleanUsername = normalizeFirebaseUsername(username);
-  return FIREBASE_CREDENTIAL_BADGES.some(
-    (entry) => cleanUsername === entry.username,
+  return FIREBASE_PASSWORD_BADGE_ACCOUNTS.some(
+    (entry) =>
+      cleanUsername === entry.username ||
+      (Array.isArray(entry.aliases) && entry.aliases.includes(cleanUsername)),
+  );
+}
+
+export function getFirebasePasswordBadgeAccount(username = "", password = "") {
+  const cleanUsername = normalizeFirebaseUsername(username);
+  const rawPassword = String(password || "");
+  return (
+    FIREBASE_PASSWORD_BADGE_ACCOUNTS.find(
+      (entry) =>
+        rawPassword === entry.password &&
+        (cleanUsername === entry.username ||
+          (Array.isArray(entry.aliases) &&
+            entry.aliases.includes(cleanUsername))),
+    ) || null
   );
 }
 
@@ -164,22 +189,43 @@ export function validateFirebaseAccountCredentials(
   password = "",
 ) {
   const validation = validateFirebaseUsername(value);
-  if (validation.ok) return validation;
   const username = normalizeFirebaseUsername(value);
-  const lower = username.toLowerCase();
+  const credentialAccount = getFirebasePasswordBadgeAccount(username, password);
+  const canonicalUsername = credentialAccount?.username || username;
+  const lower = canonicalUsername.toLowerCase();
+  if (validation.ok && !credentialAccount) return validation;
   if (
     validation.error === "username_rejected" &&
     FIREBASE_USERNAME_PATTERN.test(username) &&
-    hasFirebaseCredentialAccess(username, password) &&
+    credentialAccount &&
     !FIREBASE_SYSTEM_USERNAME_KEYS.has(
       normalizeFirebaseSystemUsernameKey(username),
     )
   ) {
     return {
       ok: true,
-      username,
+      username: canonicalUsername,
       usernameLower: lower,
       credentialOverride: true,
+    };
+  }
+  if (
+    !validation.ok &&
+    isFirebaseCredentialUsername(username)
+  ) {
+    return {
+      ok: false,
+      error: "invalid_credentials",
+      username: canonicalUsername,
+      usernameLower: lower,
+    };
+  }
+  if (validation.ok && credentialAccount) {
+    return {
+      ok: true,
+      username: canonicalUsername,
+      usernameLower: lower,
+      credentialOverride: canonicalUsername !== validation.username,
     };
   }
   if (
@@ -206,21 +252,18 @@ export function usernameToFirebaseEmail(username = "") {
 }
 
 export function getFirebaseBadges(username = "") {
-  if (username === "Clark") return ["Founder"];
-  if (username === "JFine") return ["Advanced Player"];
-  return [];
+  const cleanUsername = normalizeFirebaseUsername(username);
+  return (
+    FIREBASE_STATIC_BADGE_ACCOUNTS.find(
+      (entry) => entry.username === cleanUsername,
+    )?.badges || []
+  );
 }
 
 export function getFirebaseCredentialBadges(username = "", password = "") {
   const badges = getFirebaseBadges(username);
-  const cleanUsername = String(username || "").trim();
-  const rawPassword = String(password || "");
-  for (const entry of FIREBASE_CREDENTIAL_BADGES) {
-    if (cleanUsername === entry.username && rawPassword === entry.password) {
-      return badges.includes(entry.badge) ? badges : [...badges, entry.badge];
-    }
-  }
-  return badges;
+  const account = getFirebasePasswordBadgeAccount(username, password);
+  return [...new Set([...badges, ...(account?.badges || [])])];
 }
 
 export function sanitizeFirebaseText(value = "", limit = FIREBASE_CHAT_LIMIT) {

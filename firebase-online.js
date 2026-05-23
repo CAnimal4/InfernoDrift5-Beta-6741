@@ -16,7 +16,7 @@ import {
   validateFirebaseLobbyCode,
   validateFirebaseScore,
   validateFirebaseUsername,
-} from "./firebase-online-core.js?v=20260523-chat-moderation";
+} from "./firebase-online-core.js?v=20260523-account-audit";
 
 const FIREBASE_SDK_VERSION = "10.13.2";
 const FIREBASE_SDK_BASE = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}`;
@@ -172,9 +172,10 @@ function getPayloadUpdatedAt(payload = {}) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function chooseLatestSavePayload(existingPayload = {}, incomingPayload = {}) {
+export function chooseLatestSavePayload(existingPayload = {}, incomingPayload = {}) {
   const existingTime = getPayloadUpdatedAt(existingPayload);
   const incomingTime = getPayloadUpdatedAt(incomingPayload);
+  if (!incomingTime && existingTime) return existingPayload;
   if (!incomingTime) return incomingPayload || existingPayload;
   if (!existingTime) return incomingPayload;
   if (incomingTime > existingTime) return incomingPayload;
@@ -221,7 +222,7 @@ function mergeFirebaseDailySparks(existing = {}, incoming = {}) {
   };
 }
 
-function mergeFirebaseProgression(existing = {}, incoming = {}) {
+export function mergeFirebaseProgression(existing = {}, incoming = {}) {
   const latestProgression = chooseLatestSavePayload(
     { progressionV2: existing },
     { progressionV2: incoming },
@@ -289,7 +290,7 @@ function mergeFirebaseProgression(existing = {}, incoming = {}) {
   };
 }
 
-function mergeFirebaseSavePayload(existingPayload = null, incomingPayload = null) {
+export function mergeFirebaseSavePayload(existingPayload = null, incomingPayload = null) {
   if (!existingPayload || typeof existingPayload !== "object")
     return incomingPayload;
   if (!incomingPayload || typeof incomingPayload !== "object")

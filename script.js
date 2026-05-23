@@ -1,6 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260523-chat-moderation";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260523-account-audit";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -6058,9 +6058,9 @@ function buildAccountAuthPayload(mode = "auto") {
     );
     return null;
   }
-  if (!/^[A-Za-z0-9_-]{3,20}$/.test(username)) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9 _-]{1,18}[A-Za-z0-9]$/.test(username)) {
     setStartAccountStatus(
-      "Username can only use letters, numbers, underscores, or hyphens.",
+      "Username can use letters, numbers, spaces, underscores, or hyphens.",
       "error",
     );
     return null;
@@ -6614,7 +6614,7 @@ function describeOnlineError(error = "") {
     account_not_found: "No account exists with that username yet.",
     invalid_credentials: "That username and password do not match.",
     username_invalid:
-      "Use 3-20 letters, numbers, underscores, or hyphens for your username.",
+      "Use 3-20 letters, numbers, spaces, underscores, or hyphens for your username.",
     username_rejected:
       "That username is not allowed. Try a school-appropriate racer name.",
     username_reserved: "That username is reserved.",
