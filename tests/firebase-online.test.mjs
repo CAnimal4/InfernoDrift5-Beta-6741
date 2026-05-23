@@ -101,7 +101,11 @@ test("Firebase username validation enforces launch-safe names", () => {
 test("Firebase chat and feedback filters block unsafe text", () => {
   assert.equal(
     sanitizeFirebaseText("<b>nice shit drift</b>").text,
-    "nice boost drift",
+    "nice stuff drift",
+  );
+  assert.equal(
+    sanitizeFirebaseText("dang that was h*e*l*l").text,
+    "dang that was heck",
   );
   assert.equal(
     sanitizeFirebaseText("text me your phone number").error,
@@ -194,12 +198,17 @@ test("Firebase guardrails survive stress inputs", () => {
     "text me your phone number",
     "send password",
     "what the fuck",
+    "what the f*ck",
+    "f u c k",
+    "f$ck",
     "f u c k",
     "f*ck",
     "go hurt yourself",
     "n u d e s",
     "y o u  a r e  t r a s h",
     "n0 0ne likes u",
+    "what is your email",
+    "where do u live",
   ];
   for (const message of abusiveMessages) {
     assert.equal(sanitizeFirebaseText(message).ok, false, message);

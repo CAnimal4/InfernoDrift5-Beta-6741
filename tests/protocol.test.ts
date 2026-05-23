@@ -11,18 +11,21 @@ import {
 test("shared protocol sanitizer handles markup, profanity, PII, and severe abuse", () => {
   assert.equal(
     sanitizeDisplayText("<b>nice shit drift</b>"),
-    "nice boost drift",
+    "nice stuff drift",
   );
   assert.equal(
     sanitizeDisplayText("email racer@example.com or 555-123-4567"),
     "email [private] or [private]",
   );
+  assert.equal(sanitizeDisplayText("dang that was h*e*l*l"), "dang that was heck");
+  assert.equal(sanitizeDisplayText("what the f*ck"), "[blocked]");
   assert.equal(sanitizeDisplayText("h3il hitler"), "[blocked]");
   assert.equal(sanitizeDisplayText("white power"), "[blocked]");
   assert.equal(sanitizeDisplayText("you are trash"), "[blocked]");
   assert.equal(sanitizeDisplayText("go die"), "[blocked]");
   assert.equal(sanitizeDisplayText("f4ggot"), "[blocked]");
   assert.equal(sanitizeDisplayText("n1gger"), "[blocked]");
+  assert.equal(sanitizeDisplayText("where do u live"), "[blocked]");
 });
 
 test("shared protocol gates free chat at 13 plus and keeps quick chat available", () => {

@@ -564,7 +564,8 @@ test("profile logout/delete and 30 minute chat history are live", async (t) => {
 });
 
 test("chat sanitizer strips markup and basic profanity", () => {
-  assert.equal(sanitizeChat("<b>nice shit drift</b>"), "nice boost drift");
+  assert.equal(sanitizeChat("<b>nice shit drift</b>"), "nice stuff drift");
+  assert.equal(sanitizeChat("dang that was h*e*l*l"), "dang that was heck");
 });
 
 test("chat sanitizer blocks hate, harassment, explicit content, and PII", () => {
@@ -580,8 +581,10 @@ test("chat sanitizer blocks hate, harassment, explicit content, and PII", () => 
   assert.equal(sanitizeChat("white power"), "[blocked]");
   assert.equal(sanitizeChat("you are trash"), "[blocked]");
   assert.equal(sanitizeChat("go die"), "[blocked]");
+  assert.equal(sanitizeChat("what the f*ck"), "[blocked]");
   assert.equal(sanitizeChat("f4ggot"), "[blocked]");
   assert.equal(sanitizeChat("n1gger"), "[blocked]");
+  assert.equal(sanitizeChat("where do u live"), "[blocked]");
 });
 
 test("websocket backend supports guest auth and private room snapshots", async () => {
@@ -728,7 +731,7 @@ test("websocket backend supports two clients, chat filtering, and private join",
   await new Promise((resolve) => setTimeout(resolve, 180));
   assert.ok(
     a.messages.some(
-      (msg) => msg.type === "chat.message" && msg.text === "nice boost drift",
+      (msg) => msg.type === "chat.message" && msg.text === "nice stuff drift",
     ),
   );
   assert.ok(
@@ -2028,7 +2031,7 @@ test("http feedback endpoint stores sanitized submissions and keeps reply email 
   assert.equal(app.db.data.feedback[0].feedbackType, "fix");
   assert.equal(
     app.db.data.feedback[0].message,
-    "The bowling reset is boost after a spare.",
+    "The bowling reset is stuff after a spare.",
   );
   assert.equal(app.db.data.feedback[0].replyEmail, "");
 

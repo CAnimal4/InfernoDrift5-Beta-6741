@@ -18,15 +18,35 @@ export const QUICK_CHAT = new Set([
 const SOFT_SWEAR_PATTERNS = [
   /\bd+a+m+n+\b/i,
   /\bh+e+l+l+\b/i,
-  /\bf+u+c+k+\b/i,
   /\bs+h+i+t+\b/i,
+  /\bc+r+a+p+\b/i,
+];
+
+const SOFT_SWEAR_REPLACEMENTS = [
+  {
+    pattern: /(^|[^a-z0-9])d[\W_]*[a4@][\W_]*m[\W_]*n(?=$|[^a-z0-9])/gi,
+    replacement: "dang",
+  },
+  {
+    pattern: /(^|[^a-z0-9])h[\W_]*(?:e|3)[\W_]*l[\W_]*l(?=$|[^a-z0-9])/gi,
+    replacement: "heck",
+  },
+  {
+    pattern: /(^|[^a-z0-9])c[\W_]*r[\W_]*[a4@][\W_]*p(?=$|[^a-z0-9])/gi,
+    replacement: "stuff",
+  },
+  {
+    pattern: /(^|[^a-z0-9])s[\W_]*h[\W_]*[i1!l|][\W_]*t(?=$|[^a-z0-9])/gi,
+    replacement: "stuff",
+  },
+];
+
+const SEVERE_MODERATION_PATTERNS = [
+  /\bf+(?:u+|s+)?c+k+\b/i,
   /\bb+i+t+c+h+\b/i,
   /\ba+s+s+h+o+l+e+\b/i,
   /\bc+u+n+t+\b/i,
   /\bd+i+c+k+\b/i,
-];
-
-const SEVERE_MODERATION_PATTERNS = [
   /\bk+y+s+\b/i,
   /\b(?:kill|hurt)\s+yourself\b/i,
   /\bgo\s+die\b/i,
@@ -53,6 +73,9 @@ const SEVERE_MODERATION_PATTERNS = [
   /\by+o+u+\s+(?:a+r+e+|r+)\s+(?:t+r+a+s+h+|w+o+r+t+h+l+e+s+s+|u+g+l+y+)\b/i,
   /\by+o+u+\s+(?:s+u+c+k+|s+h+o+u+l+d+\s+q+u+i+t+)\b/i,
   /\bn+o+\s+o+n+e+\s+l+i+k+e+s+\s+y+o+u+\b/i,
+  /\b(?:send|share|tell|give|text|dm|message|call)\s+(?:me\s+)?(?:your\s+)?(?:password|address|phone|number|email|real\s+name|school)\b/i,
+  /\b(?:what|where)\s+(?:is|s|are|r)?\s*(?:your\s+)?(?:password|address|phone|number|email|real\s+name|school)\b/i,
+  /\bwhere\s+(?:do\s+)?(?:you|u)\s+live\b/i,
 ];
 
 const PII_PATTERNS = [
@@ -170,12 +193,13 @@ function normalizeModerationText(value) {
     $: "s",
     "!": "i",
     "+": "t",
+    "*": "",
   };
   return String(value ?? "")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[013457@$!+]/g, (char) => leetMap[char] ?? char)
+    .replace(/[013457@$!+*]/g, (char) => leetMap[char] ?? char)
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/([a-z])\1{2,}/g, "$1$1")
     .trim();
@@ -183,7 +207,11 @@ function normalizeModerationText(value) {
 
 function isSevereModerationHit(value) {
   const normalized = normalizeModerationText(value);
-  return SEVERE_MODERATION_PATTERNS.some((pattern) => pattern.test(normalized));
+  const compact = normalized.replace(/[^a-z0-9]+/g, "");
+  const squashed = compact.replace(/([a-z])\1+/g, "$1");
+  return [normalized, compact, squashed].some((variant) =>
+    SEVERE_MODERATION_PATTERNS.some((pattern) => pattern.test(variant)),
+  );
 }
 
 function validateRoomOptions(data) {
@@ -393,8 +421,8 @@ export function sanitizeChat(input) {
     .trim()
     .slice(0, 120);
   let clean = raw;
-  for (const pattern of SOFT_SWEAR_PATTERNS) {
-    clean = clean.replace(new RegExp(pattern.source, "gi"), "boost");
+  for (const { pattern, replacement } of SOFT_SWEAR_REPLACEMENTS) {
+    clean = clean.replace(pattern, `$1${replacement}`);
   }
   for (const pattern of PII_PATTERNS) {
     clean = clean.replace(pattern, "[private]");

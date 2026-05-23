@@ -371,3 +371,10 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Fixed old/Replit/Cloudflare progression migration so a stored level now contributes the minimum XP for that level instead of being overwritten by missing/low XP.
 - Preserved legacy garage unlocks and currently equipped cosmetics as owned during save load, preventing level-unlocked or previously selected paint from asking to unlock/buy again.
 - Added smoke coverage for a level 7 legacy save with level 3 paint equipped/owned/unlocked.
+
+2026-05-23 redundant chat moderation rewrite:
+
+- Rebuilt the Firebase chat/feedback sanitizer around stronger normalization variants so blocked content is caught through spaces, punctuation, asterisks, simple leetspeak, repeated letters, and compacted text.
+- Split mild language from hard-block categories: mild words are replaced with kid-safe wording, while stronger profanity, hate/harassment, anti-LGBTQ/antisemitic/racist abuse, explicit content, self-harm harassment, and personal-info fishing are rejected.
+- Mirrored the same moderation behavior into the shared protocol and legacy Worker/local server sanitizer so Firebase chat, DMs, feedback, WebSocket chat, and HTTP fallback do not disagree.
+- Added targeted regression coverage for obfuscated blocked words, personal-info prompts, and mild replacements without corrupting harmless words like Hello.

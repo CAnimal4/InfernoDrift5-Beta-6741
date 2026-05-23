@@ -10,29 +10,35 @@ const FIREBASE_LOBBY_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const FIREBASE_SYSTEM_USERNAME_KEYS = new Set(["chatgptcodex"]);
 
 const BLOCKED_TERMS = [
-  /(?:n|ñ|m)[\W_]*[i1!l|][\W_]*g[\W_]*g[\W_]*(?:e|3)[\W_]*r/i,
-  /f[\W_]*[a4@][\W_]*g[\W_]*g?[\W_]*(?:o|0)[\W_]*t/i,
-  /f[\W_]*(?:u[\W_]*)?c[\W_]*k/i,
+  /(?:^|[^a-z])(?:n|m)[\W_]*[i1!l|][\W_]*g[\W_]*g[\W_]*(?:e|3)?[\W_]*(?:r|a)(?:[^a-z]|$)/i,
+  /(?:^|[^a-z])f[\W_]*[a4@][\W_]*g[\W_]*g?[\W_]*(?:o|0)[\W_]*t(?:[^a-z]|$)/i,
+  /(?:^|[^a-z])(?:t[\W_]*r[\W_]*[a4@][\W_]*n[\W_]*n[\W_]*y|d[\W_]*y[\W_]*k[\W_]*(?:e|3)|h[\W_]*(?:o|0)[\W_]*m[\W_]*(?:o|0))(?:[^a-z]|$)/i,
+  /(?:^|[^a-z])(?:k[\W_]*y[\W_]*s|kill[\W_]*(?:yourself|urself|your[\W_]*self)|hurt[\W_]*(?:yourself|urself|your[\W_]*self)|go[\W_]*(?:die|hurt[\W_]*yourself|hurt[\W_]*urself))(?:[^a-z]|$)/i,
+  /(?:^|[^a-z])f[\W_]*(?:u[\W_]*|s[\W_]*)?c[\W_]*k(?:[^a-z]|$)/i,
+  /(?:^|[^a-z])(?:b[\W_]*[i1!l|][\W_]*t[\W_]*c[\W_]*h|[a4@][\W_]*s[\W_]*s[\W_]*h[\W_]*(?:o|0)[\W_]*l[\W_]*(?:e|3)|c[\W_]*u[\W_]*n[\W_]*t|d[\W_]*[i1!l|][\W_]*c[\W_]*k)(?:[^a-z]|$)/i,
+  /(?:^|[^a-z])(?:r[\W_]*[a4@][\W_]*p[\W_]*(?:e|3)|s[\W_]*(?:e|3)[\W_]*x|p[\W_]*(?:o|0)[\W_]*r[\W_]*n|n[\W_]*u[\W_]*d[\W_]*(?:e|3)[\W_]*s?|h[\W_]*(?:o|0)[\W_]*r[\W_]*n[\W_]*y)(?:[^a-z]|$)/i,
+  /h[\W_]*(?:e|3)[\W_]*[i1!l|][\W_]*l[\W_]*h[\W_]*[i1!l|][\W_]*t[\W_]*l[\W_]*(?:e|3)[\W_]*r/i,
   /h[\W_]*[i1!l|][\W_]*t[\W_]*l[\W_]*(?:e|3)[\W_]*r/i,
+  /n[\W_]*[a4@][\W_]*z[\W_]*[i1!l|]/i,
   /white[\W_]*power/i,
-  /kill[\W_]*(?:yourself|urself|your\s*self)/i,
-  /go[\W_]*(?:die|hurt yourself|hurt urself)/i,
-  /(?:you|u)[\W_]*(?:are|r)[\W_]*(?:trash|garbage|worthless|a loser)/i,
-  /no[\W_]*one[\W_]*likes[\W_]*(?:you|u)/i,
-  /\b(?:sex|porn|nude|nudes|horny)\b/i,
-  /s[\W_]*(?:e|3)[\W_]*x/i,
-  /p[\W_]*(?:o|0)[\W_]*r[\W_]*n/i,
-  /n[\W_]*u[\W_]*d[\W_]*(?:e|3)[\W_]*s?/i,
-  /\b(?:password|address|phone number|where do you live)\b/i,
+  /g[\W_]*[a4@][\W_]*s[\W_]*(?:the[\W_]*)?j[\W_]*(?:e|3)[\W_]*w[\W_]*s?/i,
+  /j[\W_]*(?:e|3)[\W_]*w[\W_]*(?:r[\W_]*[a4@][\W_]*t|p[\W_]*[i1!l|][\W_]*g|t[\W_]*r[\W_]*[a4@][\W_]*s[\W_]*h)/i,
+  /(?:all[\W_]*)?(?:j[\W_]*(?:e|3)[\W_]*w[\W_]*s?|m[\W_]*u[\W_]*s[\W_]*l[\W_]*[i1!l|][\W_]*m[\W_]*s?|b[\W_]*l[\W_]*[a4@][\W_]*c[\W_]*k[\W_]*s?|g[\W_]*[a4@][\W_]*y[\W_]*s?|t[\W_]*r[\W_]*[a4@][\W_]*n[\W_]*s)[\W_]*(?:are|r)[\W_]*(?:evil|dirty|gross|inferior)/i,
+  /(?:you|u)[\W_]*(?:are|r)[\W_]*(?:trash|garbage|worthless|ugly|[a4@][\W_]*l[\W_]*(?:o|0)[\W_]*s[\W_]*(?:e|3)[\W_]*r)/i,
+  /(?:you|u)[\W_]*(?:suck|should[\W_]*quit)/i,
+  /no[\W_]*(?:one|1)[\W_]*likes[\W_]*(?:you|u)/i,
+  /(?:send|share|tell|give|text|dm|message|call)[\W_]*(?:me[\W_]*)?(?:your[\W_]*)?(?:password|address|phone|number|email|real[\W_]*name|school|where[\W_]*you[\W_]*live)/i,
+  /(?:what|where)[\W_]*(?:is|s|are|r)?[\W_]*(?:your[\W_]*)?(?:password|address|phone|number|email|real[\W_]*name|school|where[\W_]*you[\W_]*live)/i,
+  /where[\W_]*(?:do[\W_]*)?(?:you|u)[\W_]*live/i,
   /\b(?:admin|moderator|mod)\b/i,
 ];
 
-const MILD_REPLACEMENTS = new Map([
-  ["shit", "boost"],
-  ["damn", "dang"],
-  ["hell", "heck"],
-  ["crap", "scrap"],
-]);
+const MILD_REPLACEMENTS = [
+  { pattern: /(^|[^a-z0-9])d[\W_]*[a4@][\W_]*m[\W_]*n(?=$|[^a-z0-9])/gi, replacement: "dang" },
+  { pattern: /(^|[^a-z0-9])h[\W_]*(?:e|3)[\W_]*l[\W_]*l(?=$|[^a-z0-9])/gi, replacement: "heck" },
+  { pattern: /(^|[^a-z0-9])c[\W_]*r[\W_]*[a4@][\W_]*p(?=$|[^a-z0-9])/gi, replacement: "stuff" },
+  { pattern: /(^|[^a-z0-9])s[\W_]*h[\W_]*[i1!l|][\W_]*t(?=$|[^a-z0-9])/gi, replacement: "stuff" },
+];
 
 const FIREBASE_CREDENTIAL_BADGES = [
   {
@@ -56,12 +62,14 @@ function deobfuscate(value = "") {
   return String(value)
     .normalize("NFKD")
     .toLowerCase()
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[4@]/g, "a")
     .replace(/[3]/g, "e")
     .replace(/[1!|]/g, "i")
     .replace(/[0]/g, "o")
     .replace(/[5$]/g, "s")
-    .replace(/[7]/g, "t")
+    .replace(/[7+]/g, "t")
+    .replace(/[*]+/g, " ")
     .replace(/[^\w\s-]/g, " ")
     .replace(/([a-z])\1{2,}/g, "$1$1")
     .replace(/\s+/g, " ")
@@ -72,7 +80,17 @@ function moderationVariants(value = "") {
   const normalized = deobfuscate(value);
   const compact = normalized.replace(/[\W_]+/g, "");
   const squashed = compact.replace(/([a-z])\1+/g, "$1");
-  return [normalized, compact, squashed].filter(Boolean);
+  const noSeparator = String(value ?? "")
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[4@]/g, "a")
+    .replace(/[3]/g, "e")
+    .replace(/[1!|]/g, "i")
+    .replace(/[0]/g, "o")
+    .replace(/[5$]/g, "s")
+    .replace(/[7+]/g, "t")
+    .replace(/[^a-z0-9]/g, "");
+  return [normalized, compact, squashed, noSeparator].filter(Boolean);
 }
 
 function hasBlockedContent(value = "") {
@@ -215,8 +233,8 @@ export function sanitizeFirebaseText(value = "", limit = FIREBASE_CHAT_LIMIT) {
   if (hasBlockedContent(text)) {
     return { ok: false, error: "text_rejected", text: "" };
   }
-  for (const [bad, replacement] of MILD_REPLACEMENTS) {
-    text = text.replace(new RegExp(`\\b${bad}\\b`, "gi"), replacement);
+  for (const { pattern, replacement } of MILD_REPLACEMENTS) {
+    text = text.replace(pattern, `$1${replacement}`);
   }
   return { ok: true, text };
 }
