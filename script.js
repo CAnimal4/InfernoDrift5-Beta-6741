@@ -1,6 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260520-firebase-xp-sync";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260523-leaderboard-test-filter";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -7060,7 +7060,7 @@ function handleOnlineMessage(raw) {
       onlineRoomCode.value = onlineState.room.code;
     }
     onlineState.leaderboard = Array.isArray(message.room?.leaderboard)
-      ? message.room.leaderboard
+      ? filterTestLikeLeaderboardRows(message.room.leaderboard)
       : onlineState.leaderboard;
     updateRemoteSnapshotsFromRoom(message.room);
   } else if (message.type === "queue.joined") {
@@ -7114,9 +7114,12 @@ function handleOnlineMessage(raw) {
     );
   } else if (message.type === "leaderboard.snapshot") {
     onlineState.leaderboard = Array.isArray(message.leaderboard)
-      ? message.leaderboard
+      ? filterTestLikeLeaderboardRows(message.leaderboard)
       : [];
-    onlineState.leaderboardPlayerRow = message.playerRow || null;
+    onlineState.leaderboardPlayerRow =
+      message.playerRow && !isTestLikeLeaderboardRow(message.playerRow)
+        ? message.playerRow
+        : null;
     onlineState.leaderboardSyncStatus = message.playerRow
       ? "server"
       : onlineState.leaderboard.length
@@ -8746,7 +8749,7 @@ function getDisplayLeaderboardRows() {
     rows.push(playerRow);
   }
   return ensureCodexAlwaysFirst(
-    dedupeLeaderboardRows(rows).filter((row) => !isTestLikeLeaderboardRow(row)),
+    filterTestLikeLeaderboardRows(dedupeLeaderboardRows(rows)),
   ).sort(compareLeaderboard);
 }
 
@@ -8771,6 +8774,12 @@ function isTestLikeAccountName(value = "") {
 function isTestLikeLeaderboardRow(row = {}) {
   if (isCodexLeaderboardRow(row)) return false;
   return isTestLikeAccountName(row.username || row.name || row.displayName || "");
+}
+
+function filterTestLikeLeaderboardRows(rows = []) {
+  return (Array.isArray(rows) ? rows : []).filter(
+    (row) => !isTestLikeLeaderboardRow(row),
+  );
 }
 
 function isGuestLeaderboardRow(row = {}) {
@@ -22314,8 +22323,9 @@ window.__infernodriftTestApi = {
     };
   },
   setLeaderboardRowsForTest: (rows = [], playerRow = null) => {
-    onlineState.leaderboard = Array.isArray(rows) ? rows : [];
-    onlineState.leaderboardPlayerRow = playerRow;
+    onlineState.leaderboard = filterTestLikeLeaderboardRows(rows);
+    onlineState.leaderboardPlayerRow =
+      playerRow && !isTestLikeLeaderboardRow(playerRow) ? playerRow : null;
     updateOnlineUi();
     return JSON.parse(window.render_game_to_text()).online.leaderboard;
   },

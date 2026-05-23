@@ -280,7 +280,8 @@ test("Firebase leaderboard hides and stops syncing test-like accounts", () => {
   );
   assert.match(script, /function isTestLikeAccountName\(value = ""\)/);
   assert.match(script, /TEST_ACCOUNT_NAME_BLOCKLIST/);
-  assert.match(script, /filter\(\(row\) => !isTestLikeLeaderboardRow\(row\)\)/);
+  assert.match(script, /function filterTestLikeLeaderboardRows\(rows = \[\]\)/);
+  assert.match(script, /filterTestLikeLeaderboardRows\(message\.leaderboard\)/);
   assert.match(firebaseOnline, /function isFirebaseTestLikeAccountName\(value = ""\)/);
   assert.match(firebaseOnline, /hidden-test-account/);
   assert.match(firebaseOnline, /filter\(\(row\) => !isFirebaseTestLikeAccountName\(row\.username\)\)/);
