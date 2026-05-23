@@ -67,7 +67,7 @@ try {
   assert.equal(state.online.backendUrl, "");
   assert.deepEqual(state.online.backupBackendUrls, []);
 
-  const accountUsername = `Smoke${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
+  const accountUsername = `Runner${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
   await page.locator("#start-account-username").fill(accountUsername);
   await page.locator("#start-account-password").fill("smoke12345");
   await page.locator("#start-account-age").fill("13");

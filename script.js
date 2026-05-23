@@ -473,6 +473,11 @@ const SEEDED_LEADERBOARD_ROWS = [
 ];
 const CODEX_LEADERBOARD_USERNAME = "ChatGPT (Codex)";
 const CODEX_LEADERBOARD_ID = "system-chatgpt-codex";
+const TEST_ACCOUNT_NAME_BLOCKLIST = new Set([
+  "ajhdfiumhziwuehrmz",
+  "akfjicoajsodifjmoi",
+  "sajoumzjeimxuhen",
+]);
 let codexLeaderboardXp = 8350;
 const GAME_MODE_ID33 = "infernodrift33";
 const GAME_MODE_MAX1 = "infernodriftmax1";
@@ -8740,9 +8745,9 @@ function getDisplayLeaderboardRows() {
   ) {
     rows.push(playerRow);
   }
-  return ensureCodexAlwaysFirst(dedupeLeaderboardRows(rows)).sort(
-    compareLeaderboard,
-  );
+  return ensureCodexAlwaysFirst(
+    dedupeLeaderboardRows(rows).filter((row) => !isTestLikeLeaderboardRow(row)),
+  ).sort(compareLeaderboard);
 }
 
 function normalizeLeaderboardUsername(value) {
@@ -8750,6 +8755,22 @@ function normalizeLeaderboardUsername(value) {
     .trim()
     .replace(/\s+/g, " ")
     .toLowerCase();
+}
+
+function isTestLikeAccountName(value = "") {
+  const normalized = normalizeLeaderboardUsername(value);
+  const compact = normalized.replace(/[^a-z0-9]/g, "");
+  if (!compact) return false;
+  if (TEST_ACCOUNT_NAME_BLOCKLIST.has(compact)) return true;
+  if (/(^|[^a-z])(test|teest|smoke|fresh)([^a-z]|$)/i.test(normalized))
+    return true;
+  if (/^(test|teest|smoke|fresh)[a-z0-9_-]*$/i.test(compact)) return true;
+  return compact.length >= 14 && /^[a-z]+$/.test(compact);
+}
+
+function isTestLikeLeaderboardRow(row = {}) {
+  if (isCodexLeaderboardRow(row)) return false;
+  return isTestLikeAccountName(row.username || row.name || row.displayName || "");
 }
 
 function isGuestLeaderboardRow(row = {}) {

@@ -264,6 +264,29 @@ test("Firebase account attach keeps new accounts fresh unless legacy import appl
   );
 });
 
+test("Firebase leaderboard hides and stops syncing test-like accounts", () => {
+  const script = fs.readFileSync(
+    new URL("../script.js", import.meta.url),
+    "utf8",
+  );
+  const firebaseOnline = fs.readFileSync(
+    new URL("../firebase-online.js", import.meta.url),
+    "utf8",
+  );
+  const firebaseSmoke = fs.readFileSync(
+    new URL("../smoke_firebase_live.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(script, /function isTestLikeAccountName\(value = ""\)/);
+  assert.match(script, /TEST_ACCOUNT_NAME_BLOCKLIST/);
+  assert.match(script, /filter\(\(row\) => !isTestLikeLeaderboardRow\(row\)\)/);
+  assert.match(firebaseOnline, /function isFirebaseTestLikeAccountName\(value = ""\)/);
+  assert.match(firebaseOnline, /hidden-test-account/);
+  assert.match(firebaseOnline, /filter\(\(row\) => !isFirebaseTestLikeAccountName\(row\.username\)\)/);
+  assert.doesNotMatch(firebaseSmoke, /const accountUsername = `Smoke/);
+  assert.match(firebaseSmoke, /const accountUsername = `Runner/);
+});
+
 test("legacy import marker cannot hide downgraded Firebase progress", () => {
   const script = fs.readFileSync(
     new URL("../script.js", import.meta.url),

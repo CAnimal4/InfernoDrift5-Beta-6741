@@ -21,7 +21,7 @@ page.on("dialog", async (dialog) => {
 });
 
 const smokeUrl = process.env.SMOKE_URL || "http://127.0.0.1:4173/index.html";
-const smokeUsername = `SmokeRacer${Date.now().toString().slice(-6)}`;
+const smokeUsername = `RunnerRacer${Date.now().toString().slice(-6)}`;
 await page.goto(smokeUrl, { waitUntil: "commit", timeout: 45000 });
 await waitForGameHook(page);
 await page.evaluate((username) => {

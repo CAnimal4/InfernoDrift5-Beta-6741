@@ -33,6 +33,25 @@ const FIREBASE_LIVE_MODES = new Set([
   "time-trial",
 ]);
 const FIREBASE_LIVE_PLAYER_LIMIT = 8;
+const FIREBASE_TEST_ACCOUNT_NAME_BLOCKLIST = new Set([
+  "ajhdfiumhziwuehrmz",
+  "akfjicoajsodifjmoi",
+  "sajoumzjeimxuhen",
+]);
+
+function isFirebaseTestLikeAccountName(value = "") {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+  const compact = normalized.replace(/[^a-z0-9]/g, "");
+  if (!compact) return false;
+  if (FIREBASE_TEST_ACCOUNT_NAME_BLOCKLIST.has(compact)) return true;
+  if (/(^|[^a-z])(test|teest|smoke|fresh)([^a-z]|$)/i.test(normalized))
+    return true;
+  if (/^(test|teest|smoke|fresh)[a-z0-9_-]*$/i.test(compact)) return true;
+  return compact.length >= 14 && /^[a-z]+$/.test(compact);
+}
 const FIREBASE_LIVE_STATE_LIMIT = 12000;
 
 let sdkPromise = null;
@@ -759,13 +778,17 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       { merge: true },
     );
     if (!state.isGuest && !internals.userProfile?.isGuest) {
-      await submitLeaderboard({
-        score: xp,
-        mode: FIREBASE_LEADERBOARD_MODE,
-      }).catch((error) => {
-        state.leaderboardStatus = "failed";
-        fail(error, "leaderboard_sync_failed");
-      });
+      if (isFirebaseTestLikeAccountName(state.username)) {
+        state.leaderboardStatus = "hidden-test-account";
+      } else {
+        await submitLeaderboard({
+          score: xp,
+          mode: FIREBASE_LEADERBOARD_MODE,
+        }).catch((error) => {
+          state.leaderboardStatus = "failed";
+          fail(error, "leaderboard_sync_failed");
+        });
+      }
     }
     if (!silent) emit("save.synced", { payload });
     return true;
@@ -788,7 +811,9 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
         firestore.limit(25),
       ),
     );
-    const leaderboard = rows.docs.map(mapLeaderboardDoc);
+    const leaderboard = rows.docs
+      .map(mapLeaderboardDoc)
+      .filter((row) => !isFirebaseTestLikeAccountName(row.username));
     let playerRow = state.uid
       ? leaderboard.find((row) => row.userId === state.uid) || null
       : null;
@@ -797,6 +822,9 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
         firestore.doc(internals.db, "leaderboards", mode, "scores", state.uid),
       );
       playerRow = ownScore.exists() ? mapLeaderboardDoc(ownScore) : null;
+    }
+    if (playerRow && isFirebaseTestLikeAccountName(playerRow.username)) {
+      playerRow = null;
     }
     state.leaderboardStatus = "ready";
     emit("leaderboard.snapshot", { leaderboard, playerRow });
