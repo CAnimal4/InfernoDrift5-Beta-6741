@@ -289,6 +289,21 @@ test("Firebase leaderboard hides and stops syncing test-like accounts", () => {
   assert.match(firebaseSmoke, /const accountUsername = `Runner/);
 });
 
+test("Firebase progress sync merges server and device economy state", () => {
+  const firebaseOnline = fs.readFileSync(
+    new URL("../firebase-online.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(firebaseOnline, /function mergeFirebaseSavePayload\(existingPayload = null, incomingPayload = null\)/);
+  assert.match(firebaseOnline, /function mergeFirebaseProgression\(existing = {}, incoming = {}\)/);
+  assert.match(firebaseOnline, /const existingProgress = await firestore\.getDoc\(progressRef\)/);
+  assert.match(firebaseOnline, /payload: mergedPayload,/);
+  assert.match(firebaseOnline, /embers: Math\.max\(/);
+  assert.match(firebaseOnline, /ownedCosmetics: uniqueArrayValues\(/);
+  assert.match(firebaseOnline, /claimedLevelRewards: uniqueArrayValues\(/);
+  assert.match(firebaseOnline, /emit\("save\.synced", \{ payload: mergedPayload \}\)/);
+});
+
 test("legacy import marker cannot hide downgraded Firebase progress", () => {
   const script = fs.readFileSync(
     new URL("../script.js", import.meta.url),

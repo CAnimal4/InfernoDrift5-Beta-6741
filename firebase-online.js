@@ -131,6 +131,81 @@ function chooseBestSavePayload(...payloads) {
     .sort((a, b) => getSavePayloadXp(b) - getSavePayloadXp(a))[0];
 }
 
+function uniqueArrayValues(...values) {
+  return [
+    ...new Set(
+      values.flatMap((value) => (Array.isArray(value) ? value : [])),
+    ),
+  ];
+}
+
+function mergeFirebaseProgression(existing = {}, incoming = {}) {
+  const xp = Math.max(
+    getSavePayloadXp({ progressionV2: existing }),
+    getSavePayloadXp({ progressionV2: incoming }),
+  );
+  return {
+    ...existing,
+    ...incoming,
+    xp,
+    totalXp: xp,
+    embers: Math.max(
+      0,
+      Math.floor(Number(existing.embers) || 0),
+      Math.floor(Number(incoming.embers) || 0),
+    ),
+    medals: { ...(existing.medals || {}), ...(incoming.medals || {}) },
+    personalBests: {
+      ...(existing.personalBests || {}),
+      ...(incoming.personalBests || {}),
+    },
+    ghostSamples: {
+      ...(existing.ghostSamples || {}),
+      ...(incoming.ghostSamples || {}),
+    },
+    unlockedRewards: uniqueArrayValues(
+      existing.unlockedRewards,
+      incoming.unlockedRewards,
+    ),
+    ownedCosmetics: uniqueArrayValues(
+      existing.ownedCosmetics,
+      incoming.ownedCosmetics,
+    ),
+    claimedLevelRewards: uniqueArrayValues(
+      existing.claimedLevelRewards,
+      incoming.claimedLevelRewards,
+    ),
+    recentRewards: uniqueArrayValues(
+      incoming.recentRewards,
+      existing.recentRewards,
+    ).slice(0, 12),
+  };
+}
+
+function mergeFirebaseSavePayload(existingPayload = null, incomingPayload = null) {
+  if (!existingPayload || typeof existingPayload !== "object")
+    return incomingPayload;
+  if (!incomingPayload || typeof incomingPayload !== "object")
+    return existingPayload;
+  const existingProgression = existingPayload.progressionV2 || {};
+  const incomingProgression = incomingPayload.progressionV2 || {};
+  const mergedProgression = mergeFirebaseProgression(
+    existingProgression,
+    incomingProgression,
+  );
+  const bestShell = chooseBestSavePayload(existingPayload, incomingPayload) || incomingPayload;
+  return {
+    ...bestShell,
+    settings: { ...(existingPayload.settings || {}), ...(incomingPayload.settings || {}) },
+    customization: {
+      ...(existingPayload.customization || {}),
+      ...(incomingPayload.customization || {}),
+    },
+    garage: incomingPayload.garage || existingPayload.garage,
+    progressionV2: mergedProgression,
+  };
+}
+
 function mapChatDoc(snapshot) {
   const data = snapshot.data() || {};
   const createdAt = data.createdAt?.toDate?.();
@@ -748,27 +823,36 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     requireReady();
     if (!state.uid || !payload) return false;
     const { firestore } = internals.sdk;
+    const progressRef = firestore.doc(internals.db, "progress", state.uid);
+    const existingProgress = await firestore.getDoc(progressRef).catch(() => null);
+    const existingPayload = existingProgress?.exists()
+      ? existingProgress.data()?.payload
+      : null;
+    const mergedPayload = mergeFirebaseSavePayload(existingPayload, payload);
     const xp = Math.max(
       0,
       Math.floor(
-        Number(payload?.progressionV2?.totalXp ?? payload?.progressionV2?.xp) ||
+        Number(
+          mergedPayload?.progressionV2?.totalXp ??
+            mergedPayload?.progressionV2?.xp,
+        ) ||
           0,
       ),
     );
     await firestore.setDoc(
-      firestore.doc(internals.db, "progress", state.uid),
+      progressRef,
       {
         uid: state.uid,
         username: state.username,
-        payload,
+        payload: mergedPayload,
         campaign: {
-          worldIndex: payload.worldIndex,
-          levelIndex: payload.levelIndex,
+          worldIndex: mergedPayload.worldIndex,
+          levelIndex: mergedPayload.levelIndex,
         },
-        unlocks: payload.progressionV2?.unlocks || {},
-        cosmetics: payload.customization || {},
-        stats: payload.progressionV2 || {},
-        settings: payload.settings || {},
+        unlocks: mergedPayload.progressionV2?.unlocks || {},
+        cosmetics: mergedPayload.customization || {},
+        stats: mergedPayload.progressionV2 || {},
+        settings: mergedPayload.settings || {},
         updatedAt: firestore.serverTimestamp(),
       },
       { merge: true },
@@ -776,11 +860,11 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     await firestore.setDoc(
       firestore.doc(internals.db, "users", state.uid),
       {
-        progress: payload.progressionV2 || {},
-        stats: payload.progressionV2 || {},
-        settings: payload.settings || {},
-        cosmetics: payload.customization || {},
-        loadouts: payload.garage || {},
+        progress: mergedPayload.progressionV2 || {},
+        stats: mergedPayload.progressionV2 || {},
+        settings: mergedPayload.settings || {},
+        cosmetics: mergedPayload.customization || {},
+        loadouts: mergedPayload.garage || {},
         lastSeenAt: firestore.serverTimestamp(),
       },
       { merge: true },
@@ -798,7 +882,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
         });
       }
     }
-    if (!silent) emit("save.synced", { payload });
+    if (!silent) emit("save.synced", { payload: mergedPayload });
     return true;
   }
 
