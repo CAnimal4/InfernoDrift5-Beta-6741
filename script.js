@@ -2264,6 +2264,9 @@ const onlineState = {
   lastProgressSyncAt: 0,
   nextProgressSyncAt: 0,
   saveSyncedAt: 0,
+  accountProgressReady: true,
+  freshAccountSaveSyncPending: false,
+  freshAccountRepairApplied: false,
   profileSnapshot: null,
   profileActionStatus: "",
   profileDeleteStatus: "",
@@ -4434,7 +4437,95 @@ function buildFreshAccountSavePayload() {
   };
 }
 
+function hasObjectEntries(value) {
+  return Boolean(value && typeof value === "object" && Object.keys(value).length);
+}
+
+function hasArrayEntries(value) {
+  return Array.isArray(value) && value.length > 0;
+}
+
+function hasNonDefaultOwnedCosmetics(ownedCosmetics = []) {
+  const defaults = new Set(getDefaultOwnedCosmetics());
+  return (Array.isArray(ownedCosmetics) ? ownedCosmetics : []).some(
+    (cosmeticId) => !defaults.has(cosmeticId),
+  );
+}
+
+function hasNonDefaultCustomization(customizationValue = {}) {
+  if (!customizationValue || typeof customizationValue !== "object") return false;
+  return Object.keys(DEFAULT_CUSTOMIZATION).some(
+    (key) =>
+      typeof customizationValue[key] === "string" &&
+      customizationValue[key] !== DEFAULT_CUSTOMIZATION[key],
+  );
+}
+
+function hasNonDefaultGarageLoadout(loadout = {}) {
+  const options = loadout?.options;
+  if (!options || typeof options !== "object") return false;
+  return hasNonDefaultCustomization(options);
+}
+
+function hasNonDefaultGarageState(garage = {}) {
+  if (!garage || typeof garage !== "object") return false;
+  if (
+    typeof garage.activeLoadoutId === "string" &&
+    garage.activeLoadoutId !== GARAGE_LOADOUT_IDS[0]
+  ) {
+    return true;
+  }
+  return Array.isArray(garage.loadouts) && garage.loadouts.some(hasNonDefaultGarageLoadout);
+}
+
+function hasDailySparksEvidence(dailySparks = {}) {
+  return Array.isArray(dailySparks?.items)
+    ? dailySparks.items.some(
+        (item) =>
+          Boolean(item?.completed || item?.claimed) ||
+          Math.max(0, Number(item?.progress) || 0) > 0,
+      )
+    : false;
+}
+
+function hasProgressionPlayEvidence(progression = {}) {
+  const normalized = normalizeProgressionV2(progression);
+  const defaultRewards = new Set(createProgressionV2().unlockedRewards);
+  return Boolean(
+    normalized.embers > 0 ||
+      hasObjectEntries(normalized.medals) ||
+      hasObjectEntries(normalized.personalBests) ||
+      hasObjectEntries(normalized.ghostSamples) ||
+      hasArrayEntries(normalized.claimedLevelRewards) ||
+      normalized.unlockedRewards.some((reward) => !defaultRewards.has(reward)) ||
+      hasNonDefaultOwnedCosmetics(normalized.ownedCosmetics) ||
+      normalized.tutorialComplete ||
+      hasDailySparksEvidence(normalized.dailySparks) ||
+      hasArrayEntries(normalized.recentRewards) ||
+      hasArrayEntries(normalized.rewardLog) ||
+      Math.max(0, Number(normalized.daily?.progress) || 0) > 0 ||
+      Math.max(0, Number(normalized.weekly?.progress) || 0) > 0 ||
+      Boolean(normalized.daily?.complete || normalized.weekly?.complete),
+  );
+}
+
+function hasSavePayloadPlayEvidence(payload = {}) {
+  if (!payload || typeof payload !== "object") return false;
+  return Boolean(
+    Math.max(0, Number(payload.worldIndex) || 0) > 0 ||
+      Math.max(0, Number(payload.levelIndex) || 0) > 0 ||
+      hasProgressionPlayEvidence(payload.progressionV2) ||
+      hasNonDefaultCustomization(payload.customization) ||
+      hasNonDefaultGarageState(payload.garage),
+  );
+}
+
+function isPollutedFreshAccountPayload(payload = {}) {
+  return getSavePayloadTotalXp(payload) > 0 && !hasSavePayloadPlayEvidence(payload);
+}
+
 function syncProgressionToBackend() {
+  if (onlineState.accountProgressReady === false) return false;
   if (isFirebaseBackendMode()) {
     if (
       onlineState.profileMode !== "account" ||
@@ -4522,19 +4613,37 @@ function forceOnlineProgressSync({ force = false } = {}) {
 
 function applyServerSave(
   serverSave,
-  { force = false, resetIfMissing = false, preferAccountLocal = false } = {},
+  {
+    force = false,
+    resetIfMissing = false,
+    preferAccountLocal = false,
+    replaceProgression = false,
+    cleanPollutedFresh = false,
+  } = {},
 ) {
   const payload = serverSave?.payload;
   let nextPayload = payload && typeof payload === "object" ? payload : null;
+  let shouldReplaceProgression = Boolean(replaceProgression);
   if (!nextPayload && preferAccountLocal) {
     nextPayload = readAccountSavePayload();
   }
+  if (nextPayload && cleanPollutedFresh && isPollutedFreshAccountPayload(nextPayload)) {
+    nextPayload = buildFreshAccountSavePayload();
+    shouldReplaceProgression = true;
+    onlineState.freshAccountSaveSyncPending = true;
+    onlineState.freshAccountRepairApplied = true;
+    onlineState.profileActionStatus =
+      "Fresh account progress was cleaned up and reset to Level 1.";
+  }
   if (!nextPayload && resetIfMissing) {
     nextPayload = buildFreshAccountSavePayload();
+    shouldReplaceProgression = true;
+    onlineState.freshAccountSaveSyncPending = true;
   }
   if (!nextPayload) return false;
   const applied = applyPersistentSavePayload(nextPayload, {
     forceProgression: force || resetIfMissing || preferAccountLocal,
+    replaceProgression: shouldReplaceProgression,
   });
   if (!applied) return false;
   renderDailyGiftNotice();
@@ -4545,7 +4654,10 @@ function applyServerSave(
   return true;
 }
 
-function applyPersistentSavePayload(data, { forceProgression = true } = {}) {
+function applyPersistentSavePayload(
+  data,
+  { forceProgression = true, replaceProgression = false } = {},
+) {
   if (!data || typeof data !== "object") return false;
   try {
     if (data.settings && typeof data.settings === "object") {
@@ -4588,12 +4700,12 @@ function applyPersistentSavePayload(data, { forceProgression = true } = {}) {
         settings.exitLinkUrl = normalizeExitLinkUrl(data.settings.exitLinkUrl);
     }
     if (data.progressionV2 && typeof data.progressionV2 === "object") {
-      const nextProgression = mergeProgressionV2(
-        state.progressionV2,
-        data.progressionV2,
-      );
+      const nextProgression = replaceProgression
+        ? normalizeProgressionV2(data.progressionV2)
+        : mergeProgressionV2(state.progressionV2, data.progressionV2);
       if (
         forceProgression ||
+        replaceProgression ||
         getProgressionTotalXp(nextProgression) >= getProgressionTotalXp()
       ) {
         state.progressionV2 = nextProgression;
@@ -5869,7 +5981,15 @@ function buildFirebaseAuthResultMessage(result, { guest = false } = {}) {
     sessionToken: result.sessionToken || result.user?.uid || result.user?.id || "",
     save: result.save || null,
     preferAccountLocal: false,
+    cleanPollutedFresh: !guest,
   };
+}
+
+function finishInitialAccountProgressLoad() {
+  onlineState.accountProgressReady = true;
+  if (!onlineState.freshAccountSaveSyncPending) return;
+  onlineState.freshAccountSaveSyncPending = false;
+  forceOnlineProgressSync({ force: true });
 }
 
 async function completeFirebaseAuth(result, { guest = false } = {}) {
@@ -5911,6 +6031,9 @@ async function submitFirebaseStartAccount() {
   onlineState.pendingStartAfterAuth = true;
   onlineState.pendingAuth = null;
   onlineState.sessionToken = "";
+  onlineState.accountProgressReady = false;
+  onlineState.freshAccountSaveSyncPending = false;
+  onlineState.freshAccountRepairApplied = false;
   setStartAccountStatus(`Connecting account for ${payload.username}...`);
   setOnlineStatus("checking", "Checking online services");
   updateConnectionStage("checking-online");
@@ -5942,6 +6065,7 @@ async function submitFirebaseStartAccount() {
     return true;
   } catch (error) {
     onlineState.pendingStartAfterAuth = false;
+    onlineState.accountProgressReady = true;
     onlineState.transport = "offline";
     onlineState.timeoutReason = error?.message || "firebase_unavailable";
     syncFirebaseServiceStatus();
@@ -6815,6 +6939,10 @@ function handleOnlineMessage(raw) {
       resetIfMissing: message.user?.account,
       preferAccountLocal:
         message.preferAccountLocal !== false && message.user?.account,
+      replaceProgression: Boolean(
+        message.user?.account && !message.save?.payload,
+      ),
+      cleanPollutedFresh: Boolean(message.cleanPollutedFresh),
     });
     saveOnlineConfig();
     onlineState.authRequired = false;
@@ -6825,6 +6953,7 @@ function handleOnlineMessage(raw) {
       ? "account"
       : onlineState.profileMode;
     onlineState.guestTemporary = onlineState.profileMode === "guest";
+    finishInitialAccountProgressLoad();
     onlineState.accountStatus =
       onlineState.profileMode === "account"
         ? `Signed in as ${onlineState.user?.username || onlineState.username}${onlineState.user?.badge ? ` · ${onlineState.user.badge}` : ""}.`
@@ -6847,7 +6976,12 @@ function handleOnlineMessage(raw) {
     if (message.user) onlineState.user = message.user;
     applyServerSave(message.save, {
       force: Boolean(message.save),
-      preferAccountLocal: Boolean(message.user?.account),
+      preferAccountLocal:
+        message.preferAccountLocal !== false &&
+        message.user?.backendMode !== BACKEND_MODE_FIREBASE &&
+        !isFirebaseBackendMode() &&
+        Boolean(message.user?.account),
+      cleanPollutedFresh: Boolean(message.cleanPollutedFresh),
     });
     updateProfileUi();
   } else if (message.type === "save.synced") {
@@ -22469,6 +22603,9 @@ window.__infernodriftTestApi = {
   },
   normalizeProgressionForTest: (progression = {}) =>
     structuredClone(normalizeProgressionV2(progression)),
+  buildFreshAccountSaveForTest: () => structuredClone(buildFreshAccountSavePayload()),
+  isPollutedFreshAccountSaveForTest: (payload = {}) =>
+    isPollutedFreshAccountPayload(payload),
 	  configureOnlineForTest: ({
 	    backendMode = onlineState.backendMode,
 	    backendUrl = "",

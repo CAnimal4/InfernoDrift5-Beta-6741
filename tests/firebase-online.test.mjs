@@ -238,9 +238,17 @@ test("Firebase account attach keeps new accounts fresh unless legacy import appl
   );
   assert.match(script, /savePayload: signInSavePayload,/);
   assert.match(script, /preferAccountLocal: false,/);
+  assert.match(script, /cleanPollutedFresh: !guest,/);
+  assert.match(script, /function isPollutedFreshAccountPayload\(payload = {}\)/);
+  assert.match(script, /replaceProgression: Boolean\(\s*message\.user\?\.account && !message\.save\?\.payload,\s*\)/);
+  assert.match(script, /finishInitialAccountProgressLoad\(\);/);
   assert.match(
     script,
     /preferAccountLocal:\s*message\.preferAccountLocal !== false && message\.user\?\.account,/,
+  );
+  assert.match(
+    script,
+    /message\.user\?\.backendMode !== BACKEND_MODE_FIREBASE[\s\S]*!isFirebaseBackendMode\(\)[\s\S]*Boolean\(message\.user\?\.account\)/,
   );
   assert.match(
     firebaseOnline,

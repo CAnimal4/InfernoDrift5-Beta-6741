@@ -982,6 +982,42 @@ assert.equal(legacyGarageMigration.unlockLevel, 3);
 assert.equal(legacyGarageMigration.unlocked, true);
 assert.equal(legacyGarageMigration.owned, true);
 assert.equal(legacyGarageMigration.equipped, true);
+const freshAccountResetState = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetLocalProgressionForTest();
+  window.__infernodriftTestApi.applySavePayloadForTest(
+    { progressionV2: { xp: 5700, totalXp: 5700, level: 6, embers: 0 } },
+    { forceProgression: true },
+  );
+  const before = window.__infernodriftTestApi.getProgressionSnapshot();
+  const freshPayload = window.__infernodriftTestApi.buildFreshAccountSaveForTest();
+  window.__infernodriftTestApi.applySavePayloadForTest(freshPayload, {
+    forceProgression: true,
+    replaceProgression: true,
+  });
+  const after = window.__infernodriftTestApi.getProgressionSnapshot();
+  const polluted = window.__infernodriftTestApi.isPollutedFreshAccountSaveForTest({
+    worldIndex: 0,
+    levelIndex: 0,
+    progressionV2: { schemaVersion: 3, xp: 5700, totalXp: 5700, level: 6 },
+  });
+  const protectedSave = window.__infernodriftTestApi.isPollutedFreshAccountSaveForTest({
+    worldIndex: 0,
+    levelIndex: 0,
+    progressionV2: {
+      schemaVersion: 3,
+      xp: 5700,
+      totalXp: 5700,
+      level: 6,
+      personalBests: { race: 88 },
+    },
+  });
+  return { before, after, polluted, protectedSave };
+});
+assert.ok(freshAccountResetState.before.totalXp >= 5700);
+assert.equal(freshAccountResetState.after.totalXp, 0);
+assert.equal(freshAccountResetState.after.level, 1);
+assert.equal(freshAccountResetState.polluted, true);
+assert.equal(freshAccountResetState.protectedSave, false);
 const garageBuyState = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.applySavePayloadForTest(
