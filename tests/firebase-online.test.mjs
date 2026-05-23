@@ -22,6 +22,7 @@ import {
 test("Firebase username validation enforces launch-safe names", () => {
   assert.equal(validateFirebaseUsername("Clark").ok, true);
   assert.deepEqual(getFirebaseBadges("Clark"), ["Founder"]);
+  assert.deepEqual(getFirebaseBadges("JFine"), ["Advanced Player"]);
   assert.equal(getFirebaseBadges("clark").length, 0);
   assert.deepEqual(
     getFirebaseCredentialBadges("Tosh_the_Sigma", "iamthesigma"),

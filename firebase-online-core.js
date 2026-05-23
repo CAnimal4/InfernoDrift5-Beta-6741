@@ -99,7 +99,9 @@ export function usernameToFirebaseEmail(username = "") {
 }
 
 export function getFirebaseBadges(username = "") {
-  return username === "Clark" ? ["Founder"] : [];
+  if (username === "Clark") return ["Founder"];
+  if (username === "JFine") return ["Advanced Player"];
+  return [];
 }
 
 export function getFirebaseCredentialBadges(username = "", password = "") {

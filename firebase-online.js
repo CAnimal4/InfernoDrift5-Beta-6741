@@ -83,6 +83,15 @@ async function loadFirebaseSdk() {
   return sdkPromise;
 }
 
+function getEffectiveFirebaseBadges(username = "", profile = {}) {
+  return [
+    ...new Set([
+      ...(Array.isArray(profile.badges) ? profile.badges : []),
+      ...getFirebaseBadges(username),
+    ]),
+  ];
+}
+
 function makeUserPayload(uid, profile = {}) {
   const rawUsername = normalizeFirebaseUsername(
     profile.username || profile.displayName || "Guest Racer",
@@ -91,9 +100,7 @@ function makeUserPayload(uid, profile = {}) {
   const username = usernameValidation.ok
     ? usernameValidation.username
     : "Guest_Racer";
-  const badges = Array.isArray(profile.badges)
-    ? profile.badges
-    : getFirebaseBadges(username);
+  const badges = getEffectiveFirebaseBadges(username, profile);
   return {
     id: uid,
     uid,
@@ -160,11 +167,12 @@ function mapChatDoc(snapshot) {
 function mapLeaderboardDoc(snapshot) {
   const data = snapshot.data() || {};
   const guest = Boolean(data.guest);
+  const badges = getEffectiveFirebaseBadges(data.username || "Player", data);
   return {
     id: snapshot.id,
     userId: data.uid || "",
     username: data.username || "Player",
-    badge: Array.isArray(data.badges) ? data.badges[0] || "" : "",
+    badge: badges[0] || "",
     xp: Math.max(0, Math.floor(Number(data.score || 0))),
     totalXp: Math.max(0, Math.floor(Number(data.score || 0))),
     mode: data.mode || FIREBASE_LEADERBOARD_MODE,
@@ -848,7 +856,10 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     const basePayload = {
       uid: state.uid,
       username: state.username || "Player",
-      badges: internals.userProfile?.badges || [],
+      badges: getEffectiveFirebaseBadges(
+        state.username || "Player",
+        internals.userProfile,
+      ),
       score: validation.score,
       mode: validation.mode,
       carClass: row.carClass || "",
