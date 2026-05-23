@@ -8,6 +8,7 @@ import {
   createFirebaseLobbyCode,
   getFirebaseBadges,
   getFirebaseCredentialBadges,
+  isFirebaseCredentialUsername,
   mapFirebaseError,
   normalizeFirebaseLobbyCode,
   normalizeFirebaseUsernameKey,
@@ -66,6 +67,8 @@ test("Firebase username validation enforces launch-safe names", () => {
     "username_reserved",
   );
   assert.equal(validateFirebaseUsername("MODERATOR").error, "username_rejected");
+  assert.equal(isFirebaseCredentialUsername("MODERATOR"), true);
+  assert.equal(isFirebaseCredentialUsername("moderator"), false);
   assert.equal(
     validateFirebaseAccountCredentials(
       "MODERATOR",
@@ -150,6 +153,10 @@ test("Firebase lobby code helpers create joinable room codes", () => {
 test("Firebase error mapping feeds the offline fallback state machine", () => {
   assert.equal(
     mapFirebaseError({ code: "auth/invalid-credential" }),
+    "invalid_credentials",
+  );
+  assert.equal(
+    mapFirebaseError({ message: "INVALID_LOGIN_CREDENTIALS" }),
     "invalid_credentials",
   );
   assert.equal(
@@ -272,12 +279,14 @@ test("legacy Cloudflare progress manifest restores old account XP without secret
   assert.ok(manifest.accounts.clark.xp >= 11317);
   assert.ok(manifest.accounts.billy.xp >= 6100);
   assert.ok(manifest.accounts["tosh the sigma"].xp >= 4300);
+  assert.equal(manifest.accounts.moderator.username, "MODERATOR");
+  assert.equal(manifest.accounts.joshua.username, "Joshua");
   const serialized = JSON.stringify(manifest).toLowerCase();
   assert.doesNotMatch(serialized, /passwordhash|passwordsalt|sessiontoken/);
   assert.doesNotMatch(serialized, /olduserid|user_id/);
 });
 
-test("Firebase account attach keeps new accounts fresh unless legacy import applies", () => {
+test("Firebase account attach repairs legacy Auth and Firestore splits safely", () => {
   const script = fs.readFileSync(
     new URL("../script.js", import.meta.url),
     "utf8",
@@ -290,6 +299,9 @@ test("Firebase account attach keeps new accounts fresh unless legacy import appl
     script,
     /const signInSavePayload = bundledLegacyEntry\?\.payload \|\| null;/,
   );
+  assert.match(script, /function getLegacyProgressAliases\(username = ""\)/);
+  assert.match(script, /punctuationAsSpace/);
+  assert.match(script, /compactLegacyProgressKey/);
   assert.match(script, /savePayload: signInSavePayload,/);
   assert.match(script, /preferAccountLocal: false,/);
   assert.match(script, /cleanPollutedFresh: !guest,/);
@@ -304,13 +316,33 @@ test("Firebase account attach keeps new accounts fresh unless legacy import appl
     script,
     /message\.user\?\.backendMode !== BACKEND_MODE_FIREBASE[\s\S]*!isFirebaseBackendMode\(\)[\s\S]*Boolean\(message\.user\?\.account\)/,
   );
+  assert.match(firebaseOnline, /async function ensureFirebaseAccountDocs\(/);
+  assert.match(firebaseOnline, /function stripUndefinedForFirestore\(value\)/);
   assert.match(
     firebaseOnline,
-    /const seedClientSave = Boolean\(allowLegacyAutoCreate\);/,
+    /auth\.signInWithEmailAndPassword[\s\S]*auth\.createUserWithEmailAndPassword/,
   );
+  assert.match(firebaseOnline, /isFirebaseCredentialUsername\(rawUsername\)/);
+  assert.match(
+    firebaseOnline,
+    /if \(existingUsername\.exists\(\) && !allowLegacyAutoCreate\)/,
+  );
+  assert.match(firebaseOnline, /repair\.staleUsernameClaim = true;/);
   assert.match(
     firebaseOnline,
     /seedClientSave\s*\?\s*chooseBestSavePayload\(existingPayload, savePayload\)\s*:\s*chooseBestSavePayload\(existingPayload\)/s,
+  );
+  assert.match(firebaseOnline, /const safeBestPayload = stripUndefinedForFirestore\(bestPayload\);/);
+  assert.match(firebaseOnline, /payload: safeBestPayload,/);
+  assert.match(
+    firebaseOnline,
+    /const mergedPayload = stripUndefinedForFirestore\(\s*mergeFirebaseSavePayload\(existingPayload, payload\),\s*\);/,
+  );
+  assert.match(firebaseOnline, /stripUndefinedForFirestore\(\{\s*uid: state\.uid,/);
+  assert.match(firebaseOnline, /stripUndefinedForFirestore\(\{\s*progress: mergedPayload\.progressionV2 \|\| \{\},/);
+  assert.match(
+    firebaseOnline,
+    /seedClientSave: Boolean\(allowLegacyAutoCreate\)/,
   );
   assert.match(
     script,

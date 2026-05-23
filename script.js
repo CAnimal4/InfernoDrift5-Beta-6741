@@ -1,6 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260523-auth-error-fix";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260523-legacy-auth-repair";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -4995,6 +4995,25 @@ function normalizeLegacyProgressKey(username = "") {
     .replace(/\s+/g, " ");
 }
 
+function uniqueLegacyProgressKeys(keys = []) {
+  return [...new Set(keys.map(normalizeLegacyProgressKey).filter(Boolean))];
+}
+
+function compactLegacyProgressKey(username = "") {
+  return normalizeLegacyProgressKey(username).replace(/[^a-z0-9]/g, "");
+}
+
+function getLegacyProgressAliases(username = "") {
+  const normalized = normalizeLegacyProgressKey(username);
+  const punctuationAsSpace = normalizeLegacyProgressKey(
+    normalized.replace(/[._-]+/g, " "),
+  );
+  const compact = compactLegacyProgressKey(normalized);
+  const aliases = uniqueLegacyProgressKeys([normalized, punctuationAsSpace]);
+  if (compact) aliases.push(compact);
+  return [...new Set(aliases)];
+}
+
 async function loadBundledLegacyProgressManifest() {
   if (!bundledLegacyProgressPromise) {
     bundledLegacyProgressPromise = fetchWithTimeout(
@@ -5017,8 +5036,30 @@ async function loadBundledLegacyProgressManifest() {
 async function findBundledLegacyProgress(username = "") {
   const manifest = await loadBundledLegacyProgressManifest();
   const accounts = manifest?.accounts || {};
-  const key = normalizeLegacyProgressKey(username);
-  return key ? accounts[key] || null : null;
+  const aliases = getLegacyProgressAliases(username);
+  for (const key of aliases) {
+    if (accounts[key]) return accounts[key];
+  }
+  for (const [key, entry] of Object.entries(accounts)) {
+    const entryAliases = uniqueLegacyProgressKeys([
+      key,
+      ...(entry?.username ? getLegacyProgressAliases(entry.username) : []),
+      ...(entry?.displayName ? getLegacyProgressAliases(entry.displayName) : []),
+    ]);
+    const compactAliases = new Set(
+      entryAliases.map(compactLegacyProgressKey).filter(Boolean),
+    );
+    if (
+      aliases.some(
+        (alias) =>
+          entryAliases.includes(alias) ||
+          compactAliases.has(compactLegacyProgressKey(alias)),
+      )
+    ) {
+      return entry;
+    }
+  }
+  return null;
 }
 
 async function importBundledLegacyProgressForFirebaseAccount({
@@ -6061,6 +6102,7 @@ function buildFirebaseAuthResultMessage(result, { guest = false } = {}) {
     },
     sessionToken: result.sessionToken || result.user?.uid || result.user?.id || "",
     save: result.save || null,
+    repair: result.repair || null,
     preferAccountLocal: false,
     cleanPollutedFresh: !guest,
   };
@@ -7036,6 +7078,15 @@ function handleOnlineMessage(raw) {
     saveOnlineConfig();
     onlineState.authRequired = false;
     onlineState.profileActionStatus = "";
+    if (message.repair?.authMode === "legacy_account_created") {
+      onlineState.profileActionStatus =
+        "Old account sign-in repaired. Your saved progress is being restored.";
+    } else if (message.repair?.staleUsernameClaim) {
+      onlineState.profileActionStatus =
+        "Account sign-in repaired. A stale old username claim was ignored.";
+    } else if (message.repair?.usernameClaim === "created") {
+      onlineState.profileActionStatus = "Account profile repaired.";
+    }
     onlineState.profileDeleteStatus = "";
     onlineState.onlineRestrictedUntil = "";
     onlineState.profileMode = message.user?.account

@@ -185,6 +185,12 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Added a credential-aware Firebase account validation path so exact configured special credentials can sign in without weakening normal username/chat moderation.
 - Split start-screen account errors from online-service outages so invalid credentials or rejected usernames no longer show the misleading "Online services are unavailable" fallback.
 
+2026-05-23 legacy Firebase account repair:
+
+- Found the deeper old-account failure pattern: some exported legacy accounts have saves in `legacy-cloudflare-progress.json` but no matching Firebase Auth account yet, and alias changes like `Tosh_the_Sigma` versus `Tosh the Sigma` missed the bundled legacy lookup.
+- Reworked Firebase account sign-in to try deterministic Firebase Auth first, create only trusted legacy/new accounts when Auth is missing, and repair missing Firestore profile/progress docs after Auth succeeds.
+- Added safe legacy alias matching for punctuation/space changes so old saves can attach to the current username format without broad fuzzy matching.
+
 2026-05-18 Shared XP leaderboard follow-up:
 
 - Made Phase 3/4 progression explicitly global: every completed or failed mode/minigame run adds into one `progressionV2.xp` / `progressionV2.totalXp` pool, with level derived from total XP.

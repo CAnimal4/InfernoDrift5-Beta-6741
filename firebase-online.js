@@ -5,6 +5,7 @@ import {
   createFirebaseLobbyCode,
   getFirebaseBadges,
   getFirebaseCredentialBadges,
+  isFirebaseCredentialUsername,
   mapFirebaseError,
   normalizeFirebaseLobbyCode,
   normalizeFirebaseUsername,
@@ -15,7 +16,7 @@ import {
   validateFirebaseLobbyCode,
   validateFirebaseScore,
   validateFirebaseUsername,
-} from "./firebase-online-core.js?v=20260523-auth-error-fix";
+} from "./firebase-online-core.js?v=20260523-legacy-auth-repair";
 
 const FIREBASE_SDK_VERSION = "10.13.2";
 const FIREBASE_SDK_BASE = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}`;
@@ -72,6 +73,23 @@ function withTimeout(promise, timeoutMs, errorCode) {
   });
 }
 
+function stripUndefinedForFirestore(value) {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      const clean = stripUndefinedForFirestore(item);
+      return clean === undefined ? null : clean;
+    });
+  }
+  const output = {};
+  for (const [key, item] of Object.entries(value)) {
+    const clean = stripUndefinedForFirestore(item);
+    if (clean !== undefined) output[key] = clean;
+  }
+  return output;
+}
+
 async function loadFirebaseSdk() {
   if (!sdkPromise) {
     sdkPromise = Promise.all([
@@ -99,6 +117,8 @@ function makeUserPayload(uid, profile = {}) {
   const usernameValidation = validateFirebaseUsername(rawUsername);
   const username = usernameValidation.ok
     ? usernameValidation.username
+    : isFirebaseCredentialUsername(rawUsername)
+      ? rawUsername
     : "Guest_Racer";
   const badges = getEffectiveFirebaseBadges(username, profile);
   return {
@@ -703,6 +723,102 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     return internals.userProfile;
   }
 
+  function firebaseEmailForUsernameValidation(validation) {
+    const emailKey = validation.usernameLower
+      .replace(/\s+/g, ".")
+      .replace(/[^a-z0-9._-]/g, "-");
+    return `id4.${emailKey}@infernodrift4.firebaseapp.com`;
+  }
+
+  async function ensureFirebaseAccountDocs({
+    user,
+    validation,
+    age,
+    badges,
+    savePayload,
+    seedClientSave = false,
+    timeoutMs = 8000,
+    authMode = "signed-in",
+  }) {
+    const { firestore } = internals.sdk;
+    const usernameRef = firestore.doc(
+      internals.db,
+      "usernames",
+      validation.usernameLower,
+    );
+    const repair = {
+      authMode,
+      usernameClaim: "unchanged",
+      profile: "merged",
+      progress: "unchanged",
+      staleUsernameClaim: false,
+    };
+    await withTimeout(
+      firestore.runTransaction(internals.db, async (transaction) => {
+        const usernameDoc = await transaction.get(usernameRef);
+        const userRef = firestore.doc(internals.db, "users", user.uid);
+        const progressRef = firestore.doc(internals.db, "progress", user.uid);
+        const progressDoc = await transaction.get(progressRef);
+        const existingPayload = progressDoc.exists()
+          ? progressDoc.data()?.payload
+          : null;
+        const bestPayload = seedClientSave
+          ? chooseBestSavePayload(existingPayload, savePayload)
+          : chooseBestSavePayload(existingPayload);
+        const safeBestPayload = stripUndefinedForFirestore(bestPayload);
+        const baseProfile = {
+          uid: user.uid,
+          username: validation.username,
+          usernameLower: validation.usernameLower,
+          displayName: validation.username,
+          isGuest: false,
+          badges,
+          age: Number.isFinite(Number(age)) ? Math.round(Number(age)) : null,
+          createdAt: firestore.serverTimestamp(),
+          lastSeenAt: firestore.serverTimestamp(),
+          stats: {},
+          settings: {},
+          cosmetics: {},
+          loadouts: {},
+          progress: safeBestPayload?.progressionV2 || {},
+        };
+        if (!usernameDoc.exists()) {
+          transaction.set(
+            usernameRef,
+            {
+              uid: user.uid,
+              username: validation.username,
+              usernameLower: validation.usernameLower,
+              createdAt: firestore.serverTimestamp(),
+            },
+            { merge: false },
+          );
+          repair.usernameClaim = "created";
+        } else if (usernameDoc.data()?.uid !== user.uid) {
+          repair.usernameClaim = "stale";
+          repair.staleUsernameClaim = true;
+        }
+        transaction.set(userRef, baseProfile, { merge: true });
+        if (safeBestPayload) {
+          transaction.set(
+            progressRef,
+            {
+              uid: user.uid,
+              username: validation.username,
+              payload: safeBestPayload,
+              updatedAt: firestore.serverTimestamp(),
+            },
+            { merge: true },
+          );
+          repair.progress = progressDoc.exists() ? "merged" : "created";
+        }
+      }),
+      timeoutMs,
+      "auth_timeout",
+    );
+    return repair;
+  }
+
   async function signInAccount({
     username,
     password,
@@ -718,66 +834,48 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     requireReady();
     state.authStatus = "signing-in";
     const { auth, firestore } = internals.sdk;
-    const emailKey = validation.usernameLower
-      .replace(/\s+/g, ".")
-      .replace(/[^a-z0-9._-]/g, "-");
-    const email = `id4.${emailKey}@infernodrift4.firebaseapp.com`;
+    const email = firebaseEmailForUsernameValidation(validation);
     const usernameRef = firestore.doc(
       internals.db,
       "usernames",
       validation.usernameLower,
     );
-    const existingUsername = await withTimeout(
-      firestore.getDoc(usernameRef),
-      timeoutMs,
-      "auth_timeout",
-    );
     let credential = null;
-    if (existingUsername.exists()) {
-      try {
-        credential = await withTimeout(
-          auth.signInWithEmailAndPassword(internals.auth, email, password),
-          timeoutMs,
-          "auth_timeout",
-        );
-      } catch (error) {
-        const code = mapFirebaseError(error) || "invalid_credentials";
-        if (!allowLegacyAutoCreate || code !== "invalid_credentials") {
-          throw new Error(code);
-        }
-        try {
-          credential = await withTimeout(
-            auth.createUserWithEmailAndPassword(internals.auth, email, password),
-            timeoutMs,
-            "auth_timeout",
-          );
-        } catch (createError) {
-          throw new Error(mapFirebaseError(createError) || code);
-        }
+    let authMode = "signed-in";
+    let signInCode = "";
+    try {
+      credential = await withTimeout(
+        auth.signInWithEmailAndPassword(internals.auth, email, password),
+        timeoutMs,
+        "auth_timeout",
+      );
+    } catch (error) {
+      signInCode = mapFirebaseError(error) || "invalid_credentials";
+    }
+    if (!credential) {
+      const existingUsername = await withTimeout(
+        firestore.getDoc(usernameRef),
+        timeoutMs,
+        "auth_timeout",
+      );
+      if (existingUsername.exists() && !allowLegacyAutoCreate) {
+        throw new Error(signInCode || "invalid_credentials");
       }
-    } else {
       try {
         credential = await withTimeout(
           auth.createUserWithEmailAndPassword(internals.auth, email, password),
           timeoutMs,
           "auth_timeout",
         );
+        authMode = allowLegacyAutoCreate
+          ? "legacy_account_created"
+          : "created";
       } catch (error) {
         const code = mapFirebaseError(error);
-        if (code !== "username_taken") {
-          throw new Error(code);
+        if (code === "username_taken" && signInCode) {
+          throw new Error("invalid_credentials");
         }
-        try {
-          credential = await withTimeout(
-            auth.signInWithEmailAndPassword(internals.auth, email, password),
-            timeoutMs,
-            "auth_timeout",
-          );
-        } catch (signInError) {
-          throw new Error(
-            mapFirebaseError(signInError) || "invalid_credentials",
-          );
-        }
+        throw new Error(code || signInCode || "invalid_credentials");
       }
     }
     const user = credential.user;
@@ -785,66 +883,15 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       validation.username,
       password,
     );
-    await firestore.runTransaction(internals.db, async (transaction) => {
-      const usernameDoc = await transaction.get(usernameRef);
-      if (
-        usernameDoc.exists() &&
-        usernameDoc.data()?.uid !== user.uid &&
-        !allowLegacyAutoCreate
-      ) {
-        throw new Error("username_taken");
-      }
-      const userRef = firestore.doc(internals.db, "users", user.uid);
-      const progressRef = firestore.doc(internals.db, "progress", user.uid);
-      const progressDoc = await transaction.get(progressRef);
-      const existingPayload = progressDoc.exists()
-        ? progressDoc.data()?.payload
-        : null;
-      const seedClientSave = Boolean(allowLegacyAutoCreate);
-      const bestPayload = seedClientSave
-        ? chooseBestSavePayload(existingPayload, savePayload)
-        : chooseBestSavePayload(existingPayload);
-      const baseProfile = {
-        uid: user.uid,
-        username: validation.username,
-        usernameLower: validation.usernameLower,
-        displayName: validation.username,
-        isGuest: false,
-        badges,
-        age: Number.isFinite(Number(age)) ? Math.round(Number(age)) : null,
-        createdAt: firestore.serverTimestamp(),
-        lastSeenAt: firestore.serverTimestamp(),
-        stats: {},
-        settings: {},
-        cosmetics: {},
-        loadouts: {},
-        progress: bestPayload?.progressionV2 || {},
-      };
-      if (!usernameDoc.exists()) {
-        transaction.set(
-          usernameRef,
-          {
-            uid: user.uid,
-            username: validation.username,
-            usernameLower: validation.usernameLower,
-            createdAt: firestore.serverTimestamp(),
-          },
-          { merge: false },
-        );
-      }
-      transaction.set(userRef, baseProfile, { merge: true });
-      if (bestPayload) {
-        transaction.set(
-          progressRef,
-          {
-            uid: user.uid,
-            username: validation.username,
-            payload: bestPayload,
-            updatedAt: firestore.serverTimestamp(),
-          },
-          { merge: true },
-        );
-      }
+    const repair = await ensureFirebaseAccountDocs({
+      user,
+      validation,
+      age,
+      badges,
+      savePayload,
+      seedClientSave: Boolean(allowLegacyAutoCreate),
+      timeoutMs,
+      authMode,
     });
     await auth
       .updateProfile(user, { displayName: validation.username })
@@ -860,6 +907,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       sessionToken: user.uid,
       save: progress?.payload ? { payload: progress.payload } : null,
       profile: internals.userProfile,
+      repair,
     };
   }
 
@@ -930,7 +978,9 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     const existingPayload = existingProgress?.exists()
       ? existingProgress.data()?.payload
       : null;
-    const mergedPayload = mergeFirebaseSavePayload(existingPayload, payload);
+    const mergedPayload = stripUndefinedForFirestore(
+      mergeFirebaseSavePayload(existingPayload, payload),
+    );
     const xp = Math.max(
       0,
       Math.floor(
@@ -943,7 +993,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     );
     await firestore.setDoc(
       progressRef,
-      {
+      stripUndefinedForFirestore({
         uid: state.uid,
         username: state.username,
         payload: mergedPayload,
@@ -956,19 +1006,19 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
         stats: mergedPayload.progressionV2 || {},
         settings: mergedPayload.settings || {},
         updatedAt: firestore.serverTimestamp(),
-      },
+      }),
       { merge: true },
     );
     await firestore.setDoc(
       firestore.doc(internals.db, "users", state.uid),
-      {
+      stripUndefinedForFirestore({
         progress: mergedPayload.progressionV2 || {},
         stats: mergedPayload.progressionV2 || {},
         settings: mergedPayload.settings || {},
         cosmetics: mergedPayload.customization || {},
         loadouts: mergedPayload.garage || {},
         lastSeenAt: firestore.serverTimestamp(),
-      },
+      }),
       { merge: true },
     );
     if (!state.isGuest && !internals.userProfile?.isGuest) {

@@ -134,7 +134,7 @@ function hasFirebaseCredentialAccess(username = "", password = "") {
   );
 }
 
-function isFirebaseCredentialUsername(username = "") {
+export function isFirebaseCredentialUsername(username = "") {
   const cleanUsername = normalizeFirebaseUsername(username);
   return FIREBASE_CREDENTIAL_BADGES.some(
     (entry) => cleanUsername === entry.username,
@@ -297,7 +297,11 @@ export function mapFirebaseError(error) {
   if (code.includes("network") || code.includes("unavailable")) {
     return "firebase_unavailable";
   }
-  if (code.includes("invalid-credential") || code.includes("wrong-password")) {
+  if (
+    code.includes("invalid-credential") ||
+    code.includes("invalid_login_credentials") ||
+    code.includes("wrong-password")
+  ) {
     return "invalid_credentials";
   }
   if (code.includes("email-already-in-use")) return "username_taken";
