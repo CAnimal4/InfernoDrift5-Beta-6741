@@ -355,6 +355,40 @@ assert.equal(dmEchoState.mode, "dm");
 assert.equal(dmEchoState.activeDmUsername, "DmSmokeFriend");
 assert.ok(dmEchoState.dmMessageCount >= 1);
 assert.equal(dmEchoState.lastMessage.text, "private smoke hello");
+await page.locator("#chat-popout-close").click({ force: true });
+let noticeState = await page.evaluate(() =>
+  window.__infernodriftTestApi.simulateIncomingChatForTest({
+    username: "LobbyFriend",
+    userId: "lobby-friend",
+    text: "join the goal push",
+  }),
+);
+assert.equal(noticeState.noticeVisible, true);
+assert.equal(noticeState.noticeDmUsername, "");
+await page.locator("#chat-notice").click({ force: true });
+onlineUiState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
+assert.equal(onlineUiState.online.chat.popoutOpen, true);
+assert.equal(onlineUiState.online.chat.mode, "lobby");
+await page.locator("#chat-popout-close").click({ force: true });
+noticeState = await page.evaluate(() =>
+  window.__infernodriftTestApi.simulateIncomingChatForTest({
+    username: "DmSmokeFriend",
+    userId: "dm-smoke-friend",
+    text: "private smoke ping",
+    direct: true,
+  }),
+);
+assert.equal(noticeState.noticeVisible, true);
+assert.equal(noticeState.noticeDmUsername, "DmSmokeFriend");
+await page.locator("#chat-notice").click({ force: true });
+onlineUiState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
+assert.equal(onlineUiState.online.chat.popoutOpen, true);
+assert.equal(onlineUiState.online.chat.mode, "dm");
+assert.equal(onlineUiState.online.chat.activeDmUsername, "DmSmokeFriend");
 await page.locator("#chat-popout-input").fill("/report");
 await page.locator("#chat-popout-send").click({ force: true });
 await page.waitForTimeout(120);
@@ -1102,6 +1136,21 @@ const maxLiveState = await page.evaluate(() => {
     mode: "max-arena",
     ownId: "client-user",
     liveSeq: 5,
+    livePlayers: {
+      "host-user": {
+        id: "host-user",
+        uid: "host-user",
+        username: "Host",
+        team: "red",
+        x: 16,
+        y: 0,
+        z: -22,
+        heading: 0.4,
+        speed: 38,
+        boost: true,
+        cosmetics: { bodyId: "monster", paintId: "ember" },
+      },
+    },
   });
 });
 assert.equal(maxLiveState.mode, "max-arena");
@@ -1111,6 +1160,7 @@ assert.equal(maxLiveState.hud.score.blue, 2);
 assert.equal(maxLiveState.hud.score.red, 1);
 assert.equal(maxLiveState.ball.x, 5);
 assert.equal(maxLiveState.humanPlayers.length, 1);
+assert.match(maxLiveState.online.remotePlayers[0].cosmeticsKey, /monster/);
 const battleLiveState = await page.evaluate(() => {
   window.__infernodriftTestApi.simulateRoomJoinForTest({
     code: "BTT88",

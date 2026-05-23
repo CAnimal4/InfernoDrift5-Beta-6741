@@ -139,21 +139,95 @@ function uniqueArrayValues(...values) {
   ];
 }
 
+function getPayloadUpdatedAt(payload = {}) {
+  const raw =
+    payload?.saveMeta?.updatedAtMs ??
+    payload?.saveMeta?.updatedAtClient ??
+    payload?.progressionV2?.updatedAtMs ??
+    payload?.progressionV2?.updatedAtClient ??
+    payload?.updatedAtClient;
+  const numeric = Number(raw);
+  if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  const parsed = Date.parse(String(raw || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function chooseLatestSavePayload(existingPayload = {}, incomingPayload = {}) {
+  const existingTime = getPayloadUpdatedAt(existingPayload);
+  const incomingTime = getPayloadUpdatedAt(incomingPayload);
+  if (!incomingTime) return incomingPayload || existingPayload;
+  if (!existingTime) return incomingPayload;
+  if (incomingTime > existingTime) return incomingPayload;
+  if (existingTime > incomingTime) return existingPayload;
+  return incomingPayload || existingPayload;
+}
+
+function mergeFirebaseChallenge(existing = {}, incoming = {}) {
+  if (!existing || typeof existing !== "object") return incoming;
+  if (!incoming || typeof incoming !== "object") return existing;
+  if (existing.seed && incoming.seed && existing.seed !== incoming.seed) {
+    return incoming;
+  }
+  return {
+    ...incoming,
+    progress: Math.max(Number(existing.progress) || 0, Number(incoming.progress) || 0),
+    complete: Boolean(existing.complete || incoming.complete),
+  };
+}
+
+function mergeFirebaseDailySparks(existing = {}, incoming = {}) {
+  if (!existing || typeof existing !== "object") return incoming;
+  if (!incoming || typeof incoming !== "object") return existing;
+  if (existing.seed && incoming.seed && existing.seed !== incoming.seed) {
+    return incoming;
+  }
+  const itemsById = new Map();
+  [...(Array.isArray(existing.items) ? existing.items : []), ...(Array.isArray(incoming.items) ? incoming.items : [])].forEach((item) => {
+    if (!item?.id) return;
+    const previous = itemsById.get(item.id) || {};
+    itemsById.set(item.id, {
+      ...previous,
+      ...item,
+      progress: Math.max(Number(previous.progress) || 0, Number(item.progress) || 0),
+      claimed: Boolean(previous.claimed || item.claimed),
+      completed: Boolean(previous.completed || item.completed),
+      modeIds: uniqueArrayValues(previous.modeIds, item.modeIds).slice(0, 8),
+    });
+  });
+  return {
+    ...(incoming || existing),
+    seed: incoming.seed || existing.seed,
+    items: [...itemsById.values()],
+  };
+}
+
 function mergeFirebaseProgression(existing = {}, incoming = {}) {
+  const latestProgression = chooseLatestSavePayload(
+    { progressionV2: existing },
+    { progressionV2: incoming },
+  ).progressionV2 || incoming || existing;
   const xp = Math.max(
     getSavePayloadXp({ progressionV2: existing }),
     getSavePayloadXp({ progressionV2: incoming }),
   );
+  const dailyGift =
+    existing.dailyGift?.seed && existing.dailyGift.seed === incoming.dailyGift?.seed
+      ? {
+          ...(latestProgression.dailyGift || {}),
+          claimed: Boolean(existing.dailyGift.claimed || incoming.dailyGift.claimed),
+          claimedAt:
+            [existing.dailyGift.claimedAt, incoming.dailyGift.claimedAt]
+              .filter(Boolean)
+              .sort()
+              .at(-1) || "",
+        }
+      : latestProgression.dailyGift;
   return {
     ...existing,
     ...incoming,
     xp,
     totalXp: xp,
-    embers: Math.max(
-      0,
-      Math.floor(Number(existing.embers) || 0),
-      Math.floor(Number(incoming.embers) || 0),
-    ),
+    embers: Math.max(0, Math.floor(Number(latestProgression.embers) || 0)),
     medals: { ...(existing.medals || {}), ...(incoming.medals || {}) },
     personalBests: {
       ...(existing.personalBests || {}),
@@ -175,10 +249,23 @@ function mergeFirebaseProgression(existing = {}, incoming = {}) {
       existing.claimedLevelRewards,
       incoming.claimedLevelRewards,
     ),
+    seenModeIntros: {
+      ...(existing.seenModeIntros || {}),
+      ...(incoming.seenModeIntros || {}),
+    },
+    tutorialComplete: Boolean(existing.tutorialComplete || incoming.tutorialComplete),
+    dailySparks: mergeFirebaseDailySparks(existing.dailySparks, incoming.dailySparks),
+    dailyGift,
+    dailyGiftSalt: latestProgression.dailyGiftSalt,
+    daily: mergeFirebaseChallenge(existing.daily, incoming.daily),
+    weekly: mergeFirebaseChallenge(existing.weekly, incoming.weekly),
+    rewardLog: uniqueArrayValues(incoming.rewardLog, existing.rewardLog).slice(0, 12),
     recentRewards: uniqueArrayValues(
       incoming.recentRewards,
       existing.recentRewards,
     ).slice(0, 12),
+    updatedAtClient: latestProgression.updatedAtClient,
+    updatedAtMs: latestProgression.updatedAtMs,
   };
 }
 
@@ -194,14 +281,21 @@ function mergeFirebaseSavePayload(existingPayload = null, incomingPayload = null
     incomingProgression,
   );
   const bestShell = chooseBestSavePayload(existingPayload, incomingPayload) || incomingPayload;
+  const latestShell = chooseLatestSavePayload(existingPayload, incomingPayload) || incomingPayload;
   return {
     ...bestShell,
-    settings: { ...(existingPayload.settings || {}), ...(incomingPayload.settings || {}) },
-    customization: {
-      ...(existingPayload.customization || {}),
-      ...(incomingPayload.customization || {}),
-    },
-    garage: incomingPayload.garage || existingPayload.garage,
+    saveMeta: latestShell.saveMeta || incomingPayload.saveMeta || existingPayload.saveMeta,
+    settings: { ...(existingPayload.settings || {}), ...(latestShell.settings || {}) },
+    customization: latestShell.customization || incomingPayload.customization || existingPayload.customization,
+    garage: latestShell.garage || incomingPayload.garage || existingPayload.garage,
+    maxTeamCustomization:
+      latestShell.maxTeamCustomization ||
+      incomingPayload.maxTeamCustomization ||
+      existingPayload.maxTeamCustomization,
+    controlBindings:
+      latestShell.controlBindings ||
+      incomingPayload.controlBindings ||
+      existingPayload.controlBindings,
     progressionV2: mergedProgression,
   };
 }
@@ -317,6 +411,18 @@ function trimLivePayload(value, fallback = {}) {
   return fallback;
 }
 
+function sanitizeLiveCosmetics(input = null) {
+  if (!input || typeof input !== "object") return null;
+  return Object.fromEntries(
+    Object.entries(input)
+      .slice(0, 18)
+      .map(([key, value]) => [
+        String(key).slice(0, 32),
+        String(value || "").slice(0, 48),
+      ]),
+  );
+}
+
 function sanitizeLivePlayerSnapshot(input = {}, uid = "") {
   const n = (value, fallback = 0, digits = 2) => {
     const number = Number(value);
@@ -345,17 +451,7 @@ function sanitizeLivePlayerSnapshot(input = {}, uid = "") {
       score: Math.max(0, Math.floor(Number(input.score) || 0)),
       progress: Math.max(0, Number(n(input.progress))),
       checkpoint: Math.max(0, Math.floor(Number(input.checkpoint) || 0)),
-      cosmetics:
-        input.cosmetics && typeof input.cosmetics === "object"
-          ? Object.fromEntries(
-              Object.entries(input.cosmetics)
-                .slice(0, 18)
-                .map(([key, value]) => [
-                  String(key).slice(0, 32),
-                  String(value || "").slice(0, 48),
-                ]),
-            )
-          : null,
+      cosmetics: sanitizeLiveCosmetics(input.cosmetics),
       at: nowIso(),
     },
     {
@@ -395,6 +491,7 @@ function sanitizeLiveStateSnapshot(input = {}) {
     demolished: Boolean(car.demolished),
     health: Math.max(0, Math.min(999, Math.round(Number(car.health) || 0))),
     role: String(car.role || "").slice(0, 24),
+    cosmetics: sanitizeLiveCosmetics(car.cosmetics),
   });
   return trimLivePayload(
     {
@@ -491,6 +588,8 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     db: null,
     userProfile: null,
     unsubscribers: [],
+    chatRoomIds: new Set(),
+    dmChatUnsubscribe: null,
     lobbyUnsubscribe: null,
     lobbyCode: "",
     lastChatAt: 0,
@@ -979,6 +1078,8 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
         // Listener was already closed.
       }
     });
+    internals.chatRoomIds.clear();
+    internals.dmChatUnsubscribe = null;
     state.chatListenerActive = false;
     state.chatStatus = "idle";
     stopLobbySubscription();
@@ -1028,13 +1129,57 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     );
   }
 
+  function subscribeDirectMessages() {
+    const { firestore } = internals.sdk;
+    if (
+      internals.dmChatUnsubscribe ||
+      !state.uid ||
+      typeof firestore.collectionGroup !== "function"
+    ) {
+      return;
+    }
+    let initialSnapshot = true;
+    const q = firestore.query(
+      firestore.collectionGroup(internals.db, "messages"),
+      firestore.where("toUid", "==", state.uid),
+      firestore.limit(CHAT_HISTORY_LIMIT),
+    );
+    const unsubscribe = firestore.onSnapshot(
+      q,
+      (snapshot) => {
+        if (initialSnapshot) {
+          initialSnapshot = false;
+          return;
+        }
+        snapshot.docChanges().forEach((change) => {
+          if (change.type !== "added") return;
+          const message = mapChatDoc(change.doc);
+          if (!message.direct || message.userId === state.uid) return;
+          emit("chat.message", message);
+        });
+      },
+      (error) => {
+        state.chatStatus = "dm-listener-failed";
+        state.chatListenerActive = false;
+        console.warn("InfernoDrift4 DM listener unavailable", error);
+      },
+    );
+    internals.dmChatUnsubscribe = unsubscribe;
+    internals.unsubscribers.push(unsubscribe);
+  }
+
   async function subscribeChat({ roomId = CHAT_ROOM_ID } = {}) {
     requireReady();
+    const cleanRoomId = String(roomId || CHAT_ROOM_ID).slice(0, 120);
+    if (internals.chatRoomIds.has(cleanRoomId)) {
+      if (cleanRoomId === CHAT_ROOM_ID) subscribeDirectMessages();
+      return;
+    }
     const { firestore } = internals.sdk;
     const messagesRef = firestore.collection(
       internals.db,
       "chatRooms",
-      roomId,
+      cleanRoomId,
       "messages",
     );
     const q = firestore.query(
@@ -1042,20 +1187,32 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       firestore.orderBy("createdAt", "desc"),
       firestore.limit(CHAT_HISTORY_LIMIT),
     );
+    let initialSnapshot = true;
     const unsubscribe = firestore.onSnapshot(
       q,
       (snapshot) => {
-        const messages = snapshot.docs.map(mapChatDoc).reverse();
         state.chatStatus = "ready";
         state.chatListenerActive = true;
-        emit("chat.history", { messages });
+        if (initialSnapshot) {
+          initialSnapshot = false;
+          const messages = snapshot.docs.map(mapChatDoc).reverse();
+          emit("chat.history", { messages });
+          return;
+        }
+        snapshot.docChanges().forEach((change) => {
+          if (change.type !== "added") return;
+          emit("chat.message", mapChatDoc(change.doc));
+        });
       },
       (error) => {
         state.chatStatus = "failed";
-        fail(error, "chat_listener_failed");
+        state.chatListenerActive = false;
+        console.warn("InfernoDrift4 chat listener unavailable", error);
       },
     );
     internals.unsubscribers.push(unsubscribe);
+    internals.chatRoomIds.add(cleanRoomId);
+    if (cleanRoomId === CHAT_ROOM_ID) subscribeDirectMessages();
     state.chatStatus = "listening";
     state.chatListenerActive = true;
   }

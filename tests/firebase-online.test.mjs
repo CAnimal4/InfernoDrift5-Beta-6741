@@ -165,11 +165,24 @@ test("Firebase guardrails survive stress inputs", () => {
     "where do you live",
     "text me your phone number",
     "send password",
+    "what the fuck",
+    "f u c k",
+    "f*ck",
     "go hurt yourself",
     "n u d e s",
+    "y o u  a r e  t r a s h",
+    "n0 0ne likes u",
   ];
   for (const message of abusiveMessages) {
     assert.equal(sanitizeFirebaseText(message).ok, false, message);
+  }
+  const allowedMessages = [
+    "Nice drift!",
+    "Can you defend the left goal?",
+    "That bot is tough.",
+  ];
+  for (const message of allowedMessages) {
+    assert.equal(sanitizeFirebaseText(message).ok, true, message);
   }
 
   for (let score = 0; score <= 1_000_000; score += 125_000) {
@@ -298,9 +311,15 @@ test("Firebase progress sync merges server and device economy state", () => {
   assert.match(firebaseOnline, /function mergeFirebaseProgression\(existing = {}, incoming = {}\)/);
   assert.match(firebaseOnline, /const existingProgress = await firestore\.getDoc\(progressRef\)/);
   assert.match(firebaseOnline, /payload: mergedPayload,/);
-  assert.match(firebaseOnline, /embers: Math\.max\(/);
+  assert.match(firebaseOnline, /function getPayloadUpdatedAt\(payload = \{\}\)/);
+  assert.match(firebaseOnline, /const latestShell = chooseLatestSavePayload\(existingPayload, incomingPayload\)/);
+  assert.match(firebaseOnline, /embers: Math\.max\(0, Math\.floor\(Number\(latestProgression\.embers\) \|\| 0\)\)/);
   assert.match(firebaseOnline, /ownedCosmetics: uniqueArrayValues\(/);
   assert.match(firebaseOnline, /claimedLevelRewards: uniqueArrayValues\(/);
+  assert.match(firebaseOnline, /dailySparks: mergeFirebaseDailySparks\(existing\.dailySparks, incoming\.dailySparks\)/);
+  assert.match(firebaseOnline, /customization: latestShell\.customization/);
+  assert.match(firebaseOnline, /garage: latestShell\.garage/);
+  assert.doesNotMatch(firebaseOnline, /fail\(error, "chat_listener_failed"\)/);
   assert.match(firebaseOnline, /emit\("save\.synced", \{ payload: mergedPayload \}\)/);
 });
 
@@ -318,4 +337,12 @@ test("legacy import marker cannot hide downgraded Firebase progress", () => {
     /const currentXp = getSavePayloadTotalXp\(buildPersistentSavePayload\(\)\);/,
   );
   assert.match(script, /if \(currentXp >= markerXp\) \{/);
+  assert.match(
+    script,
+    /saveMeta: \{\s*updatedAtClient: savedAt,\s*updatedAtMs: Date\.now\(\),\s*\}/,
+  );
+  assert.match(
+    script,
+    /dailySparks: mergeDailySparksProgress\(existing\.dailySparks, next\.dailySparks\)/,
+  );
 });

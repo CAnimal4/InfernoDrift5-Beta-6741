@@ -2809,19 +2809,76 @@ function normalizeProgressionV2(value = {}) {
   return next;
 }
 
+function mergeProgressChallenge(existing = {}, incoming = {}) {
+  if (!existing || typeof existing !== "object") return incoming;
+  if (!incoming || typeof incoming !== "object") return existing;
+  if (existing.seed && incoming.seed && existing.seed !== incoming.seed) {
+    return incoming;
+  }
+  return {
+    ...incoming,
+    progress: Math.max(Number(existing.progress) || 0, Number(incoming.progress) || 0),
+    complete: Boolean(existing.complete || incoming.complete),
+  };
+}
+
+function mergeDailySparksProgress(existing = {}, incoming = {}) {
+  if (!existing || typeof existing !== "object") return incoming;
+  if (!incoming || typeof incoming !== "object") return existing;
+  if (existing.seed && incoming.seed && existing.seed !== incoming.seed) {
+    return incoming;
+  }
+  const byId = new Map();
+  [...(Array.isArray(existing.items) ? existing.items : []), ...(Array.isArray(incoming.items) ? incoming.items : [])].forEach((item) => {
+    if (!item?.id) return;
+    const previous = byId.get(item.id) || {};
+    byId.set(item.id, {
+      ...previous,
+      ...item,
+      progress: Math.max(Number(previous.progress) || 0, Number(item.progress) || 0),
+      completed: Boolean(previous.completed || item.completed),
+      claimed: Boolean(previous.claimed || item.claimed),
+      modeIds: [...new Set([...(previous.modeIds || []), ...(item.modeIds || [])])].slice(0, 8),
+    });
+  });
+  return {
+    ...incoming,
+    seed: incoming.seed || existing.seed,
+    items: [...byId.values()],
+  };
+}
+
 function mergeProgressionV2(current, incoming) {
   const existing = normalizeProgressionV2(current);
   const next = normalizeProgressionV2(incoming);
+  const existingUpdatedAt = Date.parse(String(existing.updatedAtClient || "")) || 0;
+  const nextUpdatedAt = Date.parse(String(next.updatedAtClient || "")) || 0;
+  const latest =
+    nextUpdatedAt === 0 || existingUpdatedAt === 0 || nextUpdatedAt >= existingUpdatedAt
+      ? next
+      : existing;
   const totalXp = Math.max(
     getProgressionTotalXp(existing),
     getProgressionTotalXp(next),
   );
+  const dailyGift =
+    existing.dailyGift?.seed && existing.dailyGift.seed === next.dailyGift?.seed
+      ? {
+          ...latest.dailyGift,
+          claimed: Boolean(existing.dailyGift.claimed || next.dailyGift.claimed),
+          claimedAt:
+            [existing.dailyGift.claimedAt, next.dailyGift.claimedAt]
+              .filter(Boolean)
+              .sort()
+              .at(-1) || "",
+        }
+      : latest.dailyGift;
   return normalizeProgressionV2({
     ...next,
     xp: totalXp,
     totalXp,
     level: getLevelFromXP(totalXp),
-    embers: Math.max(existing.embers || 0, next.embers || 0),
+    embers: Math.max(0, Math.floor(Number(latest.embers) || 0)),
     medals: { ...existing.medals, ...next.medals },
     personalBests: { ...existing.personalBests, ...next.personalBests },
     ghostSamples: { ...existing.ghostSamples, ...next.ghostSamples },
@@ -2845,10 +2902,17 @@ function mergeProgressionV2(current, incoming) {
     ],
     seenModeIntros: { ...existing.seenModeIntros, ...next.seenModeIntros },
     tutorialComplete: Boolean(existing.tutorialComplete || next.tutorialComplete),
+    dailySparks: mergeDailySparksProgress(existing.dailySparks, next.dailySparks),
+    dailyGift,
+    dailyGiftSalt: latest.dailyGiftSalt,
+    daily: mergeProgressChallenge(existing.daily, next.daily),
+    weekly: mergeProgressChallenge(existing.weekly, next.weekly),
+    rewardLog: [...(next.rewardLog || []), ...(existing.rewardLog || [])].slice(0, 12),
     recentRewards: [
       ...(next.recentRewards || []),
       ...(existing.recentRewards || []),
     ].slice(0, 8),
+    updatedAtClient: latest.updatedAtClient,
   });
 }
 
@@ -4347,7 +4411,13 @@ function buildPersistentSavePayload() {
   state.progressionV2.xp = getProgressionTotalXp();
   state.progressionV2.totalXp = state.progressionV2.xp;
   state.progressionV2.level = getProgressionLevel();
+  const savedAt = new Date().toISOString();
+  state.progressionV2.updatedAtClient = savedAt;
   return {
+    saveMeta: {
+      updatedAtClient: savedAt,
+      updatedAtMs: Date.now(),
+    },
     worldIndex: state.worldIndex,
     levelIndex: state.levelIndex,
     settings: {
@@ -6496,8 +6566,7 @@ function describeOnlineError(error = "") {
     chat_requires_13_plus:
       "Typed chat requires your real age to be 13 or older. Quick chat still works.",
     chat_rate_limited: "Slow down for a moment before sending another chat.",
-    text_rejected:
-      "That message was blocked by the safety filter. Try safer wording.",
+    text_rejected: "Message blocked. Please keep chat respectful.",
     room_not_found:
       "That room code was not found. Check the code and try again.",
     room_full: "That room is full.",
@@ -7074,6 +7143,7 @@ function handleOnlineMessage(raw) {
     setRemoteHumanPlayers([]);
   } else if (message.type === "chat.message") {
     pushOnlineChatMessage({
+      id: message.id || "",
       from: message.from || "Server",
       userId: message.userId || "",
       badge: message.badge || "",
@@ -7094,6 +7164,7 @@ function handleOnlineMessage(raw) {
     (Array.isArray(message.messages) ? message.messages : []).forEach((entry) =>
       pushOnlineChatMessage(
         {
+          id: entry.id || "",
           from: entry.from || "Server",
           userId: entry.userId || "",
           badge: entry.badge || "",
@@ -7229,12 +7300,24 @@ function handleOnlineMessage(raw) {
 
 function updateRemoteSnapshotsFromRoom(room) {
   applyFirebaseLiveRoomState(room);
+  const liveStatePlayers = Array.isArray(room?.liveState?.players)
+    ? room.liveState.players
+    : [];
   const livePlayers =
     room?.livePlayers && typeof room.livePlayers === "object"
       ? Object.values(room.livePlayers)
       : [];
-  if (livePlayers.length) {
-    updateRemoteSnapshotsFromMatchLike(livePlayers);
+  if (liveStatePlayers.length || livePlayers.length) {
+    const merged = new Map();
+    liveStatePlayers.forEach((remote) => {
+      const id = String(remote?.id || remote?.uid || "");
+      if (id) merged.set(id, remote);
+    });
+    livePlayers.forEach((remote) => {
+      const id = String(remote?.id || remote?.uid || "");
+      if (id) merged.set(id, { ...(merged.get(id) || {}), ...remote });
+    });
+    updateRemoteSnapshotsFromMatchLike([...merged.values()]);
     return;
   }
   const players = Array.isArray(room?.players) ? room.players : [];
@@ -7513,6 +7596,7 @@ function serializeFirebaseLiveStateSnapshot() {
       backflip: Boolean(remote.backflip),
       barrelRoll: Boolean(remote.barrelRoll),
       demolished: Boolean(remote.car.demolished),
+      cosmetics: remote.cosmetics || null,
     })),
   );
   return removeEmptyPayloadFields({
@@ -7583,7 +7667,10 @@ function sendFirebaseLiveRoomFrame() {
     .then((room) => {
       onlineState.firebaseLiveStatus = isHost ? "hosting" : "joined";
       onlineState.firebaseLiveError = "";
-      if (room) onlineState.room = room;
+      if (room) {
+        onlineState.room = room;
+        updateRemoteSnapshotsFromRoom(room);
+      }
     })
     .catch((error) => {
       onlineState.firebaseLiveStatus = "error";
@@ -7667,7 +7754,15 @@ function hideChatNotice() {
 }
 
 function showChatNotice(message) {
-  if (!chatNotice || onlineState.chatOpen) return;
+  const viewingThisDm =
+    message.direct &&
+    onlineState.chatOpen &&
+    onlineState.chatMode === "dm" &&
+    (message.userId
+      ? message.userId === onlineState.activeDmUserId
+      : sanitizeRemoteUsername(message.from || "") === onlineState.activeDmUsername);
+  if (!chatNotice || (!message.direct && onlineState.chatOpen) || viewingThisDm)
+    return;
   const from = sanitizeRemoteUsername(message.from || "Chat");
   const text = String(message.text || "")
     .replace(/[<>]/g, "")
@@ -7689,6 +7784,7 @@ function showChatNotice(message) {
 function pushOnlineChatMessage(message, { notify = true } = {}) {
   const roomInvite = normalizeRoomInvite(message);
   const clean = {
+    id: String(message.id || ""),
     from: sanitizeRemoteUsername(message.from || "System"),
     userId: String(message.userId || ""),
     badge: sanitizeBadgeLabel(message.badge),
@@ -7704,6 +7800,12 @@ function pushOnlineChatMessage(message, { notify = true } = {}) {
     roomInvite,
     at: Number.isFinite(Number(message.at)) ? Number(message.at) : Date.now(),
   };
+  if (
+    clean.id &&
+    onlineState.chatMessages.some((entry) => entry.id && entry.id === clean.id)
+  ) {
+    return;
+  }
   if (clean.from === "System") {
     const now = Date.now();
     if (
@@ -7722,8 +7824,7 @@ function pushOnlineChatMessage(message, { notify = true } = {}) {
   if (
     notify &&
     clean.userId !== ownUserId &&
-    clean.from !== ownName &&
-    !onlineState.chatOpen
+    clean.from !== ownName
   ) {
     showChatNotice(clean);
   }
@@ -11382,6 +11483,7 @@ function setRemoteHumanPlayers(players = []) {
         tag,
         target: new THREE.Vector3(),
         speed: 0,
+        cosmetics: null,
         cosmeticsKey: "",
         backflip: false,
         barrelRoll: false,
@@ -11406,6 +11508,7 @@ function setRemoteHumanPlayers(players = []) {
     if (remote.team !== team || remote.cosmeticsKey !== cosmeticsKey) {
       remote.team = team;
       remote.cosmeticsKey = cosmeticsKey;
+      remote.cosmetics = playerData.cosmetics || null;
       remote.tag.className = `remote-name-tag team-${team}`;
       remote.car.rebuildVisual(
         getRemoteVisualConfigFromIds(playerData.cosmetics, team),
@@ -21083,6 +21186,9 @@ chatNotice?.addEventListener("click", (event) => {
       userId: chatNotice.dataset.dmUserId || "",
     });
   } else {
+    onlineState.chatMode = "lobby";
+    onlineState.activeDmUserId = "";
+    onlineState.activeDmUsername = "";
     setChatPopoutOpen(true);
   }
   hideChatNotice();
@@ -22465,6 +22571,33 @@ window.__infernodriftTestApi = {
         at: Date.now(),
       },
       { notify: false },
+    );
+    updateOnlineUi();
+    return JSON.parse(window.render_game_to_text()).online.chat;
+  },
+  simulateIncomingChatForTest: ({
+    username = "TestFriend",
+    userId = "friend-test",
+    text = "test message",
+    direct = false,
+  } = {}) => {
+    onlineState.user = onlineState.user || {
+      id: "test-user",
+      username: onlineState.username || "SmokeRacer",
+    };
+    setChatPopoutOpen(false);
+    handleOnlineMessage(
+      JSON.stringify({
+        type: "chat.message",
+        from: username,
+        userId,
+        text,
+        channel: direct ? "friend" : "lobby",
+        direct,
+        toUserId: onlineState.user.id,
+        toUsername: onlineState.user.username,
+        at: new Date().toISOString(),
+      }),
     );
     updateOnlineUi();
     return JSON.parse(window.render_game_to_text()).online.chat;

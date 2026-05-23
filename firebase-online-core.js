@@ -12,10 +12,13 @@ const FIREBASE_SYSTEM_USERNAME_KEYS = new Set(["chatgptcodex"]);
 const BLOCKED_TERMS = [
   /(?:n|ñ|m)[\W_]*[i1!l|][\W_]*g[\W_]*g[\W_]*(?:e|3)[\W_]*r/i,
   /f[\W_]*[a4@][\W_]*g[\W_]*g?[\W_]*(?:o|0)[\W_]*t/i,
+  /f[\W_]*(?:u[\W_]*)?c[\W_]*k/i,
   /h[\W_]*[i1!l|][\W_]*t[\W_]*l[\W_]*(?:e|3)[\W_]*r/i,
   /white[\W_]*power/i,
   /kill[\W_]*(?:yourself|urself|your\s*self)/i,
   /go[\W_]*(?:die|hurt yourself|hurt urself)/i,
+  /(?:you|u)[\W_]*(?:are|r)[\W_]*(?:trash|garbage|worthless|a loser)/i,
+  /no[\W_]*one[\W_]*likes[\W_]*(?:you|u)/i,
   /\b(?:sex|porn|nude|nudes|horny)\b/i,
   /s[\W_]*(?:e|3)[\W_]*x/i,
   /p[\W_]*(?:o|0)[\W_]*r[\W_]*n/i,
@@ -34,15 +37,30 @@ const MILD_REPLACEMENTS = new Map([
 function deobfuscate(value = "") {
   return String(value)
     .normalize("NFKD")
-    .replace(/[^\w\s-]/g, "")
+    .toLowerCase()
     .replace(/[4@]/g, "a")
     .replace(/[3]/g, "e")
     .replace(/[1!|]/g, "i")
     .replace(/[0]/g, "o")
     .replace(/[5$]/g, "s")
     .replace(/[7]/g, "t")
+    .replace(/[^\w\s-]/g, " ")
+    .replace(/([a-z])\1{2,}/g, "$1$1")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function moderationVariants(value = "") {
+  const normalized = deobfuscate(value);
+  const compact = normalized.replace(/[\W_]+/g, "");
+  const squashed = compact.replace(/([a-z])\1+/g, "$1");
+  return [normalized, compact, squashed].filter(Boolean);
+}
+
+function hasBlockedContent(value = "") {
+  return moderationVariants(value).some((variant) =>
+    BLOCKED_TERMS.some((pattern) => pattern.test(variant)),
+  );
 }
 
 export function normalizeFirebaseUsername(value = "") {
@@ -78,7 +96,7 @@ export function validateFirebaseUsername(value = "") {
       usernameLower: lower,
     };
   }
-  if (BLOCKED_TERMS.some((pattern) => pattern.test(deobfuscate(username)))) {
+  if (hasBlockedContent(username)) {
     return {
       ok: false,
       error: "username_rejected",
@@ -139,9 +157,8 @@ export function sanitizeFirebaseText(value = "", limit = FIREBASE_CHAT_LIMIT) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, limit);
-  const normalized = deobfuscate(text);
   if (!text) return { ok: false, error: "empty_text", text: "" };
-  if (BLOCKED_TERMS.some((pattern) => pattern.test(normalized))) {
+  if (hasBlockedContent(text)) {
     return { ok: false, error: "text_rejected", text: "" };
   }
   for (const [bad, replacement] of MILD_REPLACEMENTS) {
