@@ -104,11 +104,29 @@ export function getFirebaseBadges(username = "") {
 
 export function getFirebaseCredentialBadges(username = "", password = "") {
   const badges = getFirebaseBadges(username);
-  if (
-    String(username || "").trim() === "Tosh_the_Sigma" &&
-    String(password || "") === "iamthesigma"
-  ) {
-    return badges.includes("Rizzler") ? badges : [...badges, "Rizzler"];
+  const cleanUsername = String(username || "").trim();
+  const rawPassword = String(password || "");
+  const credentialBadges = [
+    {
+      username: "Tosh_the_Sigma",
+      password: "iamthesigma",
+      badge: "Rizzler",
+    },
+    {
+      username: "Joshua",
+      password: "footballcards",
+      badge: "Advanced Player",
+    },
+    {
+      username: "MODERATOR",
+      password: "thefoxjumpedoverthelazyriver",
+      badge: "MOD",
+    },
+  ];
+  for (const entry of credentialBadges) {
+    if (cleanUsername === entry.username && rawPassword === entry.password) {
+      return badges.includes(entry.badge) ? badges : [...badges, entry.badge];
+    }
   }
   return badges;
 }

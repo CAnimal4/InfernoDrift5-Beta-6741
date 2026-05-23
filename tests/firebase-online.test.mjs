@@ -27,7 +27,20 @@ test("Firebase username validation enforces launch-safe names", () => {
     getFirebaseCredentialBadges("Tosh_the_Sigma", "iamthesigma"),
     ["Rizzler"],
   );
+  assert.deepEqual(
+    getFirebaseCredentialBadges("Joshua", "footballcards"),
+    ["Advanced Player"],
+  );
+  assert.deepEqual(
+    getFirebaseCredentialBadges(
+      "MODERATOR",
+      "thefoxjumpedoverthelazyriver",
+    ),
+    ["MOD"],
+  );
   assert.deepEqual(getFirebaseCredentialBadges("Tosh_the_Sigma", "wrong"), []);
+  assert.deepEqual(getFirebaseCredentialBadges("Joshua", "wrong"), []);
+  assert.deepEqual(getFirebaseCredentialBadges("MODERATOR", "wrong"), []);
   assert.deepEqual(getFirebaseCredentialBadges("Tosh the Sigma", "iamthesigma"), []);
   assert.equal(normalizeFirebaseUsernameKey(" Drift-King_4 "), "drift-king_4");
   assert.equal(normalizeFirebaseUsernameKey(" Tosh   the Sigma "), "tosh the sigma");
