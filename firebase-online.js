@@ -16,7 +16,7 @@ import {
   validateFirebaseLobbyCode,
   validateFirebaseScore,
   validateFirebaseUsername,
-} from "./firebase-online-core.js?v=20260523-account-audit";
+} from "./firebase-online-core.js?v=20260523-chat-cleanup";
 
 const FIREBASE_SDK_VERSION = "10.13.2";
 const FIREBASE_SDK_BASE = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}`;
@@ -24,6 +24,9 @@ const CHAT_ROOM_ID = "lobby";
 const LOBBY_COLLECTION_ID = "lobbies";
 const DIAGNOSTICS_DOC_ID = "client-smoke";
 const CHAT_HISTORY_LIMIT = 40;
+// One-time visible chat cleanup after moderation testing on 2026-05-23.
+// New messages continue normally; older docs remain protected by Firestore rules.
+const CHAT_VISIBLE_AFTER = "2026-05-23T23:52:05Z";
 const FRIEND_QUERY_LIMIT = 50;
 const CHAT_COOLDOWN_MS = 1700;
 const FIREBASE_LOBBY_MAX_PLAYERS = 8;
@@ -352,6 +355,14 @@ function mapChatDoc(snapshot) {
     roomMode: roomInvite?.mode || "",
     at: createdAt ? createdAt.toISOString() : data.createdAtClient || nowIso(),
   };
+}
+
+function isVisibleChatMessage(message = {}) {
+  const cutoff = Date.parse(CHAT_VISIBLE_AFTER);
+  if (!Number.isFinite(cutoff)) return true;
+  const timestamp = Date.parse(String(message.at || ""));
+  if (!Number.isFinite(timestamp)) return true;
+  return timestamp >= cutoff;
 }
 
 function mapLeaderboardDoc(snapshot) {
@@ -1208,6 +1219,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
         snapshot.docChanges().forEach((change) => {
           if (change.type !== "added") return;
           const message = mapChatDoc(change.doc);
+          if (!isVisibleChatMessage(message)) return;
           if (!message.direct || message.userId === state.uid) return;
           emit("chat.message", message);
         });
@@ -1249,13 +1261,18 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
         state.chatListenerActive = true;
         if (initialSnapshot) {
           initialSnapshot = false;
-          const messages = snapshot.docs.map(mapChatDoc).reverse();
+          const messages = snapshot.docs
+            .map(mapChatDoc)
+            .filter(isVisibleChatMessage)
+            .reverse();
           emit("chat.history", { messages });
           return;
         }
         snapshot.docChanges().forEach((change) => {
           if (change.type !== "added") return;
-          emit("chat.message", mapChatDoc(change.doc));
+          const message = mapChatDoc(change.doc);
+          if (!isVisibleChatMessage(message)) return;
+          emit("chat.message", message);
         });
       },
       (error) => {

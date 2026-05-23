@@ -385,3 +385,8 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Consolidated Firebase special badge account definitions into exported static/password account tables and added alias support so safe legacy spelling changes, such as Tosh the Sigma, resolve to the canonical Tosh_the_Sigma account instead of creating a duplicate path.
 - Relaxed the start-screen username validator to match Firebase account rules by allowing spaces, while preserving the same blocked/reserved username protections downstream.
 - Hardened Firebase save merging so cross-device sync keeps the highest XP, unions owned/unlocked rewards, merges daily progress, and uses the newest dated save for Embers, customization, garage/loadouts, settings, and other device-local shell state.
+
+2026-05-23 one-time visible chat cleanup:
+
+- Added a narrow Firebase chat history cutoff after moderation testing so older public/DM chat docs are no longer emitted into the client history or notices.
+- Did not loosen Firestore rules or change normal chat writes; new chat messages after the cutoff continue to send, store, notify, and display normally.
