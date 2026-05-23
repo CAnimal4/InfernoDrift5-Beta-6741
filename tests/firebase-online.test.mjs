@@ -223,9 +223,13 @@ test("legacy Cloudflare progress manifest restores old account XP without secret
   assert.doesNotMatch(serialized, /olduserid|user_id/);
 });
 
-test("Firebase account attach prefers legacy XP over lower local save", () => {
+test("Firebase account attach keeps new accounts fresh unless legacy import applies", () => {
   const script = fs.readFileSync(
     new URL("../script.js", import.meta.url),
+    "utf8",
+  );
+  const firebaseOnline = fs.readFileSync(
+    new URL("../firebase-online.js", import.meta.url),
     "utf8",
   );
   assert.match(
@@ -233,6 +237,18 @@ test("Firebase account attach prefers legacy XP over lower local save", () => {
     /const signInSavePayload = chooseBestSavePayload\(\s*currentPayload,\s*bundledLegacyEntry\?\.payload \|\| null,\s*\);/s,
   );
   assert.match(script, /savePayload: signInSavePayload,/);
+  assert.match(
+    firebaseOnline,
+    /const seedClientSave = existingUsername\.exists\(\) \|\| allowLegacyAutoCreate;/,
+  );
+  assert.match(
+    firebaseOnline,
+    /seedClientSave\s*\?\s*chooseBestSavePayload\(existingPayload, savePayload\)\s*:\s*chooseBestSavePayload\(existingPayload\)/s,
+  );
+  assert.match(
+    script,
+    /const legacyLevelXp = hasCurrentSchema \? 0 : getLegacyLevelFloorXp\(source\);/,
+  );
 });
 
 test("legacy import marker cannot hide downgraded Firebase progress", () => {

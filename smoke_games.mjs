@@ -844,6 +844,28 @@ assert.ok(
   dailyGiftDistribution.filter((amount) => amount <= 350).length >
     dailyGiftDistribution.filter((amount) => amount >= 675).length,
 );
+const currentSchemaProgressionGuard = await page.evaluate(() =>
+  window.__infernodriftTestApi.normalizeProgressionForTest({
+    schemaVersion: 3,
+    xp: 0,
+    totalXp: 0,
+    level: 7,
+    embers: 0,
+  }),
+);
+assert.equal(currentSchemaProgressionGuard.level, 1);
+assert.equal(currentSchemaProgressionGuard.xp, 0);
+const legacyLevelProgressionGuard = await page.evaluate(() =>
+  window.__infernodriftTestApi.normalizeProgressionForTest({
+    schemaVersion: 2,
+    xp: 0,
+    totalXp: 0,
+    level: 7,
+    embers: 0,
+  }),
+);
+assert.equal(legacyLevelProgressionGuard.level, 7);
+assert.ok(legacyLevelProgressionGuard.xp > 0);
 const exitLinkState = await page.evaluate(() => {
   window.__infernodriftTestApi.setExitLinkUrl("https://example.com/class");
   return {

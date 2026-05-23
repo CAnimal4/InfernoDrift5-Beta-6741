@@ -810,10 +810,15 @@ export function migrateSave(value: unknown): {
     schemaVersion?: unknown;
     progression?: Partial<ProgressionState>;
   };
-  const storedXp = Math.max(
+  const schemaVersion = Number(record.schemaVersion);
+  const hasCurrentSchema = Number.isFinite(schemaVersion) && schemaVersion >= 2;
+  const explicitXp = Math.max(
     0,
     Math.floor(Number(record.progression?.xp) || 0),
-    getXPForLevel(Number(record.progression?.level) || 1),
+  );
+  const storedXp = Math.max(
+    explicitXp,
+    hasCurrentSchema ? 0 : getXPForLevel(Number(record.progression?.level) || 1),
   );
   return {
     schemaVersion: 2,

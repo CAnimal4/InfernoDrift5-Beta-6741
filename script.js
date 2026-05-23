@@ -2718,11 +2718,19 @@ function createProgressionV2() {
 function normalizeProgressionV2(value = {}) {
   const base = createProgressionV2();
   const source = value && typeof value === "object" ? value : {};
-  const totalXp = Math.max(
+  const sourceSchema = Number(source.schemaVersion);
+  const hasCurrentSchema =
+    Number.isFinite(sourceSchema) && sourceSchema >= PROGRESSION_SCHEMA_VERSION;
+  const explicitXp = Math.max(
     0,
     Number(source.totalXp) || 0,
     Number(source.xp) || 0,
-    getLegacyLevelFloorXp(source),
+  );
+  const legacyLevelXp = hasCurrentSchema ? 0 : getLegacyLevelFloorXp(source);
+  const totalXp = Math.max(
+    0,
+    explicitXp,
+    legacyLevelXp,
   );
   const daily =
     source.daily && typeof source.daily === "object" ? source.daily : {};
@@ -22461,6 +22469,8 @@ window.__infernodriftTestApi = {
     refreshGamesUi();
     return structuredClone(state.progressionV2);
   },
+  normalizeProgressionForTest: (progression = {}) =>
+    structuredClone(normalizeProgressionV2(progression)),
 	  configureOnlineForTest: ({
 	    backendMode = onlineState.backendMode,
 	    backendUrl = "",
