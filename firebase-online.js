@@ -596,7 +596,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       const existingPayload = progressDoc.exists()
         ? progressDoc.data()?.payload
         : null;
-      const seedClientSave = existingUsername.exists() || allowLegacyAutoCreate;
+      const seedClientSave = Boolean(allowLegacyAutoCreate);
       const bestPayload = seedClientSave
         ? chooseBestSavePayload(existingPayload, savePayload)
         : chooseBestSavePayload(existingPayload);

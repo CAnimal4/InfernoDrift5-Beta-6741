@@ -5868,6 +5868,7 @@ function buildFirebaseAuthResultMessage(result, { guest = false } = {}) {
     },
     sessionToken: result.sessionToken || result.user?.uid || result.user?.id || "",
     save: result.save || null,
+    preferAccountLocal: false,
   };
 }
 
@@ -5918,11 +5919,7 @@ async function submitFirebaseStartAccount() {
     const bundledLegacyEntry = await findBundledLegacyProgress(
       payload.username,
     ).catch(() => null);
-    const currentPayload = buildPersistentSavePayload();
-    const signInSavePayload = chooseBestSavePayload(
-      currentPayload,
-      bundledLegacyEntry?.payload || null,
-    );
+    const signInSavePayload = bundledLegacyEntry?.payload || null;
     const result = await firebaseOnline.signInAccount({
       username: payload.username,
       password: payload.password,
@@ -6816,7 +6813,8 @@ function handleOnlineMessage(raw) {
     applyServerSave(message.save, {
       force: true,
       resetIfMissing: message.user?.account,
-      preferAccountLocal: message.user?.account,
+      preferAccountLocal:
+        message.preferAccountLocal !== false && message.user?.account,
     });
     saveOnlineConfig();
     onlineState.authRequired = false;

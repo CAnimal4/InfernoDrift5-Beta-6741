@@ -234,12 +234,17 @@ test("Firebase account attach keeps new accounts fresh unless legacy import appl
   );
   assert.match(
     script,
-    /const signInSavePayload = chooseBestSavePayload\(\s*currentPayload,\s*bundledLegacyEntry\?\.payload \|\| null,\s*\);/s,
+    /const signInSavePayload = bundledLegacyEntry\?\.payload \|\| null;/,
   );
   assert.match(script, /savePayload: signInSavePayload,/);
+  assert.match(script, /preferAccountLocal: false,/);
+  assert.match(
+    script,
+    /preferAccountLocal:\s*message\.preferAccountLocal !== false && message\.user\?\.account,/,
+  );
   assert.match(
     firebaseOnline,
-    /const seedClientSave = existingUsername\.exists\(\) \|\| allowLegacyAutoCreate;/,
+    /const seedClientSave = Boolean\(allowLegacyAutoCreate\);/,
   );
   assert.match(
     firebaseOnline,
