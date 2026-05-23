@@ -10,12 +10,12 @@ import {
   normalizeFirebaseUsername,
   normalizeFirebaseUsernameKey,
   sanitizeFirebaseText,
-  usernameToFirebaseEmail,
+  validateFirebaseAccountCredentials,
   validateFirebaseFeedback,
   validateFirebaseLobbyCode,
   validateFirebaseScore,
   validateFirebaseUsername,
-} from "./firebase-online-core.js";
+} from "./firebase-online-core.js?v=20260523-auth-error-fix";
 
 const FIREBASE_SDK_VERSION = "10.13.2";
 const FIREBASE_SDK_BASE = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}`;
@@ -711,14 +711,17 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     timeoutMs = 8000,
     allowLegacyAutoCreate = false,
   } = {}) {
-    const validation = validateFirebaseUsername(username);
+    const validation = validateFirebaseAccountCredentials(username, password);
     if (!validation.ok) throw new Error(validation.error);
     if (String(password || "").length < 6) throw new Error("weak_password");
     await init({ timeoutMs });
     requireReady();
     state.authStatus = "signing-in";
     const { auth, firestore } = internals.sdk;
-    const email = usernameToFirebaseEmail(validation.username);
+    const emailKey = validation.usernameLower
+      .replace(/\s+/g, ".")
+      .replace(/[^a-z0-9._-]/g, "-");
+    const email = `id4.${emailKey}@infernodrift4.firebaseapp.com`;
     const usernameRef = firestore.doc(
       internals.db,
       "usernames",

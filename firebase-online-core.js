@@ -34,6 +34,24 @@ const MILD_REPLACEMENTS = new Map([
   ["crap", "scrap"],
 ]);
 
+const FIREBASE_CREDENTIAL_BADGES = [
+  {
+    username: "Tosh_the_Sigma",
+    password: "iamthesigma",
+    badge: "Rizzler",
+  },
+  {
+    username: "Joshua",
+    password: "footballcards",
+    badge: "Advanced Player",
+  },
+  {
+    username: "MODERATOR",
+    password: "thefoxjumpedoverthelazyriver",
+    badge: "MOD",
+  },
+];
+
 function deobfuscate(value = "") {
   return String(value)
     .normalize("NFKD")
@@ -107,6 +125,59 @@ export function validateFirebaseUsername(value = "") {
   return { ok: true, username, usernameLower: lower };
 }
 
+function hasFirebaseCredentialAccess(username = "", password = "") {
+  const cleanUsername = normalizeFirebaseUsername(username);
+  const rawPassword = String(password || "");
+  return FIREBASE_CREDENTIAL_BADGES.some(
+    (entry) =>
+      cleanUsername === entry.username && rawPassword === entry.password,
+  );
+}
+
+function isFirebaseCredentialUsername(username = "") {
+  const cleanUsername = normalizeFirebaseUsername(username);
+  return FIREBASE_CREDENTIAL_BADGES.some(
+    (entry) => cleanUsername === entry.username,
+  );
+}
+
+export function validateFirebaseAccountCredentials(
+  value = "",
+  password = "",
+) {
+  const validation = validateFirebaseUsername(value);
+  if (validation.ok) return validation;
+  const username = normalizeFirebaseUsername(value);
+  const lower = username.toLowerCase();
+  if (
+    validation.error === "username_rejected" &&
+    FIREBASE_USERNAME_PATTERN.test(username) &&
+    hasFirebaseCredentialAccess(username, password) &&
+    !FIREBASE_SYSTEM_USERNAME_KEYS.has(
+      normalizeFirebaseSystemUsernameKey(username),
+    )
+  ) {
+    return {
+      ok: true,
+      username,
+      usernameLower: lower,
+      credentialOverride: true,
+    };
+  }
+  if (
+    validation.error === "username_rejected" &&
+    isFirebaseCredentialUsername(username)
+  ) {
+    return {
+      ok: false,
+      error: "invalid_credentials",
+      username,
+      usernameLower: lower,
+    };
+  }
+  return validation;
+}
+
 export function usernameToFirebaseEmail(username = "") {
   const validation = validateFirebaseUsername(username);
   if (!validation.ok) throw new Error(validation.error);
@@ -126,24 +197,7 @@ export function getFirebaseCredentialBadges(username = "", password = "") {
   const badges = getFirebaseBadges(username);
   const cleanUsername = String(username || "").trim();
   const rawPassword = String(password || "");
-  const credentialBadges = [
-    {
-      username: "Tosh_the_Sigma",
-      password: "iamthesigma",
-      badge: "Rizzler",
-    },
-    {
-      username: "Joshua",
-      password: "footballcards",
-      badge: "Advanced Player",
-    },
-    {
-      username: "MODERATOR",
-      password: "thefoxjumpedoverthelazyriver",
-      badge: "MOD",
-    },
-  ];
-  for (const entry of credentialBadges) {
+  for (const entry of FIREBASE_CREDENTIAL_BADGES) {
     if (cleanUsername === entry.username && rawPassword === entry.password) {
       return badges.includes(entry.badge) ? badges : [...badges, entry.badge];
     }

@@ -12,6 +12,7 @@ import {
   normalizeFirebaseLobbyCode,
   normalizeFirebaseUsernameKey,
   sanitizeFirebaseText,
+  validateFirebaseAccountCredentials,
   validateFirebaseLobbyCode,
   usernameToFirebaseEmail,
   validateFirebaseFeedback,
@@ -63,6 +64,26 @@ test("Firebase username validation enforces launch-safe names", () => {
   assert.equal(
     validateFirebaseUsername("ChatGPT Codex").error,
     "username_reserved",
+  );
+  assert.equal(validateFirebaseUsername("MODERATOR").error, "username_rejected");
+  assert.equal(
+    validateFirebaseAccountCredentials(
+      "MODERATOR",
+      "thefoxjumpedoverthelazyriver",
+    ).ok,
+    true,
+  );
+  assert.equal(
+    validateFirebaseAccountCredentials("MODERATOR", "wrongpass").error,
+    "invalid_credentials",
+  );
+  assert.equal(
+    validateFirebaseAccountCredentials("moderator", "wrongpass").error,
+    "username_rejected",
+  );
+  assert.equal(
+    validateFirebaseAccountCredentials("testy", "secret123").ok,
+    true,
   );
   assert.equal(
     usernameToFirebaseEmail("Drift-King_4"),
@@ -217,6 +238,25 @@ test("production source defaults to Firebase and keeps Replit out of shipped URL
   assert.match(buildScript, /firebase-online\.js/);
   assert.match(buildScript, /legacy-cloudflare-progress\.json/);
   assert.doesNotMatch(script, /replit\.dev|replit\.app|janeway\.replit/i);
+});
+
+test("Firebase start account errors distinguish credentials from outages", () => {
+  const script = fs.readFileSync(
+    new URL("../script.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    script,
+    /function isAccountAuthFailureCode\(error = ""\)/,
+  );
+  assert.match(
+    script,
+    /isAccountAuthFailureCode\(errorCode\)[\s\S]*setStartAccountStatus\(describeOnlineError\(errorCode\), "error"\)/,
+  );
+  assert.match(
+    script,
+    /else \{\s*setOfflineGuestFallbackStatus\(\);\s*\}/,
+  );
 });
 
 test("legacy Cloudflare progress manifest restores old account XP without secrets", () => {

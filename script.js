@@ -1,6 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260523-leaderboard-test-filter";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260523-auth-error-fix";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -5980,6 +5980,12 @@ function setOfflineGuestFallbackStatus() {
   if (startBtn) startBtn.textContent = "Continue Offline";
 }
 
+function isAccountAuthFailureCode(error = "") {
+  return /^(account_not_found|account_requires_upgrade|invalid_credentials|username_invalid|username_rejected|username_reserved|username_taken|weak_password)$/i.test(
+    String(error || ""),
+  );
+}
+
 function syncStartAccountFields() {
   if (
     startAccountUsername &&
@@ -6139,16 +6145,25 @@ async function submitFirebaseStartAccount() {
     }
     return true;
   } catch (error) {
+    const errorCode = error?.message || "firebase_unavailable";
     onlineState.pendingStartAfterAuth = false;
     onlineState.accountProgressReady = true;
-    onlineState.transport = "offline";
-    onlineState.timeoutReason = error?.message || "firebase_unavailable";
+    if (!isAccountAuthFailureCode(errorCode)) {
+      onlineState.transport = "offline";
+    }
+    onlineState.timeoutReason = errorCode;
     syncFirebaseServiceStatus();
-    setOfflineGuestFallbackStatus();
+    if (isAccountAuthFailureCode(errorCode)) {
+      setStartAccountStatus(describeOnlineError(errorCode), "error");
+      if (startAccountSubmit) startAccountSubmit.textContent = "Login / Sign Up";
+      if (startBtn) startBtn.textContent = "Play as Guest";
+    } else {
+      setOfflineGuestFallbackStatus();
+    }
     setOnlineStatus(
       "failed",
       "Account connection failed",
-      describeOnlineError(error?.message || "firebase_unavailable"),
+      describeOnlineError(errorCode),
     );
     updateOnlineUi();
     return false;

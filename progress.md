@@ -179,6 +179,12 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Attempted to inspect dashboard Console migration viability; the Console interpreted the pasted multi-statement migration awkwardly and produced syntax errors, so schema setup remains Wrangler/GitHub-migration gated rather than dashboard-applied.
 - Cloudflare deploy is still blocked by missing CLI/API credentials and production secrets: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `RESEND_API_KEY`, verified `FEEDBACK_FROM`, production `SESSION_SECRET`, and optional Turnstile secret.
 
+2026-05-23 Firebase special-account sign-in repair:
+
+- Confirmed `MODERATOR` was rejected by normal username moderation even though it is a configured credential badge account, while `testy` passes local validation and already has Firebase username/profile docs.
+- Added a credential-aware Firebase account validation path so exact configured special credentials can sign in without weakening normal username/chat moderation.
+- Split start-screen account errors from online-service outages so invalid credentials or rejected usernames no longer show the misleading "Online services are unavailable" fallback.
+
 2026-05-18 Shared XP leaderboard follow-up:
 
 - Made Phase 3/4 progression explicitly global: every completed or failed mode/minigame run adds into one `progressionV2.xp` / `progressionV2.totalXp` pool, with level derived from total XP.
