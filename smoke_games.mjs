@@ -1131,6 +1131,30 @@ assert.ok(
     .find((category) => category.key === "boostTrailId")
     .options.find((option) => option.id === "blue-flare").equipped,
 );
+const garageVisualCategories = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetLocalProgressionForTest();
+  const before = window.__infernodriftTestApi.getCarVisualConfigForTest();
+  [
+    ["tireId", "rally"],
+    ["stanceId", "lifted"],
+    ["plateId", "legend"],
+    ["finishId", "lava-glow"],
+    ["bodyId", "monster"],
+  ].forEach(([category, option]) => {
+    window.__infernodriftTestApi.grantGarageCosmeticForTest(category, option);
+    window.__infernodriftTestApi.equipGarageCosmetic(category, option);
+  });
+  const after = window.__infernodriftTestApi.getCarVisualConfigForTest();
+  return { before, after };
+});
+assert.equal(garageVisualCategories.after.body, "monster");
+assert.equal(garageVisualCategories.after.tireTread, "knobby");
+assert.equal(garageVisualCategories.after.stanceStyle, "lifted");
+assert.equal(garageVisualCategories.after.plateText, "L");
+assert.equal(garageVisualCategories.after.finishDetail, "lava");
+assert.ok(garageVisualCategories.after.rideHeight > garageVisualCategories.before.rideHeight + 0.5);
+assert.ok(garageVisualCategories.after.wheelRadius > garageVisualCategories.before.wheelRadius + 0.25);
+assert.notEqual(garageVisualCategories.after.wheelColor, garageVisualCategories.before.wheelColor);
 const tutorialState = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   return window.__infernodriftTestApi.startFirstDriveTutorial();

@@ -410,3 +410,9 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Found that Clark's live Firestore progress document still contained a legacy `serverUpdatedAt` key, so owner-authenticated repair writes were rejected by current rules before the new cleanup code could replace the polluted payload.
 - Added narrow Firestore rule compatibility for legacy `serverUpdatedAt` on progress docs and `updatedAt` on leaderboard docs, then added a display-side safety cap so known special badge rows with obviously polluted 90k+ XP cannot keep dragging Rankings upward while cleanup propagates.
 - Bumped the special badge repair marker/cache bust to force refreshed clients through the new cleanup path.
+
+2026-05-24 garage visual cosmetics pass:
+
+- Wired previously subtle Garage categories into actual car geometry/material changes: tires now affect tread, sidewalls, stripe colors, and wheel size; stance changes ride height and visible suspension; nameplates have distinct rear plate geometry; finishes add material clearcoat/metalness plus visible gloss/matte/metallic/lava details.
+- Made body classes more distinct with stronger proportions and extra silhouette pieces for muscle, monster, interceptor, prototype, rally, and street builds.
+- Adjusted the Garage preview camera so lifted/wide builds stay framed, and added smoke coverage that equips monster/rally tires/lifted stance/legend plate/lava finish and verifies the visual config changes.
