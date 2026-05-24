@@ -313,9 +313,36 @@ const chasedLeaderboard = await page.evaluate(() =>
   ]),
 );
 assert.equal(chasedLeaderboard[0].username, "ChatGPT (Codex)");
-assert.ok(chasedLeaderboard[0].xp > 10000);
-assert.ok(chasedLeaderboard[0].xp <= 10101);
+assert.ok(chasedLeaderboard[0].xp >= 22153);
 assert.equal(chasedLeaderboard[1].username, "RealTopDriver");
+const pollutedCodexLeaderboard = await page.evaluate(() =>
+  window.__infernodriftTestApi.setLeaderboardRowsForTest([
+    {
+      userId: "system-chatgpt-codex",
+      username: "ChatGPT (Codex)",
+      source: "system",
+      isSystemPlayer: true,
+      xp: 100000,
+      totalXp: 100000,
+      score: 100000,
+    },
+  ]),
+);
+assert.equal(pollutedCodexLeaderboard[0].username, "ChatGPT (Codex)");
+assert.equal(pollutedCodexLeaderboard[0].xp, 22153);
+const cappedSpecialProgress = await page.evaluate(() => {
+  window.__infernodriftTestApi.setOnlineUserForTest({
+    id: "clark-test",
+    username: "Clark",
+  });
+  window.__infernodriftTestApi.applySavePayloadForTest(
+    { progressionV2: { xp: 100000, totalXp: 100000, embers: 9999 } },
+    { forceProgression: true, replaceProgression: true },
+  );
+  return JSON.parse(window.render_game_to_text()).progression;
+});
+assert.equal(cappedSpecialProgress.totalXp, 22000);
+assert.equal(cappedSpecialProgress.embers, 875);
 await page.locator('[data-tab="profile"]').click({ force: true });
 await page.waitForTimeout(150);
 onlineUiState = JSON.parse(

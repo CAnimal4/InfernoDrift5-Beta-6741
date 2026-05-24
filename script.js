@@ -451,12 +451,13 @@ const SPECIAL_BADGE_PROGRESS_POLICIES = new Map([
 const FOUNDER_FRIEND_XP_REWARD = 1000;
 const CODEX_LEADERBOARD_USERNAME = "ChatGPT (Codex)";
 const CODEX_LEADERBOARD_ID = "system-chatgpt-codex";
+const CODEX_LEADERBOARD_BASELINE_XP = 22153;
 const TEST_ACCOUNT_NAME_BLOCKLIST = new Set([
   "ajhdfiumhziwuehrmz",
   "akfjicoajsodifjmoi",
   "sajoumzjeimxuhen",
 ]);
-let codexLeaderboardXp = 22153;
+let codexLeaderboardXp = CODEX_LEADERBOARD_BASELINE_XP;
 const GAME_MODE_ID33 = "infernodrift33";
 const GAME_MODE_MAX1 = "infernodriftmax1";
 const GAME_MODE_RISK = "tryatyourownrisk";
@@ -4245,6 +4246,14 @@ function getCarLabel(car) {
 }
 
 function getProgressionTotalXp(progress = state.progressionV2) {
+  if (progress === state.progressionV2) {
+    const cleaned = sanitizeSpecialBadgeProgression(progress);
+    if (cleaned.changed) {
+      state.progressionV2 = cleaned.progression;
+      progress = state.progressionV2;
+      onlineState.replaceNextProgressSync = true;
+    }
+  }
   return Math.max(
     0,
     Math.floor(Number(progress?.totalXp ?? progress?.xp) || 0),
@@ -4592,6 +4601,48 @@ function addSpecialBadgeRepairMarker(progression = {}, repairedXp = 0) {
   };
 }
 
+function sanitizeSpecialBadgeProgression(
+  progress = {},
+  username = onlineState.user?.username || onlineState.username,
+) {
+  const policy = getSpecialBadgeProgressPolicy(username);
+  if (!policy || !progress || typeof progress !== "object") {
+    return { progression: progress, changed: false };
+  }
+  const normalized = normalizeProgressionV2(progress);
+  if (normalized.totalXp < SPECIAL_BADGE_SUSPECT_XP) {
+    return { progression: progress, changed: false };
+  }
+  const repairXp = Math.max(0, Math.floor(Number(policy.repairXp) || 0));
+  const maxEmbers = Number.isFinite(Number(policy.maxEmbers))
+    ? Math.max(0, Math.floor(Number(policy.maxEmbers) || 0))
+    : null;
+  const repairedXp = policy.resetProgression ? 0 : repairXp;
+  const repairedLevel = getLevelFromXP(repairedXp);
+  return {
+    progression: addSpecialBadgeRepairMarker(
+      {
+        ...normalized,
+        xp: repairedXp,
+        totalXp: repairedXp,
+        level: repairedLevel,
+        embers:
+          maxEmbers === null
+            ? normalized.embers
+            : Math.min(normalized.embers, maxEmbers),
+        claimedLevelRewards: normalized.claimedLevelRewards.filter(
+          (level) => Math.max(0, Number(level) || 0) <= repairedLevel,
+        ),
+        recentRewards: normalized.recentRewards.filter(
+          (reward) => Math.max(0, Number(reward?.level) || 0) <= repairedLevel,
+        ),
+      },
+      repairedXp,
+    ),
+    changed: true,
+  };
+}
+
 function hasHardEarnedProgressEvidence(payload = {}) {
   const normalized = normalizeProgressionV2(payload?.progressionV2 || {});
   return Boolean(
@@ -4917,9 +4968,18 @@ function applyPersistentSavePayload(
         settings.exitLinkUrl = normalizeExitLinkUrl(data.settings.exitLinkUrl);
     }
     if (data.progressionV2 && typeof data.progressionV2 === "object") {
-      const nextProgression = replaceProgression
+      let nextProgression = replaceProgression
         ? normalizeProgressionV2(data.progressionV2)
         : mergeProgressionV2(state.progressionV2, data.progressionV2);
+      const cleaned = sanitizeSpecialBadgeProgression(
+        nextProgression,
+        onlineState.user?.username || onlineState.username,
+      );
+      if (cleaned.changed) {
+        nextProgression = cleaned.progression;
+        replaceProgression = true;
+        onlineState.replaceNextProgressSync = true;
+      }
       if (
         forceProgression ||
         replaceProgression ||
@@ -9038,8 +9098,11 @@ function ensureCodexAlwaysFirst(rows = [], { random = Math.random } = {}) {
   const realRows = rows.filter((row) => row && !isCodexLeaderboardRow(row));
   const existingCodex = rows.find(isCodexLeaderboardRow);
   const existingXp = getLeaderboardXp(existingCodex);
-  if (existingXp > 0) {
-    codexLeaderboardXp = Math.max(codexLeaderboardXp, existingXp);
+  if (existingXp > 0 && existingXp < SPECIAL_BADGE_SUSPECT_XP) {
+    codexLeaderboardXp = Math.max(CODEX_LEADERBOARD_BASELINE_XP, existingXp);
+  }
+  if (codexLeaderboardXp >= SPECIAL_BADGE_SUSPECT_XP) {
+    codexLeaderboardXp = CODEX_LEADERBOARD_BASELINE_XP;
   }
   const topRealXp = realRows.reduce(
     (top, row) => Math.max(top, getLeaderboardXp(row)),
@@ -22704,6 +22767,11 @@ window.__infernodriftTestApi = {
       playerRow && !isTestLikeLeaderboardRow(playerRow) ? playerRow : null;
     updateOnlineUi();
     return JSON.parse(window.render_game_to_text()).online.leaderboard;
+  },
+  setOnlineUserForTest: ({ id = "test-user", username = "SmokeRacer" } = {}) => {
+    onlineState.user = { id, username };
+    onlineState.username = username;
+    return JSON.parse(window.render_game_to_text()).online;
   },
   simulateRoomJoinForTest: (room = {}) => {
     if (room.firebaseLobby !== false) onlineState.backendMode = BACKEND_MODE_FIREBASE;

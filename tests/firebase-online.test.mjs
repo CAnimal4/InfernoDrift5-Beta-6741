@@ -457,6 +457,9 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(script, /replaceNextProgressSync = true/);
   assert.match(script, /function sanitizeSpecialBadgeLeaderboardRow\(row = \{\}\)/);
   assert.match(script, /repairNote: "special-badge-xp-cap"/);
+  assert.match(script, /function sanitizeSpecialBadgeProgression\(/);
+  assert.match(script, /const CODEX_LEADERBOARD_BASELINE_XP = 22153;/);
+  assert.match(script, /codexLeaderboardXp = CODEX_LEADERBOARD_BASELINE_XP;/);
   assert.match(firebaseOnline, /syncProgress\(payload, \{ silent = false, replace = false \} = \{\}\)/);
   assert.match(firebaseOnline, /replace\s*\?\s*payload\s*:\s*mergeFirebaseSavePayload/);
   const rules = fs.readFileSync(
