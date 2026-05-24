@@ -366,8 +366,14 @@ test("legacy Cloudflare progress manifest restores old account XP without secret
   assert.equal(manifest.source, "cloudflare-d1");
   assert.ok(Object.keys(manifest.accounts).length >= 17);
   assert.ok(manifest.accounts.clark.xp >= 11317);
-  assert.ok(manifest.accounts.billy.xp >= 6100);
-  assert.ok(manifest.accounts["tosh the sigma"].xp >= 4300);
+  assert.ok(manifest.accounts.clark.payload.progressionV2.medals);
+  assert.equal(manifest.accounts.billy.username, "Billy");
+  assert.equal(manifest.accounts.billy.payload.progressionV2.medals, undefined);
+  assert.equal(manifest.accounts["tosh the sigma"].username, "Tosh the Sigma");
+  assert.deepEqual(
+    manifest.accounts["tosh the sigma"].payload.progressionV2.medals,
+    {},
+  );
   assert.equal(manifest.accounts.moderator.username, "MODERATOR");
   assert.equal(manifest.accounts.joshua.username, "Joshua");
   const serialized = JSON.stringify(manifest).toLowerCase();
@@ -437,6 +443,10 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
     script,
     /const legacyLevelXp = hasCurrentSchema \? 0 : getLegacyLevelFloorXp\(source\);/,
   );
+  assert.match(script, /const SPECIAL_BADGE_ACCOUNT_KEYS = new Set/);
+  assert.match(script, /function hasHardEarnedProgressEvidence\(payload = \{\}\)/);
+  assert.match(script, /function stripUnearnedSpecialProgressPayload/);
+  assert.match(script, /cleanUnearnedSpecialProgress: Boolean\(message\.user\?\.account\)/);
 });
 
 test("Firebase leaderboard hides and stops syncing test-like accounts", () => {

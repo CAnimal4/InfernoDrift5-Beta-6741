@@ -22,7 +22,7 @@ const SEEDED_ACCOUNTS = [
     username: "Joshua",
     badge: "Advanced Player",
     role: "player",
-    xp: 5700,
+    xp: 0,
     passwordSalt: "seed-joshua-v1",
     passwordHash:
       "cc5bb9482d5d701976e3c3b8a97aa38a05a785d0f53e889bd3e5f87085b0f8c7",
@@ -32,7 +32,7 @@ const SEEDED_ACCOUNTS = [
     username: "Billy",
     badge: "Advanced Player 2.0",
     role: "player",
-    xp: 6100,
+    xp: 0,
     passwordSalt: "seed-billy-v1",
     passwordHash:
       "aef6bd6fe7a081f2ff1ecac7d743d10f621ac0bd1d9b704f07d26668c630a927",
@@ -42,7 +42,7 @@ const SEEDED_ACCOUNTS = [
     username: "Tosh the Sigma",
     badge: "Rizzler",
     role: "player",
-    xp: 4300,
+    xp: 0,
     passwordSalt: "seed-tosh-v1",
     passwordHash:
       "4608dbb0977c18f33a22907cb8bcb4d09639aaf16b3debd9d777563539b1c490",
@@ -52,7 +52,7 @@ const SEEDED_ACCOUNTS = [
     username: "Clark",
     badge: "Founder",
     role: "player",
-    xp: 8200,
+    xp: 0,
     passwordSalt: "seed-clark-v1",
     passwordHash:
       "1f0e592ec2d82bf6ee3a993e3b648074784a88edbeac932b207d9586524ccb43",
@@ -62,7 +62,7 @@ const SEEDED_ACCOUNTS = [
     username: "MODERATOR",
     badge: "MOD",
     role: "moderator",
-    xp: 7600,
+    xp: 0,
     passwordSalt: "seed-moderator-v1",
     passwordHash:
       "b94ceaed791c740d20f74f2578603868fcf6280afc9fbb636603a607dc92b7a6",
@@ -70,19 +70,6 @@ const SEEDED_ACCOUNTS = [
 ];
 
 const DEFAULT_LEADERBOARD = [
-  ...SEEDED_ACCOUNTS.map((account) => ({
-    id: `seed-xp-${account.id}`,
-    userId: account.id,
-    username: account.username,
-    badge: account.badge,
-    moderator: account.role === "moderator",
-    xp: account.xp,
-    rating: account.xp,
-    score: account.xp,
-    playlist: "all modes",
-    scope: "Total XP",
-    source: "server",
-  })),
   {
     id: "seed-ranked-ghost",
     username: "Ghost Apex",
@@ -127,7 +114,6 @@ const CHAT_HISTORY_WINDOW_MS = 30 * 60 * 1000;
 const CHAT_HISTORY_LIMIT = 100;
 const REPORT_EMAIL_TO = "aidan.dwight@lbusd.org,clark.alden@lbusd.org";
 const FOUNDER_USERNAME = "Clark";
-const FOUNDER_FRIEND_XP_REWARD = 1000;
 const DAILY_GIFT_MIN_XP = 100;
 const DAILY_GIFT_MAX_XP = 1000;
 const DAILY_GIFT_STEP_XP = 25;
@@ -254,7 +240,10 @@ function seedSystemAccounts(db) {
     const claimedId = db.usernameClaims[key];
     const id = claimedId && db.users[claimedId] ? claimedId : account.id;
     const existing = db.users[id] ?? {};
-    const xp = Math.max(Number(existing.xp) || 0, account.xp);
+    const existingXp = Math.max(0, Number(existing.xp) || 0);
+    const xp = hasServerHardEarnedProgressEvidence(db.saves?.[id]?.payload)
+      ? existingXp
+      : 0;
     db.users[id] = {
       ...existing,
       id,
@@ -276,26 +265,10 @@ function seedSystemAccounts(db) {
       updatedAt: existing.updatedAt ?? nowIso(),
     };
     db.usernameClaims[key] = id;
-    db.leaderboard = [
-      {
-        id: `seed-xp-${id}`,
-        userId: id,
-        username: account.username,
-        badge: account.badge,
-        moderator: account.role === "moderator",
-        xp,
-        totalXp: xp,
-        score: xp,
-        rating: xp,
-        playlist: "all modes",
-        scope: "Total XP",
-        source: "server",
-        updatedAt: db.users[id].updatedAt,
-      },
-      ...db.leaderboard.filter(
-        (row) => row.id !== `seed-xp-${id}` && row.userId !== id,
-      ),
-    ];
+    db.leaderboard = db.leaderboard.filter(
+      (row) => row.id !== `seed-xp-${id}` && row.userId !== id,
+    );
+    if (xp > 0) upsertXpLeaderboard(db, db.users[id], xp);
   }
   db.leaderboard = db.leaderboard.sort(compareLeaderboard);
 }
@@ -634,8 +607,8 @@ function applySeededAccountCredentials(user, seeded) {
     badge: seeded.badge,
     role: seeded.role,
     moderator: seeded.role === "moderator",
-    xp: Math.max(Number(user.xp) || 0, seeded.xp),
-    rating: Math.max(Number(user.rating) || 0, seeded.xp),
+    xp: Math.max(0, Number(user.xp) || 0),
+    rating: Math.max(0, Number(user.rating) || 0),
   };
 }
 
@@ -654,40 +627,63 @@ function extractSaveXp(payload = {}) {
   );
 }
 
-function buildFounderFriendSavePayload(payload = {}, user = {}) {
-  const next = structuredClone(
-    payload && typeof payload === "object" ? payload : {},
-  );
+function hasServerObjectEntries(value) {
+  return Boolean(value && typeof value === "object" && Object.keys(value).length);
+}
+
+function hasServerGameplayRewardLogEvidence(rewardLog = []) {
+  const nonGameplaySources = new Set([
+    "daily-gift",
+    "founder-friend",
+    "level-reward",
+  ]);
+  return (Array.isArray(rewardLog) ? rewardLog : []).some((entry) => {
+    const source = String(entry?.modeId || entry?.source || entry?.label || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_]+/g, "-");
+    return source && !nonGameplaySources.has(source);
+  });
+}
+
+function hasServerHardEarnedProgressEvidence(payload = {}) {
+  if (!payload || typeof payload !== "object") return false;
   const progress =
-    next.progressionV2 && typeof next.progressionV2 === "object"
-      ? next.progressionV2
+    payload.progressionV2 && typeof payload.progressionV2 === "object"
+      ? payload.progressionV2
+      : payload;
+  const dailySparks =
+    progress.dailySparks && typeof progress.dailySparks === "object"
+      ? progress.dailySparks
       : {};
-  const totalXp =
-    Math.max(extractSaveXp(next), Math.max(0, Number(user.xp) || 0)) +
-    FOUNDER_FRIEND_XP_REWARD;
-  next.progressionV2 = {
-    ...progress,
-    xp: totalXp,
-    totalXp,
-    level: progressionLevelForXp(totalXp),
-    rewardLog: [
-      {
-        modeId: "founder-friend",
-        label: "Founder Friend",
-        medal: "Bonus",
-        xp: FOUNDER_FRIEND_XP_REWARD,
-        reward: `Founder Friend +${FOUNDER_FRIEND_XP_REWARD} XP`,
-        at: nowIso(),
-      },
-      ...(Array.isArray(progress.rewardLog) ? progress.rewardLog : []),
-    ].slice(0, 12),
-  };
-  return { payload: next, totalXp };
+  const dailySparkEvidence = Array.isArray(dailySparks.items)
+    ? dailySparks.items.some(
+        (item) =>
+          Boolean(item?.completed || item?.claimed) ||
+          Math.max(0, Number(item?.progress) || 0) > 0,
+      )
+    : false;
+  return Boolean(
+    Math.max(0, Number(payload.worldIndex) || 0) > 0 ||
+      Math.max(0, Number(payload.levelIndex) || 0) > 0 ||
+      hasServerObjectEntries(progress.medals) ||
+      hasServerObjectEntries(progress.personalBests) ||
+      hasServerObjectEntries(progress.ghostSamples) ||
+      hasServerGameplayRewardLogEvidence(progress.rewardLog) ||
+      progress.tutorialComplete ||
+      dailySparkEvidence,
+  );
 }
 
 function upsertXpLeaderboard(data, user, totalXp) {
   if (!isLeaderboardEligibleUser(user)) return null;
   const xp = Math.max(0, Math.floor(Number(totalXp) || 0));
+  if (xp <= 0 && seededAccountForUsername(user.username)) {
+    data.leaderboard = data.leaderboard.filter(
+      (row) => row.id !== `xp-${user.id}` && row.userId !== user.id,
+    );
+    return null;
+  }
   const row = {
     id: `xp-${user.id}`,
     userId: user.id,
@@ -1912,41 +1908,8 @@ export function createInfernoServer(options = {}) {
     };
   }
 
-  function awardFounderFriendXp(user) {
-    if (!user || isFounderUsername(user.username)) return null;
-    if (user.founderFriendXpClaimed) return null;
-    const previousSave = db.data.saves[user.id] ?? {
-      userId: user.id,
-      schemaVersion: 2,
-      payload: {},
-      serverUpdatedAt: nowIso(),
-    };
-    const { payload, totalXp } = buildFounderFriendSavePayload(
-      previousSave.payload,
-      user,
-    );
-    user.founderFriendXpClaimed = true;
-    user.xp = totalXp;
-    user.rating = Math.max(Number(user.rating) || 0, totalXp);
-    user.updatedAt = nowIso();
-    db.data.users[user.id] = user;
-    db.data.saves[user.id] = {
-      ...previousSave,
-      userId: user.id,
-      schemaVersion: Math.max(2, Number(previousSave.schemaVersion) || 2),
-      payload,
-      serverUpdatedAt: user.updatedAt,
-    };
-    upsertXpLeaderboard(db.data, user, totalXp);
-    return {
-      type: "progression.reward",
-      reason: "founder_friend",
-      label: "Founder Friend",
-      xp: FOUNDER_FRIEND_XP_REWARD,
-      totalXp,
-      payload,
-      user: publicUser(user),
-    };
+  function awardFounderFriendXp() {
+    return null;
   }
 
   function sendFounderFriendReward(userId, reward) {

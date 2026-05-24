@@ -390,3 +390,10 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 
 - Added a narrow Firebase chat history cutoff after moderation testing so older public/DM chat docs are no longer emitted into the client history or notices.
 - Did not loosen Firestore rules or change normal chat writes; new chat messages after the cutoff continue to send, store, notify, and display normally.
+
+2026-05-23 badge account XP cleanup:
+
+- Removed badge-based XP seeding from special/password accounts. Clark, MODERATOR, Tosh_the_Sigma, JFine, Joshua, Billy, and any future badge account now behave like normal accounts with only the badge added.
+- Disabled the old Founder Friend XP bonus so friending Clark no longer grants progression just because Clark is a special account.
+- Added sign-in/load cleanup for special accounts with legacy seeded XP but no hard-earned play evidence. Hard-earned progress is preserved when the save shows real play history such as medals, bests, rewards, tutorial progress, Daily Sparks progress, or owned/equipped non-default cosmetics.
+- Cache-busted the static client assets for the Pages deployment.

@@ -1,6 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260523-chat-cleanup";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260523-badge-xp-cleanup";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -428,49 +428,16 @@ function getSchoolGateStatus(date = new Date()) {
     nowMinutes: minutes,
   };
 }
-const SEEDED_LEADERBOARD_ROWS = [
-  {
-    id: "seed-clark",
-    userId: "seed-clark",
-    username: "Clark",
-    badge: "Founder",
-    xp: 8200,
-    totalXp: 8200,
-    source: "server",
-    scope: "Total XP",
-  },
-  {
-    id: "seed-moderator",
-    userId: "seed-moderator",
-    username: "MODERATOR",
-    badge: "MOD",
-    moderator: true,
-    xp: 7600,
-    totalXp: 7600,
-    source: "server",
-    scope: "Total XP",
-  },
-  {
-    id: "seed-joshua",
-    userId: "seed-joshua",
-    username: "Joshua",
-    badge: "Advanced Player",
-    xp: 5700,
-    totalXp: 5700,
-    source: "server",
-    scope: "Total XP",
-  },
-  {
-    id: "seed-tosh",
-    userId: "seed-tosh",
-    username: "Tosh the Sigma",
-    badge: "Rizzler",
-    xp: 4300,
-    totalXp: 4300,
-    source: "server",
-    scope: "Total XP",
-  },
-];
+const SEEDED_LEADERBOARD_ROWS = [];
+const SPECIAL_BADGE_ACCOUNT_KEYS = new Set([
+  "clark",
+  "moderator",
+  "jfine",
+  "joshua",
+  "tosh_the_sigma",
+  "tosh the sigma",
+  "billy",
+]);
 const CODEX_LEADERBOARD_USERNAME = "ChatGPT (Codex)";
 const CODEX_LEADERBOARD_ID = "system-chatgpt-codex";
 const TEST_ACCOUNT_NAME_BLOCKLIST = new Set([
@@ -4563,6 +4530,65 @@ function hasDailySparksEvidence(dailySparks = {}) {
     : false;
 }
 
+function hasGameplayRewardLogEvidence(rewardLog = []) {
+  const nonGameplaySources = new Set([
+    "daily-gift",
+    "founder-friend",
+    "level-reward",
+  ]);
+  return (Array.isArray(rewardLog) ? rewardLog : []).some((entry) => {
+    const source = String(entry?.modeId || entry?.source || entry?.label || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_]+/g, "-");
+    return source && !nonGameplaySources.has(source);
+  });
+}
+
+function isSpecialBadgeAccountUsername(username = "") {
+  const key = normalizeLegacyProgressKey(username);
+  return (
+    SPECIAL_BADGE_ACCOUNT_KEYS.has(key) ||
+    SPECIAL_BADGE_ACCOUNT_KEYS.has(compactLegacyProgressKey(key))
+  );
+}
+
+function hasHardEarnedProgressEvidence(payload = {}) {
+  const normalized = normalizeProgressionV2(payload?.progressionV2 || {});
+  return Boolean(
+    Math.max(0, Number(payload.worldIndex) || 0) > 0 ||
+      Math.max(0, Number(payload.levelIndex) || 0) > 0 ||
+      hasObjectEntries(normalized.medals) ||
+      hasObjectEntries(normalized.personalBests) ||
+      hasObjectEntries(normalized.ghostSamples) ||
+      hasGameplayRewardLogEvidence(normalized.rewardLog) ||
+      normalized.tutorialComplete ||
+      hasDailySparksEvidence(normalized.dailySparks) ||
+      hasNonDefaultCustomization(payload.customization) ||
+      hasNonDefaultGarageState(payload.garage) ||
+      hasNonDefaultOwnedCosmetics(normalized.ownedCosmetics),
+  );
+}
+
+function stripUnearnedSpecialProgressPayload(payload = {}, username = "") {
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !isSpecialBadgeAccountUsername(username) ||
+    hasHardEarnedProgressEvidence(payload)
+  ) {
+    return payload;
+  }
+  const cleanPayload = structuredClone(payload);
+  const fresh = createProgressionV2();
+  cleanPayload.progressionV2 = {
+    ...fresh,
+    dailyGiftSalt:
+      cleanPayload.progressionV2?.dailyGiftSalt || fresh.dailyGiftSalt,
+  };
+  return cleanPayload;
+}
+
 function hasProgressionPlayEvidence(progression = {}) {
   const normalized = normalizeProgressionV2(progression);
   const defaultRewards = new Set(createProgressionV2().unlockedRewards);
@@ -4694,6 +4720,7 @@ function applyServerSave(
     preferAccountLocal = false,
     replaceProgression = false,
     cleanPollutedFresh = false,
+    cleanUnearnedSpecialProgress = false,
   } = {},
 ) {
   const payload = serverSave?.payload;
@@ -4701,6 +4728,19 @@ function applyServerSave(
   let shouldReplaceProgression = Boolean(replaceProgression);
   if (!nextPayload && preferAccountLocal) {
     nextPayload = readAccountSavePayload();
+  }
+  if (nextPayload && cleanUnearnedSpecialProgress) {
+    const cleanedPayload = stripUnearnedSpecialProgressPayload(
+      nextPayload,
+      onlineState.user?.username || onlineState.username,
+    );
+    if (cleanedPayload !== nextPayload) {
+      nextPayload = cleanedPayload;
+      shouldReplaceProgression = true;
+      onlineState.freshAccountSaveSyncPending = true;
+      onlineState.profileActionStatus =
+        "Removed automatic badge-account starter progress. Your badge stays; earned progress still syncs normally.";
+    }
   }
   if (nextPayload && cleanPollutedFresh && isPollutedFreshAccountPayload(nextPayload)) {
     nextPayload = buildFreshAccountSavePayload();
@@ -5070,7 +5110,11 @@ async function importBundledLegacyProgressForFirebaseAccount({
 } = {}) {
   const entry = await findBundledLegacyProgress(username);
   if (!entry) return null;
-  const legacyPayload = entry.payload || null;
+  const rawLegacyPayload = entry.payload || null;
+  const legacyPayload = stripUnearnedSpecialProgressPayload(
+    rawLegacyPayload,
+    entry.username || username,
+  );
   const legacyXp = getSavePayloadTotalXp(legacyPayload);
   onlineState.legacyImportXp = legacyXp;
   onlineState.legacyImportSource = "bundled-cloudflare-export";
@@ -5269,7 +5313,11 @@ async function importLegacyProgressForFirebaseAccount(
       onlineState.legacyImportError = bundle.error || "legacy_unavailable";
       return false;
     }
-    const legacyPayload = bundle.save?.payload || null;
+    const rawLegacyPayload = bundle.save?.payload || null;
+    const legacyPayload = stripUnearnedSpecialProgressPayload(
+      rawLegacyPayload,
+      bundle.user?.username || authPayload?.username,
+    );
     const legacyXp = getSavePayloadTotalXp(legacyPayload);
     onlineState.legacyImportXp = legacyXp;
     onlineState.legacyImportSource = bundle.source || "legacy-api";
@@ -6013,6 +6061,12 @@ function setStartAccountStatus(text, tone = "info") {
 }
 
 function setOfflineGuestFallbackStatus() {
+  if (
+    Number.isFinite(onlineState.blockOfflineFallbackUntil) &&
+    Date.now() < onlineState.blockOfflineFallbackUntil
+  ) {
+    return;
+  }
   setStartAccountStatus(
     "Online services are unavailable on this network. You can still play Guest Offline.",
     "error",
@@ -6051,28 +6105,29 @@ function buildAccountAuthPayload(mode = "auto") {
   const username = sanitizeRemoteUsername(startAccountUsername?.value || "");
   const password = String(startAccountPassword?.value || "");
   const ageValue = Number(startAccountAge?.value);
+  const setValidationError = (message) => {
+    onlineState.blockOfflineFallbackUntil = Date.now() + 2500;
+    setStartAccountStatus(message, "error");
+  };
   if (!username || username.length < 3) {
-    setStartAccountStatus(
+    setValidationError(
       "Enter a username with 3-20 letters, numbers, underscores, or hyphens.",
-      "error",
     );
     return null;
   }
   if (!/^[A-Za-z0-9][A-Za-z0-9 _-]{1,18}[A-Za-z0-9]$/.test(username)) {
-    setStartAccountStatus(
+    setValidationError(
       "Username can use letters, numbers, spaces, underscores, or hyphens.",
-      "error",
     );
     return null;
   }
   if (password.length < 6) {
-    setStartAccountStatus("Password must be at least 6 characters.", "error");
+    setValidationError("Password must be at least 6 characters.");
     return null;
   }
   if (!Number.isFinite(ageValue) || ageValue < 0 || ageValue > 120) {
-    setStartAccountStatus(
+    setValidationError(
       "Enter an age from 0 to 120 for chat safety.",
-      "error",
     );
     return null;
   }
@@ -7074,6 +7129,7 @@ function handleOnlineMessage(raw) {
         message.user?.account && !message.save?.payload,
       ),
       cleanPollutedFresh: Boolean(message.cleanPollutedFresh),
+      cleanUnearnedSpecialProgress: Boolean(message.user?.account),
     });
     saveOnlineConfig();
     onlineState.authRequired = false;

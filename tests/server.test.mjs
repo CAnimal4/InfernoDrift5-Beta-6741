@@ -940,9 +940,8 @@ test("websocket backend supports queue, age gate, quick chat, leaderboard, and s
     messages.some(
       (msg) =>
         msg.type === "leaderboard.snapshot" &&
-        msg.leaderboard.some(
-          (row) => row.username === "Clark" && row.badge === "Founder",
-        ),
+        Array.isArray(msg.leaderboard) &&
+        !msg.leaderboard.some((row) => row.username === "Clark"),
     ),
   );
   assert.ok(
@@ -963,7 +962,7 @@ test("websocket backend supports queue, age gate, quick chat, leaderboard, and s
   await app.close();
 });
 
-test("friending Clark grants a one-time founder XP bonus", async (t) => {
+test("friending Clark does not grant badge-based XP", async (t) => {
   const app = createInfernoServer({
     port: 0,
     dataDir: path.join(os.tmpdir(), `id4-founder-friend-${Date.now()}`),
@@ -985,7 +984,10 @@ test("friending Clark grants a one-time founder XP bonus", async (t) => {
       age: 13,
     }),
   );
-  await waitForMessage(player.messages, (msg) => msg.type === "auth.ok");
+  const auth = await waitForMessage(
+    player.messages,
+    (msg) => msg.type === "auth.ok",
+  );
   player.ws.send(JSON.stringify({ type: "friend.request", username: "Clark" }));
 
   const request = await waitForMessage(
@@ -1000,29 +1002,21 @@ test("friending Clark grants a one-time founder XP bonus", async (t) => {
     player.messages,
     (msg) => msg.type === "friend.accepted" && msg.username === "Clark",
   );
-  const reward = await waitForMessage(
-    player.messages,
-    (msg) =>
-      msg.type === "progression.reward" && msg.reason === "founder_friend",
-  );
-  assert.equal(reward.xp, 1000);
-  assert.equal(reward.totalXp, 1000);
-  assert.equal(reward.payload.progressionV2.totalXp, 1000);
   await waitForMessage(
     player.messages,
     (msg) =>
       msg.type === "friends.snapshot" &&
       msg.friends?.some((friend) => friend.username === "Clark"),
   );
-  const leaderboard = await waitForMessage(
-    player.messages,
-    (msg) =>
-      msg.type === "leaderboard.snapshot" &&
-      msg.leaderboard.some(
-        (row) => row.username === "FounderFan" && row.xp === 1000,
-      ),
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  assert.equal(
+    player.messages.some(
+      (msg) =>
+        msg.type === "progression.reward" && msg.reason === "founder_friend",
+    ),
+    false,
   );
-  assert.ok(leaderboard.leaderboard[0].xp >= 1000);
+  assert.equal(app.db.data.users[auth.user.id].xp, 0);
 
   player.ws.send(JSON.stringify({ type: "friend.request", username: "Clark" }));
   await new Promise((resolve) => setTimeout(resolve, 120));
@@ -1031,7 +1025,7 @@ test("friending Clark grants a one-time founder XP bonus", async (t) => {
       (msg) =>
         msg.type === "progression.reward" && msg.reason === "founder_friend",
     ).length,
-    1,
+    0,
   );
   player.ws.terminate();
 });
@@ -1066,6 +1060,7 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
   );
   assert.equal(modAuth.user.badge, "MOD");
   assert.equal(modAuth.user.moderator, true);
+  assert.equal(modAuth.user.xp, 0);
 
   joshua.ws.send(
     JSON.stringify({
@@ -1082,6 +1077,7 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
     (msg) => msg.type === "auth.ok",
   );
   assert.equal(joshuaAuth.user.badge, "Advanced Player");
+  assert.equal(joshuaAuth.user.xp, 0);
 
   billy.ws.send(
     JSON.stringify({
@@ -1098,6 +1094,7 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
     (msg) => msg.type === "auth.ok",
   );
   assert.equal(billyAuth.user.badge, "Advanced Player 2.0");
+  assert.equal(billyAuth.user.xp, 0);
 
   moderator.ws.send(
     JSON.stringify({ type: "leaderboard.get", playlist: "ranked" }),
@@ -1106,23 +1103,11 @@ test("seeded accounts expose badges and moderator can kick and one-day ban", asy
     moderator.messages,
     (msg) => msg.type === "leaderboard.snapshot",
   );
-  assert.ok(
-    leaderboard.leaderboard.some(
-      (row) =>
-        row.username === "MODERATOR" &&
-        row.badge === "MOD" &&
-        row.moderator === true,
+  assert.equal(
+    leaderboard.leaderboard.some((row) =>
+      ["MODERATOR", "Joshua", "Billy"].includes(row.username),
     ),
-  );
-  assert.ok(
-    leaderboard.leaderboard.some(
-      (row) => row.username === "Joshua" && row.badge === "Advanced Player",
-    ),
-  );
-  assert.ok(
-    leaderboard.leaderboard.some(
-      (row) => row.username === "Billy" && row.badge === "Advanced Player 2.0",
-    ),
+    false,
   );
 
   joshua.ws.send(
@@ -1672,20 +1657,20 @@ test("account profile save never downgrades canonical leaderboard XP", async (t)
     (msg) => msg.type === "auth.ok",
   );
   assert.equal(auth.user.username, "Clark");
-  assert.equal(auth.save.payload.progressionV2.xp, 8200);
-  assert.equal(auth.save.payload.progressionV2.totalXp, 8200);
+  assert.equal(auth.save.payload.progressionV2.xp, 175);
+  assert.equal(auth.save.payload.progressionV2.totalXp, 175);
   const profile = await waitForMessage(
     clark.messages,
     (msg) => msg.type === "profile.snapshot" && msg.user?.username === "Clark",
   );
-  assert.equal(profile.save.payload.progressionV2.xp, 8200);
-  assert.equal(profile.user.xp, 8200);
+  assert.equal(profile.save.payload.progressionV2.xp, 175);
+  assert.equal(profile.user.xp, 175);
   const leaderboard = await waitForMessage(
     clark.messages,
     (msg) => msg.type === "leaderboard.snapshot" && msg.playerRow,
   );
   assert.equal(leaderboard.playerRow.username, "Clark");
-  assert.equal(leaderboard.playerRow.xp, 8200);
+  assert.equal(leaderboard.playerRow.xp, 175);
   clark.ws.terminate();
 });
 

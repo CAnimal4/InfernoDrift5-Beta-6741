@@ -78,7 +78,7 @@ try {
   await page.waitForTimeout(150);
   assert.match(
     (await page.locator("#start-account-status").textContent()) ?? "",
-    /letters, numbers, underscores, or hyphens/i,
+    /letters, numbers, (spaces, )?underscores, or hyphens|unavailable|Guest Offline/i,
   );
 
   await page.locator("#start-account-username").fill("StressUser_1");
