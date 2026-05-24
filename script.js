@@ -1,6 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260523-badge-xp-repair-v2";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260524-realtime-sync";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -315,6 +315,8 @@ const BACKFLIP_DURATION = 0.78;
 const BACKFLIP_RECOVERY_DURATION = 0.3;
 const SAVE_STORAGE_KEY = "infernoDrift4.save.v1";
 const ACCOUNT_SAVE_STORAGE_PREFIX = "infernoDrift4.accountSave.v1:";
+const ACCOUNT_SYNC_CHANNEL_NAME = "infernoDrift4.accountSync.v1";
+const ACCOUNT_SYNC_STORAGE_KEY = "infernoDrift4.accountSync.last";
 const LEGACY_SAVE_STORAGE_KEYS = ["infernoDrift3.save.v1"];
 const ONLINE_STORAGE_KEY = "infernoDrift4.online.v1";
 const FEEDBACK_STORAGE_KEY = "infernoDrift4.feedback.v1";
@@ -328,6 +330,9 @@ const ONLINE_AUTH_TIMEOUT_MS = 8000;
 const ONLINE_WS_PROBE_TIMEOUT_MS = 4500;
 const LEGACY_IMPORT_TIMEOUT_MS = 4500;
 const LEGACY_IMPORT_STORAGE_PREFIX = "infernoDrift4.legacyImport.v1:";
+const ACCOUNT_SYNC_TAB_ID = `${Date.now().toString(36)}-${Math.random()
+  .toString(36)
+  .slice(2, 9)}`;
 const LEGACY_CLOUDFLARE_PROGRESS_URL = "legacy-cloudflare-progress.json";
 const FEEDBACK_MESSAGE_LIMIT = 2500;
 const DAILY_GIFT_MIN_XP = 100;
@@ -2280,6 +2285,9 @@ const onlineState = {
   nextProgressSyncAt: 0,
   saveSyncedAt: 0,
   accountProgressReady: true,
+  applyingAccountSync: false,
+  lastAccountSyncPayloadAt: 0,
+  accountSyncChannel: null,
   freshAccountSaveSyncPending: false,
   freshAccountRepairApplied: false,
   profileSnapshot: null,
@@ -4394,6 +4402,101 @@ function savePersistentState() {
   } catch (error) {
     debugLog("menu", "save_failed", error?.message || error);
   }
+  broadcastAccountSync(payload, { reason: "local-save" });
+}
+
+function getSavePayloadUpdatedAtMs(payload = {}) {
+  return Math.max(
+    0,
+    Number(payload?.saveMeta?.updatedAtMs || payload?.progressionV2?.updatedAtMs) ||
+      0,
+  );
+}
+
+function broadcastAccountSync(payload, { reason = "save" } = {}) {
+  if (
+    onlineState.applyingAccountSync ||
+    onlineState.profileMode !== "account" ||
+    onlineState.guestTemporary ||
+    !onlineState.user?.id ||
+    !payload ||
+    typeof payload !== "object"
+  ) {
+    return;
+  }
+  const message = {
+    type: "account-sync",
+    tabId: ACCOUNT_SYNC_TAB_ID,
+    uid: onlineState.user.id,
+    reason,
+    updatedAtMs: getSavePayloadUpdatedAtMs(payload) || Date.now(),
+    payload,
+  };
+  try {
+    onlineState.accountSyncChannel?.postMessage(message);
+  } catch {
+    // BroadcastChannel is best-effort only.
+  }
+  try {
+    localStorage.setItem(ACCOUNT_SYNC_STORAGE_KEY, JSON.stringify(message));
+  } catch {
+    // Storage events are a fallback only.
+  }
+}
+
+function handleAccountSyncMessage(message = {}) {
+  if (
+    !message ||
+    message.type !== "account-sync" ||
+    message.tabId === ACCOUNT_SYNC_TAB_ID ||
+    message.uid !== onlineState.user?.id ||
+    onlineState.profileMode !== "account" ||
+    onlineState.guestTemporary ||
+    !message.payload ||
+    typeof message.payload !== "object"
+  ) {
+    return;
+  }
+  const incomingAt =
+    Number(message.updatedAtMs) || getSavePayloadUpdatedAtMs(message.payload);
+  if (incomingAt && incomingAt < onlineState.lastAccountSyncPayloadAt - 250)
+    return;
+  onlineState.lastAccountSyncPayloadAt = Math.max(
+    onlineState.lastAccountSyncPayloadAt,
+    incomingAt || Date.now(),
+  );
+  onlineState.applyingAccountSync = true;
+  try {
+    applyServerSave(
+      { payload: message.payload },
+      { force: true, preferAccountLocal: false },
+    );
+  } finally {
+    onlineState.applyingAccountSync = false;
+  }
+}
+
+function initAccountCrossTabSync() {
+  if (onlineState.accountSyncChannel || typeof window === "undefined") return;
+  if (typeof BroadcastChannel === "function") {
+    try {
+      onlineState.accountSyncChannel = new BroadcastChannel(
+        ACCOUNT_SYNC_CHANNEL_NAME,
+      );
+      onlineState.accountSyncChannel.onmessage = (event) =>
+        handleAccountSyncMessage(event.data);
+    } catch {
+      onlineState.accountSyncChannel = null;
+    }
+  }
+  window.addEventListener("storage", (event) => {
+    if (event.key !== ACCOUNT_SYNC_STORAGE_KEY || !event.newValue) return;
+    try {
+      handleAccountSyncMessage(JSON.parse(event.newValue));
+    } catch {
+      // Ignore malformed cross-tab payloads.
+    }
+  });
 }
 
 function getAccountSaveStorageKey(user = onlineState.user) {
@@ -7621,12 +7724,16 @@ function handleOnlineMessage(raw) {
 
 function updateRemoteSnapshotsFromRoom(room) {
   applyFirebaseLiveRoomState(room);
+  const isFreshLiveRemote = (remote) => {
+    const timestamp = Date.parse(String(remote?.at || remote?.updatedAt || ""));
+    return !Number.isFinite(timestamp) || Date.now() - timestamp < 12_000;
+  };
   const liveStatePlayers = Array.isArray(room?.liveState?.players)
-    ? room.liveState.players
+    ? room.liveState.players.filter(isFreshLiveRemote)
     : [];
   const livePlayers =
     room?.livePlayers && typeof room.livePlayers === "object"
-      ? Object.values(room.livePlayers)
+      ? Object.values(room.livePlayers).filter(isFreshLiveRemote)
       : [];
   if (liveStatePlayers.length || livePlayers.length) {
     const merged = new Map();
@@ -8214,6 +8321,10 @@ function getFirebaseLiveHostUid(room = onlineState.room) {
 function isFirebaseLiveHost(room = onlineState.room) {
   const ownId = String(onlineState.user?.id || "");
   return Boolean(ownId && ownId === getFirebaseLiveHostUid(room));
+}
+
+function isFirebaseLiveFollower(room = onlineState.room) {
+  return Boolean(isFirebaseLiveRoom(room) && !isFirebaseLiveHost(room));
 }
 
 function getLatestJoinableRoomInvite() {
@@ -11818,6 +11929,7 @@ function applyPlayerCustomization(options = {}) {
   rebuildPlayerCarMesh();
   refreshCustomizationMenu();
   refreshGaragePreview();
+  if (isFirebaseLiveRoom()) onlineState.firebaseLiveLastPublishAt = 0;
 }
 
 function makeBot(color) {
@@ -17506,6 +17618,10 @@ function updateHunterTagBots(dt) {
 }
 
 function updateBots(dt) {
+  if (isFirebaseLiveFollower()) {
+    applyBotLiveSnapshots(onlineState.room?.liveState?.bots);
+    return;
+  }
   if (isMaxMode()) {
     if (settings.devMode && devTuning.freezeBots) return;
     updateMaxBots(dt);
@@ -19850,8 +19966,12 @@ function stepGame(dt) {
     updateBots(dt);
     updateHunterThreatFeedback();
     if (isMaxMode()) {
-      updateMaxBall(dt);
-      resolveMaxBumps();
+      if (!isFirebaseLiveFollower()) {
+        updateMaxBall(dt);
+        resolveMaxBumps();
+      } else {
+        applyFirebaseLiveRoomState(onlineState.room);
+      }
       updateBoostPads(dt);
       maxMode.replaySampleTimer += dt;
       if (maxMode.replaySampleTimer >= MAX_REPLAY_RULES.sampleRate) {
@@ -23149,6 +23269,7 @@ window.__infernodriftTestApi = {
     return JSON.parse(window.render_game_to_text()).online.chat;
   },
   simulateIncomingChatForTest: ({
+    id = "",
     username = "TestFriend",
     userId = "friend-test",
     text = "test message",
@@ -23162,6 +23283,7 @@ window.__infernodriftTestApi = {
     handleOnlineMessage(
       JSON.stringify({
         type: "chat.message",
+        id,
         from: username,
         userId,
         text,
@@ -23529,7 +23651,8 @@ window.__infernodriftTestApi = {
 	    configured: isFirebaseBackendMode()
 	      ? Boolean(onlineState.firebase.configured)
 	      : Boolean(onlineState.backendUrl),
-	    authenticated: Boolean(onlineState.user),
+    authenticated: Boolean(onlineState.user),
+    userId: onlineState.user?.id || "",
     username: onlineState.user?.username || onlineState.username,
     badge: onlineState.user?.badge || "",
     moderator: isCurrentOnlineModerator(),
@@ -23551,6 +23674,7 @@ window.__infernodriftTestApi = {
 
 loadOnlineConfig();
 loadPersistentState();
+initAccountCrossTabSync();
 ensureDailyGiftState(state.progressionV2);
 if (!MAX_DIFFICULTY_PROFILES[settings.maxDifficulty])
   settings.maxDifficulty = MAX_DIFFICULTY_CLASSIC;

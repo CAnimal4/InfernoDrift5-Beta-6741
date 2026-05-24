@@ -1,5 +1,14 @@
 Original prompt: Implement the InfernoDrift4 revamp plan on top of the current InfernoDrift-derived game: better radar, cleaner HUD/menu, stronger graphics/effects, distinct modes/minigames, live Cloudflare Workers + Durable Objects online, favicon from uploaded asset, tests, push, deploy, and verification.
 
+2026-05-24 Firebase realtime sync repair:
+
+- Added a reliable Firebase DM inbox mirror under owner-scoped `dmInboxes/{uid}/messages/{messageId}` and listener so incoming DMs trigger the existing non-obstructive chat notice path; also added per-friend DM room listeners as a rules-compatible fallback when collection-group or inbox listeners are unavailable.
+- Added signed-in account realtime subscriptions for `progress/{uid}`, friends, and friend requests, plus same-browser BroadcastChannel/storage-event account save propagation so XP, Embers, cosmetics, settings, and friends update across tabs/devices through the existing merge-safe save path.
+- Tightened Firebase live-room behavior for Max/Battle/Time Trial by treating host `liveState` as follower source of truth for bots/shared Max ball state, forcing live player republish after cosmetic changes, and filtering stale live player snapshots.
+- Updated Firestore rules for the DM inbox mirror and cache-busted the shipped script import.
+- Validation passed for this pass: `node --check script.js firebase-online.js firebase-online-core.js smoke_games.mjs`, `node --test tests/firebase-online.test.mjs`, `npm test`, `npm run build`, `npm run typecheck`, `npm run smoke`, `npm run smoke:firebase`, `npm run smoke:firebase-live`, and `npm run test:e2e`.
+- Firestore rule publish was attempted with `npx firebase-tools deploy --only firestore:rules --project infernodrift4-online --non-interactive`, but this machine is not authenticated with Firebase CLI. The code includes a per-DM-room fallback so friend DMs are not solely blocked on the new inbox rules being live.
+
 2026-05-20 repo sync verification:
 
 - Confirmed `InfernoDrift` and `InfernoDrift4` use the shared peer-sync GitHub Actions workflow so ID4 updates can propagate between both repos while preserving repo-specific Pages URLs.

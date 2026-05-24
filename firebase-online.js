@@ -627,6 +627,9 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     unsubscribers: [],
     chatRoomIds: new Set(),
     dmChatUnsubscribe: null,
+    dmInboxUnsubscribe: null,
+    dmThreadUnsubscribers: new Map(),
+    accountUnsubscribers: [],
     lobbyUnsubscribe: null,
     lobbyCode: "",
     lastChatAt: 0,
@@ -686,11 +689,13 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
               state.authenticated = false;
               state.uid = "";
               internals.userProfile = null;
+              stopAccountSubscriptions();
               return;
             }
             state.uid = user.uid;
             state.authenticated = true;
             await loadUserProfile(user.uid).catch(() => undefined);
+            subscribeAccountState();
           });
         })(),
         timeoutMs,
@@ -738,6 +743,106 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     state.isGuest = Boolean(profile.isGuest);
     state.authenticated = true;
     return internals.userProfile;
+  }
+
+  function subscribeAccountState() {
+    if (!state.uid || state.isGuest) return;
+    const { firestore } = internals.sdk;
+    stopAccountSubscriptions();
+    const uid = state.uid;
+    let initialProgressSnapshot = true;
+    const progressRef = firestore.doc(internals.db, "progress", uid);
+    const unsubscribeProgress = firestore.onSnapshot(
+      progressRef,
+      (snapshot) => {
+        if (initialProgressSnapshot) {
+          initialProgressSnapshot = false;
+          return;
+        }
+        if (!snapshot.exists() || uid !== state.uid) return;
+        const save = snapshot.data() || {};
+        emit("profile.snapshot", {
+          user: makeUserPayload(uid, internals.userProfile || {}),
+          save,
+          preferAccountLocal: false,
+          realtime: true,
+        });
+      },
+      (error) => {
+        fail(error, "progress_listener_failed");
+      },
+    );
+    internals.accountUnsubscribers.push(unsubscribeProgress);
+
+    let initialFriendsSnapshot = true;
+    const emitFriendsSnapshot = async ({ notify = false } = {}) => {
+      if (uid !== state.uid) return;
+      const snapshot = await refreshFriends({ emitSnapshot: false }).catch(
+        () => null,
+      );
+      if (!snapshot || uid !== state.uid) return;
+      emit("friends.snapshot", {
+        ...snapshot,
+        realtime: true,
+        notify,
+      });
+    };
+    const friendsRef = firestore.collection(
+      internals.db,
+      "friends",
+      uid,
+      "items",
+    );
+    const unsubscribeFriends = firestore.onSnapshot(
+      friendsRef,
+      () => {
+        const notify = !initialFriendsSnapshot;
+        initialFriendsSnapshot = false;
+        emitFriendsSnapshot({ notify });
+      },
+      (error) => {
+        fail(error, "friends_listener_failed");
+      },
+    );
+    internals.accountUnsubscribers.push(unsubscribeFriends);
+
+    let initialIncomingSnapshot = true;
+    const incomingQuery = firestore.query(
+      firestore.collection(internals.db, "friendRequests"),
+      firestore.where("toUid", "==", uid),
+      firestore.limit(FRIEND_QUERY_LIMIT),
+    );
+    const unsubscribeIncoming = firestore.onSnapshot(
+      incomingQuery,
+      () => {
+        const notify = !initialIncomingSnapshot;
+        initialIncomingSnapshot = false;
+        emitFriendsSnapshot({ notify });
+      },
+      (error) => {
+        fail(error, "friend_request_listener_failed");
+      },
+    );
+    internals.accountUnsubscribers.push(unsubscribeIncoming);
+
+    let initialOutgoingSnapshot = true;
+    const outgoingQuery = firestore.query(
+      firestore.collection(internals.db, "friendRequests"),
+      firestore.where("fromUid", "==", uid),
+      firestore.limit(FRIEND_QUERY_LIMIT),
+    );
+    const unsubscribeOutgoing = firestore.onSnapshot(
+      outgoingQuery,
+      () => {
+        const notify = !initialOutgoingSnapshot;
+        initialOutgoingSnapshot = false;
+        emitFriendsSnapshot({ notify });
+      },
+      (error) => {
+        fail(error, "friend_request_listener_failed");
+      },
+    );
+    internals.accountUnsubscribers.push(unsubscribeOutgoing);
   }
 
   function firebaseEmailForUsernameValidation(validation) {
@@ -919,6 +1024,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     if (progress?.payload) {
       await syncProgress(progress.payload, { silent: true });
     }
+    subscribeAccountState();
     return {
       user: makeUserPayload(user.uid, internals.userProfile),
       sessionToken: user.uid,
@@ -967,6 +1073,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     await writeUserProfile(user.uid, profile);
     await auth.updateProfile(user, { displayName }).catch(() => undefined);
     if (savePayload) await syncProgress(savePayload, { silent: true });
+    subscribeAccountState();
     state.authStatus = "guest-online";
     return {
       user: makeUserPayload(user.uid, internals.userProfile),
@@ -1152,9 +1259,29 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     });
     internals.chatRoomIds.clear();
     internals.dmChatUnsubscribe = null;
+    internals.dmInboxUnsubscribe = null;
+    internals.dmThreadUnsubscribers.forEach((unsubscribe) => {
+      try {
+        unsubscribe();
+      } catch {
+        // Listener was already closed.
+      }
+    });
+    internals.dmThreadUnsubscribers.clear();
     state.chatListenerActive = false;
     state.chatStatus = "idle";
+    stopAccountSubscriptions();
     stopLobbySubscription();
+  }
+
+  function stopAccountSubscriptions() {
+    internals.accountUnsubscribers.splice(0).forEach((unsubscribe) => {
+      try {
+        unsubscribe();
+      } catch {
+        // Listener was already closed.
+      }
+    });
   }
 
   function stopLobbySubscription() {
@@ -1241,11 +1368,94 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     internals.unsubscribers.push(unsubscribe);
   }
 
+  function subscribeDirectMessageInbox() {
+    const { firestore } = internals.sdk;
+    if (internals.dmInboxUnsubscribe || !state.uid) return;
+    let initialSnapshot = true;
+    const messagesRef = firestore.collection(
+      internals.db,
+      "dmInboxes",
+      state.uid,
+      "messages",
+    );
+    const q = firestore.query(
+      messagesRef,
+      firestore.orderBy("createdAt", "desc"),
+      firestore.limit(CHAT_HISTORY_LIMIT),
+    );
+    const unsubscribe = firestore.onSnapshot(
+      q,
+      (snapshot) => {
+        if (initialSnapshot) {
+          initialSnapshot = false;
+          return;
+        }
+        snapshot.docChanges().forEach((change) => {
+          if (change.type !== "added") return;
+          const message = mapChatDoc(change.doc);
+          if (!isVisibleChatMessage(message)) return;
+          if (!message.direct || message.userId === state.uid) return;
+          emit("chat.message", message);
+        });
+      },
+      (error) => {
+        state.chatStatus = "dm-inbox-listener-failed";
+        console.warn("InfernoDrift4 DM inbox listener unavailable", error);
+      },
+    );
+    internals.dmInboxUnsubscribe = unsubscribe;
+    internals.unsubscribers.push(unsubscribe);
+  }
+
+  function subscribeDirectThreadMessages(peerUid = "") {
+    const cleanPeerUid = String(peerUid || "").trim();
+    if (!state.uid || !cleanPeerUid || cleanPeerUid === state.uid) return;
+    const roomId = `dm-${requestKey(state.uid, cleanPeerUid)}`;
+    if (internals.dmThreadUnsubscribers.has(roomId)) return;
+    const { firestore } = internals.sdk;
+    let initialSnapshot = true;
+    const messagesRef = firestore.collection(
+      internals.db,
+      "chatRooms",
+      roomId,
+      "messages",
+    );
+    const q = firestore.query(
+      messagesRef,
+      firestore.orderBy("createdAt", "desc"),
+      firestore.limit(CHAT_HISTORY_LIMIT),
+    );
+    const unsubscribe = firestore.onSnapshot(
+      q,
+      (snapshot) => {
+        if (initialSnapshot) {
+          initialSnapshot = false;
+          return;
+        }
+        snapshot.docChanges().forEach((change) => {
+          if (change.type !== "added") return;
+          const message = mapChatDoc(change.doc);
+          if (!isVisibleChatMessage(message)) return;
+          if (!message.direct || message.userId === state.uid) return;
+          emit("chat.message", message);
+        });
+      },
+      (error) => {
+        state.chatStatus = "dm-thread-listener-failed";
+        console.warn("InfernoDrift4 DM thread listener unavailable", error);
+      },
+    );
+    internals.dmThreadUnsubscribers.set(roomId, unsubscribe);
+  }
+
   async function subscribeChat({ roomId = CHAT_ROOM_ID } = {}) {
     requireReady();
     const cleanRoomId = String(roomId || CHAT_ROOM_ID).slice(0, 120);
     if (internals.chatRoomIds.has(cleanRoomId)) {
-      if (cleanRoomId === CHAT_ROOM_ID) subscribeDirectMessages();
+      if (cleanRoomId === CHAT_ROOM_ID) {
+        subscribeDirectMessages();
+        subscribeDirectMessageInbox();
+      }
       return;
     }
     const { firestore } = internals.sdk;
@@ -1290,7 +1500,10 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     );
     internals.unsubscribers.push(unsubscribe);
     internals.chatRoomIds.add(cleanRoomId);
-    if (cleanRoomId === CHAT_ROOM_ID) subscribeDirectMessages();
+    if (cleanRoomId === CHAT_ROOM_ID) {
+      subscribeDirectMessages();
+      subscribeDirectMessageInbox();
+    }
     state.chatStatus = "listening";
     state.chatListenerActive = true;
   }
@@ -1330,23 +1543,45 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
           firebaseLobby: true,
         }
       : null;
-    await firestore.addDoc(
+    const messagePayload = {
+      uid: state.uid,
+      username: state.username || "Player",
+      badges: internals.userProfile?.badges || [],
+      text: clean.text,
+      channel: directTo?.uid ? "friend" : "lobby",
+      type: quick ? "quick" : directTo?.uid ? "direct" : "chat",
+      toUid: directTo?.uid || "",
+      toUsername: directTo?.username || "",
+      moderationFlags: [],
+      createdAt: firestore.serverTimestamp(),
+      createdAtClient: nowIso(),
+      ...(cleanInvite ? { roomInvite: cleanInvite } : {}),
+    };
+    const messageRef = await firestore.addDoc(
       firestore.collection(internals.db, "chatRooms", roomId, "messages"),
-      {
-        uid: state.uid,
-        username: state.username || "Player",
-        badges: internals.userProfile?.badges || [],
-        text: clean.text,
-        channel: directTo?.uid ? "friend" : "lobby",
-        type: quick ? "quick" : directTo?.uid ? "direct" : "chat",
-        toUid: directTo?.uid || "",
-        toUsername: directTo?.username || "",
-        moderationFlags: [],
-        createdAt: firestore.serverTimestamp(),
-        createdAtClient: nowIso(),
-        ...(cleanInvite ? { roomInvite: cleanInvite } : {}),
-      },
+      messagePayload,
     );
+    if (directTo?.uid) {
+      subscribeDirectThreadMessages(directTo.uid);
+      await firestore.setDoc(
+        firestore.doc(
+          internals.db,
+          "dmInboxes",
+          directTo.uid,
+          "messages",
+          messageRef.id,
+        ),
+        {
+          ...messagePayload,
+          sourceRoomId: roomId,
+          sourceMessageId: messageRef.id,
+        },
+        { merge: false },
+      ).catch((error) => {
+        state.chatStatus = "dm-inbox-write-failed";
+        fail(error, "dm_inbox_write_failed");
+      });
+    }
     internals.lastChatAt = now;
     state.chatStatus = "sent";
     return true;
@@ -1706,7 +1941,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     return { username: request.fromUsername, status: "accepted" };
   }
 
-  async function refreshFriends() {
+  async function refreshFriends({ emitSnapshot = true } = {}) {
     requireReady();
     if (!state.uid)
       return { friends: [], incomingRequests: [], outgoingRequests: [] };
@@ -1739,6 +1974,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       online: false,
       status: doc.data().status || "accepted",
     }));
+    friends.forEach((friend) => subscribeDirectThreadMessages(friend.userId));
     const incomingRequests = incomingSnapshot.docs
       .map((doc) => ({ id: doc.id, ...doc.data() }))
       .filter((request) => request.status === "pending");
@@ -1746,13 +1982,14 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       .map((doc) => ({ id: doc.id, ...doc.data() }))
       .filter((request) => request.status === "pending");
     state.friendsStatus = "ready";
-    emit("friends.snapshot", {
+    const snapshot = {
       friends,
       incomingRequests,
       outgoingRequests,
       recentPlayers: [],
-    });
-    return { friends, incomingRequests, outgoingRequests };
+    };
+    if (emitSnapshot) emit("friends.snapshot", snapshot);
+    return snapshot;
   }
 
   async function runDiagnostics({ timeoutMs = 8000 } = {}) {

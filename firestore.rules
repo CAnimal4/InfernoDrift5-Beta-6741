@@ -142,6 +142,35 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /dmInboxes/{uid}/messages/{messageId} {
+      allow read: if isOwner(uid);
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.toUid == uid
+        && request.resource.data.type == 'direct'
+        && request.resource.data.channel == 'friend'
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 300
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'username',
+          'badges',
+          'text',
+          'channel',
+          'type',
+          'toUid',
+          'toUsername',
+          'roomInvite',
+          'moderationFlags',
+          'createdAt',
+          'createdAtClient',
+          'sourceRoomId',
+          'sourceMessageId'
+        ]);
+      allow update, delete: if false;
+    }
+
     match /lobbies/{code} {
       allow read: if signedIn();
       allow create: if signedIn()

@@ -401,6 +401,7 @@ assert.equal(onlineUiState.online.chat.mode, "lobby");
 await page.locator("#chat-popout-close").click({ force: true });
 noticeState = await page.evaluate(() =>
   window.__infernodriftTestApi.simulateIncomingChatForTest({
+    id: "dm-smoke-inbox-1",
     username: "DmSmokeFriend",
     userId: "dm-smoke-friend",
     text: "private smoke ping",
@@ -409,6 +410,16 @@ noticeState = await page.evaluate(() =>
 );
 assert.equal(noticeState.noticeVisible, true);
 assert.equal(noticeState.noticeDmUsername, "DmSmokeFriend");
+const duplicateDmState = await page.evaluate(() =>
+  window.__infernodriftTestApi.simulateIncomingChatForTest({
+    id: "dm-smoke-inbox-1",
+    username: "DmSmokeFriend",
+    userId: "dm-smoke-friend",
+    text: "private smoke ping",
+    direct: true,
+  }),
+);
+assert.equal(duplicateDmState.messageCount, noticeState.messageCount);
 await page.locator("#chat-notice").click({ force: true });
 onlineUiState = JSON.parse(
   await page.evaluate(() => window.render_game_to_text()),
@@ -416,6 +427,29 @@ onlineUiState = JSON.parse(
 assert.equal(onlineUiState.online.chat.popoutOpen, true);
 assert.equal(onlineUiState.online.chat.mode, "dm");
 assert.equal(onlineUiState.online.chat.activeDmUsername, "DmSmokeFriend");
+await page.locator("#chat-popout-close").click({ force: true });
+const ownOnlineState = await page.evaluate(() =>
+  window.__infernodriftTestApi.getOnlineState(),
+);
+const selfDmState = await page.evaluate((ownState) =>
+  window.__infernodriftTestApi.simulateIncomingChatForTest({
+    id: "dm-smoke-self",
+    username: ownState.username,
+    userId: ownState.userId || "test-user",
+    text: "private self ping",
+    direct: true,
+  }), ownOnlineState,
+);
+assert.equal(selfDmState.noticeVisible, false);
+await page.evaluate(() =>
+  window.__infernodriftTestApi.simulateIncomingChatForTest({
+    id: "lobby-smoke-report-open",
+    username: "LobbyFriend",
+    userId: "lobby-friend",
+    text: "open report path",
+  }),
+);
+await page.locator("#chat-notice").click({ force: true });
 await page.locator("#chat-popout-input").fill("/report");
 await page.locator("#chat-popout-send").click({ force: true });
 await page.waitForTimeout(120);
