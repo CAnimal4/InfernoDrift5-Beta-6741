@@ -114,6 +114,7 @@ const CHAT_HISTORY_WINDOW_MS = 30 * 60 * 1000;
 const CHAT_HISTORY_LIMIT = 100;
 const REPORT_EMAIL_TO = "aidan.dwight@lbusd.org,clark.alden@lbusd.org";
 const FOUNDER_USERNAME = "Clark";
+const FOUNDER_FRIEND_XP_REWARD = 1000;
 const DAILY_GIFT_MIN_XP = 100;
 const DAILY_GIFT_MAX_XP = 1000;
 const DAILY_GIFT_STEP_XP = 25;
@@ -625,6 +626,38 @@ function extractSaveXp(payload = {}) {
       ) || 0,
     ),
   );
+}
+
+function buildFounderFriendSavePayload(payload = {}, user = {}) {
+  const next = structuredClone(
+    payload && typeof payload === "object" ? payload : {},
+  );
+  const progress =
+    next.progressionV2 && typeof next.progressionV2 === "object"
+      ? next.progressionV2
+      : {};
+  const totalXp =
+    Math.max(extractSaveXp(next), Math.max(0, Number(user.xp) || 0)) +
+    FOUNDER_FRIEND_XP_REWARD;
+  next.progressionV2 = {
+    ...progress,
+    xp: totalXp,
+    totalXp,
+    level: progressionLevelForXp(totalXp),
+    founderFriendXpClaimed: true,
+    rewardLog: [
+      {
+        modeId: "founder-friend",
+        label: "Founder Friend",
+        medal: "Bonus",
+        xp: FOUNDER_FRIEND_XP_REWARD,
+        reward: `Founder Friend +${FOUNDER_FRIEND_XP_REWARD} XP`,
+        at: nowIso(),
+      },
+      ...(Array.isArray(progress.rewardLog) ? progress.rewardLog : []),
+    ].slice(0, 12),
+  };
+  return { payload: next, totalXp };
 }
 
 function hasServerObjectEntries(value) {
@@ -1908,8 +1941,41 @@ export function createInfernoServer(options = {}) {
     };
   }
 
-  function awardFounderFriendXp() {
-    return null;
+  function awardFounderFriendXp(user) {
+    if (!user || isFounderUsername(user.username)) return null;
+    if (user.founderFriendXpClaimed) return null;
+    const previousSave = db.data.saves[user.id] ?? {
+      userId: user.id,
+      schemaVersion: 2,
+      payload: {},
+      serverUpdatedAt: nowIso(),
+    };
+    const { payload, totalXp } = buildFounderFriendSavePayload(
+      previousSave.payload,
+      user,
+    );
+    user.founderFriendXpClaimed = true;
+    user.xp = totalXp;
+    user.rating = Math.max(Number(user.rating) || 0, totalXp);
+    user.updatedAt = nowIso();
+    db.data.users[user.id] = user;
+    db.data.saves[user.id] = {
+      ...previousSave,
+      userId: user.id,
+      schemaVersion: Math.max(2, Number(previousSave.schemaVersion) || 2),
+      payload,
+      serverUpdatedAt: user.updatedAt,
+    };
+    upsertXpLeaderboard(db.data, user, totalXp);
+    return {
+      type: "progression.reward",
+      reason: "founder_friend",
+      label: "Founder Friend",
+      xp: FOUNDER_FRIEND_XP_REWARD,
+      totalXp,
+      payload,
+      user: publicUser(user),
+    };
   }
 
   function sendFounderFriendReward(userId, reward) {

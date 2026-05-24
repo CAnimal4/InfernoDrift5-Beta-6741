@@ -962,7 +962,7 @@ test("websocket backend supports queue, age gate, quick chat, leaderboard, and s
   await app.close();
 });
 
-test("friending Clark does not grant badge-based XP", async (t) => {
+test("friending Clark grants the one-time founder friend XP reward", async (t) => {
   const app = createInfernoServer({
     port: 0,
     dataDir: path.join(os.tmpdir(), `id4-founder-friend-${Date.now()}`),
@@ -1008,15 +1008,14 @@ test("friending Clark does not grant badge-based XP", async (t) => {
       msg.type === "friends.snapshot" &&
       msg.friends?.some((friend) => friend.username === "Clark"),
   );
-  await new Promise((resolve) => setTimeout(resolve, 120));
-  assert.equal(
-    player.messages.some(
-      (msg) =>
-        msg.type === "progression.reward" && msg.reason === "founder_friend",
-    ),
-    false,
+  const founderReward = await waitForMessage(
+    player.messages,
+    (msg) =>
+      msg.type === "progression.reward" && msg.reason === "founder_friend",
   );
-  assert.equal(app.db.data.users[auth.user.id].xp, 0);
+  assert.equal(founderReward.xp, 1000);
+  assert.equal(founderReward.totalXp, 1000);
+  assert.equal(app.db.data.users[auth.user.id].xp, 1000);
 
   player.ws.send(JSON.stringify({ type: "friend.request", username: "Clark" }));
   await new Promise((resolve) => setTimeout(resolve, 120));
@@ -1025,7 +1024,7 @@ test("friending Clark does not grant badge-based XP", async (t) => {
       (msg) =>
         msg.type === "progression.reward" && msg.reason === "founder_friend",
     ).length,
-    0,
+    1,
   );
   player.ws.terminate();
 });

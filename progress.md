@@ -397,3 +397,10 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Disabled the old Founder Friend XP bonus so friending Clark no longer grants progression just because Clark is a special account.
 - Added sign-in/load cleanup for special accounts with legacy seeded XP but no hard-earned play evidence. Hard-earned progress is preserved when the save shows real play history such as medals, bests, rewards, tutorial progress, Daily Sparks progress, or owned/equipped non-default cosmetics.
 - Cache-busted the static client assets for the Pages deployment.
+
+2026-05-23 badge account XP deep repair:
+
+- Found a deeper Firebase merge issue: cleaned special-account saves could be merged back upward because sync always preferred the highest existing XP. Added a replace-sync path for account cleanup so old inflated Firestore XP cannot resurrect itself.
+- Added explicit special-account progression policies: Clark is capped to the owner-reported hard-earned baseline of about 22k XP, while MODERATOR, Joshua, Tosh_the_Sigma, and Billy reset automatic seeded progression to fresh-account XP/Embers.
+- Restored the intended Founder Friend reward: friending Clark grants +1000 XP once to the non-Clark player, without seeding Clark or any other badge account.
+- Cache-busted the static client assets again for the repair deployment.

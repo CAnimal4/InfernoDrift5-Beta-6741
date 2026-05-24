@@ -168,6 +168,12 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
   assert.equal(merged.progressionV2.dailyGift.claimed, true);
   assert.equal(merged.progressionV2.dailySparks.items[0].progress, 5);
   assert.equal(merged.progressionV2.dailySparks.items[0].claimed, true);
+  const replaced = mergeFirebaseSavePayload(olderServer, newerDevice, {
+    replaceProgression: true,
+  });
+  assert.equal(replaced.progressionV2.totalXp, 8500);
+  assert.equal(replaced.progressionV2.xp, 8500);
+  assert.equal(replaced.progressionV2.embers, 140);
 
   assert.equal(
     chooseLatestSavePayload(olderServer, {
@@ -431,7 +437,7 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(firebaseOnline, /payload: safeBestPayload,/);
   assert.match(
     firebaseOnline,
-    /const mergedPayload = stripUndefinedForFirestore\(\s*mergeFirebaseSavePayload\(existingPayload, payload\),\s*\);/,
+    /replace\s*\?\s*payload\s*:\s*mergeFirebaseSavePayload\(existingPayload, payload\)/,
   );
   assert.match(firebaseOnline, /stripUndefinedForFirestore\(\{\s*uid: state\.uid,/);
   assert.match(firebaseOnline, /stripUndefinedForFirestore\(\{\s*progress: mergedPayload\.progressionV2 \|\| \{\},/);
@@ -444,9 +450,13 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
     /const legacyLevelXp = hasCurrentSchema \? 0 : getLegacyLevelFloorXp\(source\);/,
   );
   assert.match(script, /const SPECIAL_BADGE_ACCOUNT_KEYS = new Set/);
+  assert.match(script, /const SPECIAL_BADGE_PROGRESS_POLICIES = new Map/);
   assert.match(script, /function hasHardEarnedProgressEvidence\(payload = \{\}\)/);
   assert.match(script, /function stripUnearnedSpecialProgressPayload/);
   assert.match(script, /cleanUnearnedSpecialProgress: Boolean\(message\.user\?\.account\)/);
+  assert.match(script, /replaceNextProgressSync = true/);
+  assert.match(firebaseOnline, /syncProgress\(payload, \{ silent = false, replace = false \} = \{\}\)/);
+  assert.match(firebaseOnline, /replace\s*\?\s*payload\s*:\s*mergeFirebaseSavePayload/);
 });
 
 test("Firebase leaderboard hides and stops syncing test-like accounts", () => {
@@ -478,7 +488,7 @@ test("Firebase progress sync merges server and device economy state", () => {
     new URL("../firebase-online.js", import.meta.url),
     "utf8",
   );
-  assert.match(firebaseOnline, /function mergeFirebaseSavePayload\(existingPayload = null, incomingPayload = null\)/);
+  assert.match(firebaseOnline, /export function mergeFirebaseSavePayload\(/);
   assert.match(firebaseOnline, /function mergeFirebaseProgression\(existing = {}, incoming = {}\)/);
   assert.match(firebaseOnline, /const existingProgress = await firestore\.getDoc\(progressRef\)/);
   assert.match(firebaseOnline, /payload: mergedPayload,/);

@@ -1,6 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260523-badge-xp-cleanup";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260523-badge-xp-repair";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -438,6 +438,17 @@ const SPECIAL_BADGE_ACCOUNT_KEYS = new Set([
   "tosh the sigma",
   "billy",
 ]);
+const SPECIAL_BADGE_REPAIR_VERSION = "2026-05-23-badge-xp-repair-v2";
+const SPECIAL_BADGE_SUSPECT_XP = 90000;
+const SPECIAL_BADGE_PROGRESS_POLICIES = new Map([
+  ["clark", { repairXp: 22000, maxEmbers: 875 }],
+  ["moderator", { repairXp: 0, maxEmbers: 0, resetProgression: true }],
+  ["joshua", { repairXp: 0, maxEmbers: 0, resetProgression: true }],
+  ["tosh_the_sigma", { repairXp: 0, maxEmbers: 0, resetProgression: true }],
+  ["tosh the sigma", { repairXp: 0, maxEmbers: 0, resetProgression: true }],
+  ["billy", { repairXp: 0, maxEmbers: 0, resetProgression: true }],
+]);
+const FOUNDER_FRIEND_XP_REWARD = 1000;
 const CODEX_LEADERBOARD_USERNAME = "ChatGPT (Codex)";
 const CODEX_LEADERBOARD_ID = "system-chatgpt-codex";
 const TEST_ACCOUNT_NAME_BLOCKLIST = new Set([
@@ -4553,6 +4564,34 @@ function isSpecialBadgeAccountUsername(username = "") {
   );
 }
 
+function getSpecialBadgeProgressPolicy(username = "") {
+  const key = normalizeLegacyProgressKey(username);
+  return (
+    SPECIAL_BADGE_PROGRESS_POLICIES.get(key) ||
+    SPECIAL_BADGE_PROGRESS_POLICIES.get(compactLegacyProgressKey(key)) ||
+    null
+  );
+}
+
+function hasSpecialBadgeRepairMarker(progression = {}) {
+  return (
+    progression?.specialBadgeRepairVersion === SPECIAL_BADGE_REPAIR_VERSION ||
+    Boolean(progression?.specialBadgeProgressRepairedAt)
+  );
+}
+
+function addSpecialBadgeRepairMarker(progression = {}, repairedXp = 0) {
+  return {
+    ...progression,
+    specialBadgeRepairVersion: SPECIAL_BADGE_REPAIR_VERSION,
+    specialBadgeProgressRepairedAt: new Date().toISOString(),
+    specialBadgeProgressBaselineXp: Math.max(
+      0,
+      Math.floor(Number(repairedXp) || 0),
+    ),
+  };
+}
+
 function hasHardEarnedProgressEvidence(payload = {}) {
   const normalized = normalizeProgressionV2(payload?.progressionV2 || {});
   return Boolean(
@@ -4571,21 +4610,79 @@ function hasHardEarnedProgressEvidence(payload = {}) {
 }
 
 function stripUnearnedSpecialProgressPayload(payload = {}, username = "") {
+  const policy = getSpecialBadgeProgressPolicy(username);
   if (
     !payload ||
     typeof payload !== "object" ||
-    !isSpecialBadgeAccountUsername(username) ||
-    hasHardEarnedProgressEvidence(payload)
+    !isSpecialBadgeAccountUsername(username)
   ) {
     return payload;
   }
   const cleanPayload = structuredClone(payload);
+  const normalized = normalizeProgressionV2(cleanPayload.progressionV2 || {});
+  if (policy) {
+    const repairXp = Math.max(0, Math.floor(Number(policy.repairXp) || 0));
+    const maxEmbers = Number.isFinite(Number(policy.maxEmbers))
+      ? Math.max(0, Math.floor(Number(policy.maxEmbers) || 0))
+      : null;
+    const hardEarnedEvidence = hasHardEarnedProgressEvidence(payload);
+    if (
+      hasSpecialBadgeRepairMarker(normalized) &&
+      normalized.totalXp < SPECIAL_BADGE_SUSPECT_XP &&
+      (maxEmbers === null || normalized.embers <= maxEmbers)
+    ) {
+      return payload;
+    }
+    const shouldReset =
+      normalized.totalXp >= SPECIAL_BADGE_SUSPECT_XP ||
+      (policy.resetProgression && !hardEarnedEvidence) ||
+      (maxEmbers !== null && normalized.embers > maxEmbers);
+    if (!shouldReset) return payload;
+    if (policy.resetProgression) {
+      const fresh = createProgressionV2();
+      cleanPayload.progressionV2 = addSpecialBadgeRepairMarker(
+        {
+          ...fresh,
+          dailyGiftSalt:
+            cleanPayload.progressionV2?.dailyGiftSalt || fresh.dailyGiftSalt,
+        },
+        repairXp,
+      );
+      return cleanPayload;
+    }
+    const cappedXp = Math.min(normalized.totalXp, repairXp);
+    const cappedLevel = getLevelFromXP(cappedXp);
+    cleanPayload.progressionV2 = addSpecialBadgeRepairMarker(
+      {
+        ...normalized,
+        xp: cappedXp,
+        totalXp: cappedXp,
+        level: cappedLevel,
+        embers:
+          maxEmbers === null
+            ? normalized.embers
+            : Math.min(normalized.embers, maxEmbers),
+        claimedLevelRewards: normalized.claimedLevelRewards.filter(
+          (level) => Math.max(0, Number(level) || 0) <= cappedLevel,
+        ),
+        recentRewards: normalized.recentRewards.filter(
+          (reward) => Math.max(0, Number(reward?.level) || 0) <= cappedLevel,
+        ),
+      },
+      cappedXp,
+    );
+    return cleanPayload;
+  }
+  if (hasHardEarnedProgressEvidence(payload)) return payload;
   const fresh = createProgressionV2();
-  cleanPayload.progressionV2 = {
-    ...fresh,
-    dailyGiftSalt:
-      cleanPayload.progressionV2?.dailyGiftSalt || fresh.dailyGiftSalt,
-  };
+  cleanPayload.progressionV2 = addSpecialBadgeRepairMarker(
+    {
+      ...fresh,
+      dailyGiftSalt:
+        cleanPayload.progressionV2?.dailyGiftSalt || fresh.dailyGiftSalt,
+    },
+    0,
+  );
   return cleanPayload;
 }
 
@@ -4643,8 +4740,10 @@ function syncProgressionToBackend() {
       ...getCurrentPlayerXpLeaderboardRow(),
       source: "pending",
     };
+    const replace = Boolean(onlineState.replaceNextProgressSync);
+    onlineState.replaceNextProgressSync = false;
     firebaseOnline
-      .syncProgress(buildPersistentSavePayload())
+      .syncProgress(buildPersistentSavePayload(), { replace })
       .then(() => {
         onlineState.saveSyncedAt = Date.now();
         requestOnlineLeaderboard({ force: true });
@@ -4738,6 +4837,7 @@ function applyServerSave(
       nextPayload = cleanedPayload;
       shouldReplaceProgression = true;
       onlineState.freshAccountSaveSyncPending = true;
+      onlineState.replaceNextProgressSync = true;
       onlineState.profileActionStatus =
         "Removed automatic badge-account starter progress. Your badge stays; earned progress still syncs normally.";
     }
@@ -4746,6 +4846,7 @@ function applyServerSave(
     nextPayload = buildFreshAccountSavePayload();
     shouldReplaceProgression = true;
     onlineState.freshAccountSaveSyncPending = true;
+    onlineState.replaceNextProgressSync = true;
     onlineState.freshAccountRepairApplied = true;
     onlineState.profileActionStatus =
       "Fresh account progress was cleaned up and reset to Level 1.";
@@ -4754,6 +4855,7 @@ function applyServerSave(
     nextPayload = buildFreshAccountSavePayload();
     shouldReplaceProgression = true;
     onlineState.freshAccountSaveSyncPending = true;
+    onlineState.replaceNextProgressSync = true;
   }
   if (!nextPayload) return false;
   const applied = applyPersistentSavePayload(nextPayload, {
@@ -5136,7 +5238,9 @@ async function importBundledLegacyProgressForFirebaseAccount({
   }
   const bestPayload = chooseBestSavePayload(legacyPayload, localPayload);
   applyServerSave({ payload: bestPayload }, { force: true });
-  await firebaseOnline.syncProgress(bestPayload);
+  await firebaseOnline.syncProgress(bestPayload, {
+    replace: isSpecialBadgeAccountUsername(entry.username || username),
+  });
   onlineState.legacyImportStatus = "imported";
   onlineState.legacyImportXp = getSavePayloadTotalXp(bestPayload);
   onlineState.profileActionStatus = `Restored ${onlineState.legacyImportXp.toLocaleString()} XP from the old online backend into your current online account.`;
@@ -5338,7 +5442,11 @@ async function importLegacyProgressForFirebaseAccount(
     }
     const bestPayload = chooseBestSavePayload(legacyPayload, localPayload);
     applyServerSave({ payload: bestPayload }, { force: true });
-    await firebaseOnline.syncProgress(bestPayload);
+    await firebaseOnline.syncProgress(bestPayload, {
+      replace: isSpecialBadgeAccountUsername(
+        bundle.user?.username || authPayload?.username,
+      ),
+    });
     onlineState.legacyImportStatus = "imported";
     onlineState.legacyImportXp = getSavePayloadTotalXp(bestPayload);
     onlineState.profileActionStatus = `Imported ${onlineState.legacyImportXp.toLocaleString()} XP from the legacy online backend into your current online account.`;
@@ -8754,6 +8862,22 @@ async function requestFirebaseFriend(username) {
         status: result.status,
       }),
     );
+    if (result.status === "accepted") {
+      handleOnlineMessage(
+        JSON.stringify({
+          type: "friend.accepted",
+          username: result.username,
+        }),
+      );
+    }
+    if (result.reward) {
+      handleOnlineMessage(
+        JSON.stringify({
+          type: "progression.reward",
+          ...result.reward,
+        }),
+      );
+    }
     syncFirebaseServiceStatus();
     updateOnlineUi();
     return true;

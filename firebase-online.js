@@ -16,7 +16,7 @@ import {
   validateFirebaseLobbyCode,
   validateFirebaseScore,
   validateFirebaseUsername,
-} from "./firebase-online-core.js?v=20260523-badge-xp-cleanup";
+} from "./firebase-online-core.js?v=20260523-badge-xp-repair";
 
 const FIREBASE_SDK_VERSION = "10.13.2";
 const FIREBASE_SDK_BASE = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}`;
@@ -293,11 +293,16 @@ export function mergeFirebaseProgression(existing = {}, incoming = {}) {
   };
 }
 
-export function mergeFirebaseSavePayload(existingPayload = null, incomingPayload = null) {
+export function mergeFirebaseSavePayload(
+  existingPayload = null,
+  incomingPayload = null,
+  { replaceProgression = false } = {},
+) {
   if (!existingPayload || typeof existingPayload !== "object")
     return incomingPayload;
   if (!incomingPayload || typeof incomingPayload !== "object")
     return existingPayload;
+  if (replaceProgression) return incomingPayload;
   const existingProgression = existingPayload.progressionV2 || {};
   const incomingProgression = incomingPayload.progressionV2 || {};
   const mergedProgression = mergeFirebaseProgression(
@@ -981,7 +986,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     return snapshot.exists() ? snapshot.data() : null;
   }
 
-  async function syncProgress(payload, { silent = false } = {}) {
+  async function syncProgress(payload, { silent = false, replace = false } = {}) {
     requireReady();
     if (!state.uid || !payload) return false;
     const { firestore } = internals.sdk;
@@ -991,7 +996,9 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       ? existingProgress.data()?.payload
       : null;
     const mergedPayload = stripUndefinedForFirestore(
-      mergeFirebaseSavePayload(existingPayload, payload),
+      replace
+        ? payload
+        : mergeFirebaseSavePayload(existingPayload, payload),
     );
     const xp = Math.max(
       0,
@@ -1554,6 +1561,33 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     if (target.uid === state.uid) throw new Error("friend_self_rejected");
     const { firestore } = internals.sdk;
     const id = requestKey(state.uid, target.uid);
+    if (normalizeFirebaseUsernameKey(target.username) === "clark") {
+      const batch = firestore.writeBatch(internals.db);
+      batch.set(
+        firestore.doc(internals.db, "friends", state.uid, "items", target.uid),
+        {
+          uid: target.uid,
+          username: target.username,
+          createdAt: firestore.serverTimestamp(),
+          status: "accepted",
+        },
+        { merge: true },
+      );
+      batch.set(
+        firestore.doc(internals.db, "friends", target.uid, "items", state.uid),
+        {
+          uid: state.uid,
+          username: state.username,
+          createdAt: firestore.serverTimestamp(),
+          status: "accepted",
+        },
+        { merge: true },
+      );
+      await batch.commit();
+      const reward = await awardFounderFriendProgress();
+      await refreshFriends();
+      return { username: target.username, status: "accepted", reward };
+    }
     await firestore.setDoc(
       firestore.doc(internals.db, "friendRequests", id),
       {
@@ -1569,6 +1603,55 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     );
     await refreshFriends();
     return { username: target.username, status: "sent" };
+  }
+
+  async function awardFounderFriendProgress() {
+    const currentProgress = await getProgress().catch(() => null);
+    const currentPayload =
+      currentProgress?.payload && typeof currentProgress.payload === "object"
+        ? currentProgress.payload
+        : {};
+    const currentProgression =
+      currentPayload.progressionV2 &&
+      typeof currentPayload.progressionV2 === "object"
+        ? currentPayload.progressionV2
+        : {};
+    const alreadyClaimed =
+      currentProgression.founderFriendXpClaimed ||
+      (Array.isArray(currentProgression.rewardLog) &&
+        currentProgression.rewardLog.some(
+          (entry) => entry?.modeId === "founder-friend",
+        ));
+    if (alreadyClaimed) return null;
+    const totalXp = getSavePayloadXp(currentPayload) + 1000;
+    const payload = structuredClone(currentPayload);
+    payload.progressionV2 = {
+      ...currentProgression,
+      xp: totalXp,
+      totalXp,
+      founderFriendXpClaimed: true,
+      rewardLog: [
+        {
+          modeId: "founder-friend",
+          label: "Founder Friend",
+          medal: "Bonus",
+          xp: 1000,
+          reward: "Founder Friend +1000 XP",
+          at: new Date().toISOString(),
+        },
+        ...(Array.isArray(currentProgression.rewardLog)
+          ? currentProgression.rewardLog
+          : []),
+      ].slice(0, 12),
+    };
+    await syncProgress(payload, { silent: true });
+    return {
+      reason: "founder_friend",
+      label: "Founder Friend",
+      xp: 1000,
+      totalXp,
+      payload,
+    };
   }
 
   async function acceptFriend(requestId) {
