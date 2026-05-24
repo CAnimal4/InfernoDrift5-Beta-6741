@@ -456,7 +456,7 @@ const TEST_ACCOUNT_NAME_BLOCKLIST = new Set([
   "akfjicoajsodifjmoi",
   "sajoumzjeimxuhen",
 ]);
-let codexLeaderboardXp = 8350;
+let codexLeaderboardXp = 22153;
 const GAME_MODE_ID33 = "infernodrift33";
 const GAME_MODE_MAX1 = "infernodriftmax1";
 const GAME_MODE_RISK = "tryatyourownrisk";
