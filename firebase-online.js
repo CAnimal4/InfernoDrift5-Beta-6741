@@ -51,9 +51,9 @@ function isFirebaseTestLikeAccountName(value = "") {
   const compact = normalized.replace(/[^a-z0-9]/g, "");
   if (!compact) return false;
   if (FIREBASE_TEST_ACCOUNT_NAME_BLOCKLIST.has(compact)) return true;
-  if (/(^|[^a-z])(test|teest|smoke|fresh)([^a-z]|$)/i.test(normalized))
+  if (/(^|[^a-z])(test|teest|smoke|fresh|runner)([^a-z]|$)/i.test(normalized))
     return true;
-  if (/^(test|teest|smoke|fresh)[a-z0-9_-]*$/i.test(compact)) return true;
+  if (/^(test|teest|smoke|fresh|runner)[a-z0-9_-]*$/i.test(compact)) return true;
   return compact.length >= 14 && /^[a-z]+$/.test(compact);
 }
 const FIREBASE_LIVE_STATE_LIMIT = 12000;
