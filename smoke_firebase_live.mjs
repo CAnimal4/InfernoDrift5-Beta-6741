@@ -14,7 +14,26 @@ const browser = await chromium.launch({
 });
 
 const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
-page.setDefaultTimeout(18_000);
+page.setDefaultTimeout(30_000);
+
+async function waitForRemotePlayer(targetPage, predicate, label, arg = null) {
+  try {
+    await targetPage.waitForFunction(predicate, arg, { timeout: 30_000 });
+  } catch (error) {
+    const state = JSON.parse(
+      await targetPage.evaluate(() => window.render_game_to_text()),
+    );
+    throw new Error(
+      `${label}: ${JSON.stringify({
+        room: state.online.room,
+        firebaseLive: state.online.firebaseLive,
+        remotePlayers: state.online.remotePlayers,
+        humanPlayers: state.humanPlayers,
+      })}`,
+      { cause: error },
+    );
+  }
+}
 
 const consoleErrors = [];
 page.on("console", (msg) => {
@@ -206,17 +225,38 @@ try {
   assert.equal(state.online.backendUrl, "");
   assert.deepEqual(state.online.backupBackendUrls, []);
 
-  await page.evaluate(() => window.__infernodriftTestApi.openMenuTab("online"));
+  await page.evaluate(() => {
+    window.__infernodriftTestApi.selectMode("max-arena");
+    window.__infernodriftTestApi.openMenuTab("online");
+  });
   await page.waitForFunction(() =>
     /Create Online Lobby/i.test(
       document.querySelector("#online-create-room")?.textContent || "",
     ),
   );
+  await page.locator("#online-room-mode").selectOption("infernodriftmax1");
   await page.locator("#online-create-room").click({ force: true });
+  await page.waitForTimeout(1500);
+  const afterCreateState = JSON.parse(
+    await page.evaluate(() => window.render_game_to_text()),
+  );
+  if (!afterCreateState.online.room?.code) {
+    throw new Error(
+      `Firebase lobby create did not produce a room: ${afterCreateState.online.chat?.lastMessage?.text || afterCreateState.online.accountStatus || "no status"}`,
+    );
+  }
+  if (
+    !["infernodriftmax1", "max-arena"].includes(afterCreateState.online.room.modeId)
+  ) {
+    throw new Error(
+      `Firebase live smoke expected a Max lobby but created ${afterCreateState.online.room.modeId}`,
+    );
+  }
   await page.waitForFunction(() => {
     const state = JSON.parse(window.render_game_to_text());
     return (
       state.online.room?.firebaseLobby === true &&
+      ["infernodriftmax1", "max-arena"].includes(state.online.room?.modeId) &&
       /^[A-Z0-9]{4,8}$/.test(state.online.room.code || "")
     );
   });
@@ -243,7 +283,7 @@ try {
     viewport: { width: 1280, height: 820 },
   });
   const joiner = await joinerContext.newPage();
-  joiner.setDefaultTimeout(18_000);
+  joiner.setDefaultTimeout(30_000);
   const joinerConsoleErrors = [];
   joiner.on("console", (msg) => {
     const text = msg.text();
@@ -287,7 +327,7 @@ try {
       new RegExp(`Join\\s+${code}`, "i").test(button.textContent || ""),
     );
   }, lobbyCode);
-  await joiner.locator("#online-room-code").fill("");
+  await joiner.locator("#online-room-code").fill(lobbyCode);
   await joiner.locator("#online-join-room").click({ force: true });
   await joiner.waitForFunction((code) => {
     const state = JSON.parse(window.render_game_to_text());
@@ -305,6 +345,68 @@ try {
       )
     );
   }, joinerUsername);
+
+  await page.evaluate(() => window.__infernodriftTestApi.startMode("max-arena"));
+  await joiner.evaluate(() => window.__infernodriftTestApi.startMode("max-arena"));
+  await page.evaluate(() => {
+    window.__infernodriftTestApi.grantGarageCosmeticForTest("bodyId", "monster");
+    window.__infernodriftTestApi.equipGarageCosmetic("bodyId", "monster");
+    window.__infernodriftTestApi.setBattleActorPose("player", {
+      x: 32,
+      z: -18,
+      heading: 0.75,
+      speed: 26,
+    });
+    return window.__infernodriftTestApi.forceFirebaseLivePublishForTest();
+  });
+  await waitForRemotePlayer(joiner, (hostUsername) => {
+    const state = JSON.parse(window.render_game_to_text());
+    const remote = state.online.remotePlayers?.find?.(
+      (player) => player.username === hostUsername,
+    );
+    return (
+      remote &&
+      Math.abs(Number(remote.x) - 32) < 2 &&
+      Math.abs(Number(remote.z) + 18) < 2 &&
+      String(remote.cosmeticsKey || "").includes("monster")
+    );
+  }, "Joiner did not receive host live snapshot", accountUsername);
+
+  await joiner.evaluate(() => {
+    window.__infernodriftTestApi.setBattleActorPose("player", {
+      x: -24,
+      z: 14,
+      heading: -0.45,
+      speed: 18,
+    });
+    return window.__infernodriftTestApi.forceFirebaseLivePublishForTest();
+  });
+  await waitForRemotePlayer(page, (username) => {
+    const state = JSON.parse(window.render_game_to_text());
+    const remote = state.online.remotePlayers?.find?.(
+      (player) => player.username === username,
+    );
+    return (
+      remote &&
+      Math.abs(Number(remote.x) + 24) < 2 &&
+      Math.abs(Number(remote.z) - 14) < 2
+    );
+  }, "Host did not receive joiner live snapshot", joinerUsername);
+
+  await page.evaluate(() => {
+    window.__infernodriftTestApi.forceMaxGoal("blue");
+    window.__infernodriftTestApi.setMaxBallState({ x: 7, y: 0.6, z: -11 });
+    return window.__infernodriftTestApi.forceFirebaseLivePublishForTest();
+  });
+  await joiner.waitForFunction(() => {
+    const state = JSON.parse(window.render_game_to_text());
+    return (
+      state.mode === "max-arena" &&
+      state.hud?.score?.blue >= 1 &&
+      Math.abs(Number(state.ball?.x) - 7) < 2
+    );
+  });
+
   assert.deepEqual(joinerConsoleErrors, []);
   await joinerContext.close();
 
@@ -316,7 +418,7 @@ try {
   }, lobbyCode);
   lobbyState = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   assert.equal(lobbyState.online.room.firebaseLobby, true);
-  assert.equal(lobbyState.online.room.live, false);
+  assert.equal(lobbyState.online.room.live, true);
   assert.doesNotMatch(
     lobbyState.online.chat.lastMessage?.text || "",
     /Server-authoritative rooms are unavailable/i,

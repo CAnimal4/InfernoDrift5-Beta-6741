@@ -425,3 +425,9 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Wired previously subtle Garage categories into actual car geometry/material changes: tires now affect tread, sidewalls, stripe colors, and wheel size; stance changes ride height and visible suspension; nameplates have distinct rear plate geometry; finishes add material clearcoat/metalness plus visible gloss/matte/metallic/lava details.
 - Made body classes more distinct with stronger proportions and extra silhouette pieces for muscle, monster, interceptor, prototype, rally, and street builds.
 - Adjusted the Garage preview camera so lifted/wide builds stay framed, and added smoke coverage that equips monster/rally tires/lifted stance/legend plate/lava finish and verifies the visual config changes.
+
+2026-05-24 Firebase live-room multiplayer repair:
+
+- Changed Firebase lobby live-state writes so each client updates only its own `livePlayers.{uid}` snapshot, while the elected host owns shared `liveState` for scores, Max ball, battle/time state, bots, and stale-player cleanup.
+- Made Firebase live followers stop simulating shared bots/objects locally and apply the host snapshot instead, while still driving their own local car and publishing movement/cosmetics snapshots.
+- Hardened remote-player filtering against all local account ids, republished snapshots after room join/game start/garage changes, added a real lobby leave path, and updated the live smoke to verify two browser contexts share movement, monster-body cosmetics, score, and ball state.

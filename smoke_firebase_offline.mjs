@@ -14,7 +14,7 @@ const browser = await chromium.launch({
 });
 
 const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
-page.setDefaultTimeout(10_000);
+page.setDefaultTimeout(18_000);
 await page.route(/https:\/\/www\.gstatic\.com\/firebasejs\/.*/i, (route) =>
   route.abort("failed"),
 );

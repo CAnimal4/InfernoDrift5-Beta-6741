@@ -1244,8 +1244,76 @@ assert.equal(maxLiveState.online.firebaseLive.appliedSeq, 5);
 assert.equal(maxLiveState.hud.score.blue, 2);
 assert.equal(maxLiveState.hud.score.red, 1);
 assert.equal(maxLiveState.ball.x, 5);
+assert.ok(maxLiveState.bots.some((bot) => bot.x === -12 && bot.z === 18));
 assert.equal(maxLiveState.humanPlayers.length, 1);
 assert.match(maxLiveState.online.remotePlayers[0].cosmeticsKey, /monster/);
+const twoWayLiveState = await page.evaluate(() => {
+  window.__infernodriftTestApi.simulateRoomJoinForTest({
+    code: "TWOWAY",
+    mode: "max-arena",
+    ownId: "host-user",
+    hostUid: "host-user",
+    liveHostUid: "host-user",
+    players: [
+      { id: "host-user", uid: "host-user", username: "Host" },
+      { id: "client-user", uid: "client-user", username: "Joiner" },
+    ],
+  });
+  window.__infernodriftTestApi.simulateFirebaseLiveSnapshotForTest({
+    code: "TWOWAY",
+    mode: "max-arena",
+    ownId: "host-user",
+    hostUid: "host-user",
+    liveHostUid: "host-user",
+    liveSeq: 11,
+    players: [
+      { id: "host-user", uid: "host-user", username: "Host" },
+      { id: "client-user", uid: "client-user", username: "Joiner" },
+    ],
+    livePlayers: {
+      "host-user": {
+        id: "host-user",
+        uid: "host-user",
+        username: "Host",
+        x: 0,
+        y: 0,
+        z: -90,
+      },
+      "client-user": {
+        id: "client-user",
+        uid: "client-user",
+        username: "Joiner",
+        team: "blue",
+        x: 42,
+        y: 0,
+        z: -18,
+        heading: 1.35,
+        speed: 55,
+        cosmetics: { bodyId: "monster", paintId: "cyan" },
+      },
+      staleUser: {
+        id: "staleUser",
+        uid: "staleUser",
+        username: "Gone",
+        x: 8,
+        y: 0,
+        z: 8,
+        at: "2020-01-01T00:00:00.000Z",
+      },
+    },
+  });
+  window.advanceTime(180);
+  return {
+    state: JSON.parse(window.render_game_to_text()),
+    debug: window.__infernodriftTestApi.getFirebaseLiveDebugForTest(),
+  };
+});
+assert.equal(twoWayLiveState.state.online.room.liveRole, "host");
+assert.equal(twoWayLiveState.state.online.remotePlayers.length, 1);
+assert.equal(twoWayLiveState.state.online.remotePlayers[0].username, "Joiner");
+assert.match(twoWayLiveState.state.online.remotePlayers[0].cosmeticsKey, /monster/);
+assert.ok(twoWayLiveState.state.online.remotePlayers[0].x > 35);
+assert.deepEqual(twoWayLiveState.debug.stalePlayerIds, ["staleUser"]);
 const battleLiveState = await page.evaluate(() => {
   window.__infernodriftTestApi.simulateRoomJoinForTest({
     code: "BTT88",

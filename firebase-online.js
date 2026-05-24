@@ -597,6 +597,12 @@ function sanitizeLiveStateSnapshot(input = {}) {
   );
 }
 
+function sanitizeLivePlayerId(value = "") {
+  return String(value || "")
+    .trim()
+    .slice(0, 80);
+}
+
 export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
   const state = {
     mode: FIREBASE_BACKEND_MODE,
@@ -1675,9 +1681,53 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     return joinedRoom;
   }
 
+  async function leaveLobby(code = internals.lobbyCode) {
+    requireReady();
+    if (!state.uid) throw new Error("sign_in_required");
+    const validation = validateFirebaseLobbyCode(code);
+    if (!validation.ok) return false;
+    const { firestore } = internals.sdk;
+    const ref = firestore.doc(
+      internals.db,
+      LOBBY_COLLECTION_ID,
+      validation.code,
+    );
+    await firestore.runTransaction(internals.db, async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists()) return;
+      const data = snapshot.data() || {};
+      const players = Array.isArray(data.players) ? data.players : [];
+      if (!players.some((entry) => entry.uid === state.uid)) return;
+      const nextPlayers = players.filter((entry) => entry.uid !== state.uid);
+      const nextLivePlayers =
+        data.livePlayers && typeof data.livePlayers === "object"
+          ? { ...data.livePlayers }
+          : {};
+      delete nextLivePlayers[state.uid];
+      const currentLiveHost = String(data.liveHostUid || data.hostUid || "");
+      transaction.set(
+        ref,
+        {
+          players: nextPlayers,
+          livePlayers: nextLivePlayers,
+          liveHostUid:
+            currentLiveHost === state.uid
+              ? nextPlayers[0]?.uid || ""
+              : currentLiveHost,
+          liveUpdatedAt: nowIso(),
+          updatedAt: firestore.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    });
+    emit("room.left", { code: validation.code, reason: "left" });
+    stopLobbySubscription();
+    return true;
+  }
+
   async function updateLobbyLiveState(
     code,
-    { player = null, state: liveState = null } = {},
+    { player = null, state: liveState = null, stalePlayerIds = [] } = {},
   ) {
     requireReady();
     if (!state.uid) throw new Error("sign_in_required");
@@ -1689,22 +1739,8 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       LOBBY_COLLECTION_ID,
       validation.code,
     );
-    let mappedRoom = null;
-    await firestore.runTransaction(internals.db, async (transaction) => {
-      const snapshot = await transaction.get(ref);
-      if (!snapshot.exists()) throw new Error("room_not_found");
-      const data = snapshot.data() || {};
-      const players = Array.isArray(data.players) ? data.players : [];
-      if (!players.some((entry) => entry.uid === state.uid)) {
-        throw new Error("room_not_joined");
-      }
-      if (!isLiveLobbyMode(data.mode)) throw new Error("room_live_unsupported");
-      const nextLivePlayers =
-        data.livePlayers && typeof data.livePlayers === "object"
-          ? { ...data.livePlayers }
-          : {};
-      if (player) {
-        nextLivePlayers[state.uid] = sanitizeLivePlayerSnapshot(
+    const cleanPlayer = player
+      ? sanitizeLivePlayerSnapshot(
           {
             ...player,
             uid: state.uid,
@@ -1712,36 +1748,37 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
             username: state.username || player.username || "Player",
           },
           state.uid,
-        );
-      }
-      Object.keys(nextLivePlayers).forEach((uid) => {
-        if (!players.some((entry) => entry.uid === uid)) {
-          delete nextLivePlayers[uid];
-        }
-      });
-      const cleanState = sanitizeLiveStateSnapshot(liveState);
-      const patch = {
-        live: true,
-        livePlayers: nextLivePlayers,
-        liveUpdatedAt: nowIso(),
-        updatedAt: firestore.serverTimestamp(),
-      };
-      if (cleanState) {
-        patch.liveState = cleanState;
-        patch.liveHostUid = state.uid;
-        patch.liveSeq = Math.max(
-          Number(data.liveSeq || 0) + 1,
-          Number(cleanState.seq || 0),
-        );
-      }
-      transaction.set(ref, patch, { merge: true });
-      mappedRoom = mapLobbyDoc({
-        id: snapshot.id,
-        data: () => ({ ...data, ...patch }),
-      });
+        )
+      : null;
+    const cleanState = sanitizeLiveStateSnapshot(liveState);
+    const updates = [
+      "live",
+      true,
+      "liveUpdatedAt",
+      nowIso(),
+      "updatedAt",
+      firestore.serverTimestamp(),
+    ];
+    if (cleanPlayer) {
+      updates.push(new firestore.FieldPath("livePlayers", state.uid), cleanPlayer);
+    }
+    if (cleanState) {
+      updates.push("liveState", cleanState);
+      updates.push("liveHostUid", state.uid);
+      updates.push("liveSeq", Math.max(1, Number(cleanState.seq || 0)));
+    }
+    const staleIds = Array.isArray(stalePlayerIds)
+      ? stalePlayerIds.map(sanitizeLivePlayerId).filter((uid) => uid && uid !== state.uid)
+      : [];
+    staleIds.slice(0, FIREBASE_LIVE_PLAYER_LIMIT).forEach((uid) => {
+      updates.push(
+        new firestore.FieldPath("livePlayers", uid),
+        firestore.deleteField(),
+      );
     });
-    if (mappedRoom) emit("room.snapshot", { room: mappedRoom });
-    return mappedRoom;
+    if (!cleanPlayer && !cleanState && staleIds.length === 0) return null;
+    await firestore.updateDoc(ref, ...updates);
+    return null;
   }
 
   async function submitFeedback(payload = {}) {
@@ -2039,6 +2076,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
   }
 
   async function logout() {
+    await leaveLobby().catch(() => undefined);
     unsubscribeRealtime();
     if (internals.auth) {
       await internals.sdk.auth.signOut(internals.auth).catch(() => undefined);
@@ -2063,6 +2101,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     submitLeaderboard,
     createLobby,
     joinLobby,
+    leaveLobby,
     updateLobbyLiveState,
     subscribeChat,
     unsubscribeRealtime,

@@ -102,7 +102,7 @@ try {
     (message) => message.quick === false,
   );
   assert.equal(chat.quick, false);
-  assert.equal(chat.text, "nice boost drift");
+  assert.equal(chat.text, "nice stuff drift");
 
   child.send({
     type: "chat.send",

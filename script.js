@@ -1,6 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260524-realtime-sync";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260524-firebase-live-room-v2";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -1370,6 +1370,7 @@ const DEBUG_FLAGS = {
   ramps: false,
   hits: false,
   menu: false,
+  online: false,
   powerups: false,
   minimap: false,
 };
@@ -3332,6 +3333,7 @@ function setDebugFlagsEnabled(enabled) {
     DEBUG_FLAGS.ramps = false;
     DEBUG_FLAGS.hits = false;
     DEBUG_FLAGS.menu = false;
+    DEBUG_FLAGS.online = false;
     DEBUG_FLAGS.powerups = false;
     DEBUG_FLAGS.minimap = false;
     return;
@@ -3339,6 +3341,7 @@ function setDebugFlagsEnabled(enabled) {
   DEBUG_FLAGS.world = true;
   DEBUG_FLAGS.menu = true;
   DEBUG_FLAGS.hits = true;
+  DEBUG_FLAGS.online = true;
 }
 
 function isCarAirborne(car) {
@@ -7356,6 +7359,7 @@ async function connectOnline({ reconnect = false } = {}) {
 
 function disconnectOnline({ manual = true, suppressReconnect = false } = {}) {
   if (isFirebaseBackendMode()) {
+    firebaseOnline.leaveLobby?.().catch(() => undefined);
     firebaseOnline.unsubscribeRealtime();
     onlineState.user = null;
     onlineState.room = null;
@@ -7523,6 +7527,19 @@ function handleOnlineMessage(raw) {
   } else if (message.type === "room.snapshot") {
     const previousCode = onlineState.room?.code || "";
     onlineState.room = message.room || null;
+    const joinedNewRoom = Boolean(
+      onlineState.room?.code && onlineState.room.code !== previousCode,
+    );
+    if (joinedNewRoom) {
+      onlineState.firebaseLiveLastApplySeq = 0;
+      onlineState.firebaseLiveSeq = 0;
+      onlineState.firebaseLiveLastPublishAt = 0;
+      debugOnlineThrottled("room_joined", {
+        code: onlineState.room.code,
+        playerId: onlineState.user?.id || "",
+        hostUid: getFirebaseLiveHostUid(onlineState.room),
+      }, 0);
+    }
     onlineState.queue = null;
     onlineState.roomShared = Boolean(
       onlineState.room?.sharedBy?.includes?.(onlineState.user?.id),
@@ -7533,9 +7550,6 @@ function handleOnlineMessage(raw) {
       onlineState.roomSharePending = false;
     }
     if (onlineState.room?.mode && MODE_BY_ID[onlineState.room.mode]) {
-      const joinedNewRoom = Boolean(
-        onlineState.room.code && onlineState.room.code !== previousCode,
-      );
       const roomModeChanged = onlineState.room.mode !== settings.activeGameMode;
       const launchJoinedRoom = Boolean(onlineState.pendingRoomJoinLaunch);
       onlineState.pendingRoomJoinLaunch = false;
@@ -7556,6 +7570,9 @@ function handleOnlineMessage(raw) {
       ? filterTestLikeLeaderboardRows(message.room.leaderboard)
       : onlineState.leaderboard;
     updateRemoteSnapshotsFromRoom(message.room);
+    if (joinedNewRoom && isFirebaseLiveRoom(onlineState.room) && state.running) {
+      sendFirebaseLiveRoomFrame({ force: true, reason: "room_join" });
+    }
   } else if (message.type === "queue.joined") {
     onlineState.queue = message;
   } else if (message.type === "room.left") {
@@ -7724,16 +7741,27 @@ function handleOnlineMessage(raw) {
 
 function updateRemoteSnapshotsFromRoom(room) {
   applyFirebaseLiveRoomState(room);
+  const localIds = getLocalOnlinePlayerIds();
+  const isOwnLiveRemote = (remote) => {
+    const ids = [remote?.id, remote?.uid, remote?.userId]
+      .map((value) => String(value || ""))
+      .filter(Boolean);
+    return ids.some((id) => localIds.has(id));
+  };
   const isFreshLiveRemote = (remote) => {
     const timestamp = Date.parse(String(remote?.at || remote?.updatedAt || ""));
     return !Number.isFinite(timestamp) || Date.now() - timestamp < 12_000;
   };
   const liveStatePlayers = Array.isArray(room?.liveState?.players)
-    ? room.liveState.players.filter(isFreshLiveRemote)
+    ? room.liveState.players.filter(
+        (remote) => isFreshLiveRemote(remote) && !isOwnLiveRemote(remote),
+      )
     : [];
   const livePlayers =
     room?.livePlayers && typeof room.livePlayers === "object"
-      ? Object.values(room.livePlayers).filter(isFreshLiveRemote)
+      ? Object.values(room.livePlayers).filter(
+          (remote) => isFreshLiveRemote(remote) && !isOwnLiveRemote(remote),
+        )
       : [];
   if (liveStatePlayers.length || livePlayers.length) {
     const merged = new Map();
@@ -7745,16 +7773,23 @@ function updateRemoteSnapshotsFromRoom(room) {
       const id = String(remote?.id || remote?.uid || "");
       if (id) merged.set(id, { ...(merged.get(id) || {}), ...remote });
     });
+    debugOnlineThrottled("remote_snapshots_applied", {
+      code: room?.code || "",
+      count: merged.size,
+      seq: room?.liveSeq || room?.liveState?.seq || 0,
+    });
     updateRemoteSnapshotsFromMatchLike([...merged.values()]);
     return;
   }
   const players = Array.isArray(room?.players) ? room.players : [];
-  const currentId = onlineState.user?.id;
   setRemoteHumanPlayers(
     players
-      .filter((remote) => remote?.id && remote.id !== currentId)
+      .filter((remote) => {
+        const id = String(remote?.id || remote?.uid || "");
+        return id && !localIds.has(id);
+      })
       .map((remote, index) => ({
-        id: remote.id,
+        id: remote.id || remote.uid,
         username: remote.username,
         badge: remote.badge || "",
         moderator: Boolean(remote.moderator),
@@ -7769,10 +7804,13 @@ function updateRemoteSnapshotsFromRoom(room) {
 }
 
 function updateRemoteSnapshotsFromMatchLike(players = []) {
-  const currentId = onlineState.user?.id;
+  const localIds = getLocalOnlinePlayerIds();
   setRemoteHumanPlayers(
     players
-      .filter((remote) => remote?.id && remote.id !== currentId)
+      .filter((remote) => {
+        const id = String(remote?.id || remote?.uid || "");
+        return id && !localIds.has(id);
+      })
       .map((remote, index) => ({
         id: remote.id || remote.uid,
         username: remote.username,
@@ -7797,6 +7835,7 @@ function updateRemoteSnapshotsFromMatchLike(players = []) {
 
 function applyBotLiveSnapshots(botsState = []) {
   if (!Array.isArray(botsState) || botsState.length === 0) return;
+  let applied = 0;
   botsState.slice(0, bots.length).forEach((data, index) => {
     const bot = bots[index];
     if (!bot) return;
@@ -7815,7 +7854,9 @@ function applyBotLiveSnapshots(botsState = []) {
     if (isBattleMode()) bot.battleHealth = Number(data.health ?? bot.battleHealth);
     if (isMaxMode()) bot.maxHealth = Number(data.health ?? bot.maxHealth);
     bot.setDemolished(Boolean(data.demolished));
+    applied += 1;
   });
+  if (applied) debugOnlineThrottled("bot_snapshot_applied", { applied });
 }
 
 function applyBattleFlagLiveState(flag, data) {
@@ -7843,6 +7884,12 @@ function applyFirebaseLiveRoomState(room = onlineState.room) {
   onlineState.firebaseLiveStatus = "following";
   if (Number.isFinite(Number(liveState.timeLeft))) {
     state.timeLeft = Number(liveState.timeLeft);
+  }
+  if (liveState.score && typeof liveState.score === "object") {
+    const sharedScore = Number(liveState.score.player ?? liveState.score.blue ?? 0);
+    if (Number.isFinite(sharedScore) && !isMaxMode() && !isBattleMode()) {
+      state.score = Math.max(0, Math.floor(sharedScore));
+    }
   }
   if (isMaxMode() && liveState.max) {
     maxMode.blueScore = Math.max(0, Math.floor(Number(liveState.max.blueScore) || 0));
@@ -7881,6 +7928,12 @@ function applyFirebaseLiveRoomState(room = onlineState.room) {
     );
   }
   applyBotLiveSnapshots(liveState.bots);
+  debugOnlineThrottled("live_state_applied", {
+    code: room?.code || "",
+    seq,
+    mode: liveState.mode || getModeDefinition().id,
+    bots: Array.isArray(liveState.bots) ? liveState.bots.length : 0,
+  });
 }
 
 function updateRemoteSnapshotsFromMatch() {
@@ -8079,18 +8132,41 @@ function serializeFirebaseLiveStateSnapshot() {
   });
 }
 
-function sendFirebaseLiveRoomFrame() {
+function getStaleFirebaseLivePlayerIds(room = onlineState.room) {
+  if (!room?.livePlayers || typeof room.livePlayers !== "object") return [];
+  const localIds = getLocalOnlinePlayerIds();
+  const now = Date.now();
+  return Object.entries(room.livePlayers)
+    .filter(([uid, remote]) => {
+      const id = String(uid || remote?.id || remote?.uid || "");
+      if (!id || localIds.has(id)) return false;
+      const timestamp = Date.parse(String(remote?.at || remote?.updatedAt || ""));
+      return Number.isFinite(timestamp) && now - timestamp >= 12_000;
+    })
+    .map(([uid]) => uid);
+}
+
+function sendFirebaseLiveRoomFrame({ force = false, reason = "" } = {}) {
   if (!isFirebaseLiveRoom() || !state.running || !firebaseOnline) return;
   const now = performance.now();
-  if (now - onlineState.firebaseLiveLastPublishAt < 180) return;
+  if (!force && now - onlineState.firebaseLiveLastPublishAt < 180) return;
   onlineState.firebaseLiveLastPublishAt = now;
   onlineState.firebaseLiveSeq += 1;
   const isHost = isFirebaseLiveHost();
   const liveState = isHost ? serializeFirebaseLiveStateSnapshot() : null;
+  const stalePlayerIds = isHost ? getStaleFirebaseLivePlayerIds() : [];
+  debugOnlineThrottled("live_snapshot_sent", {
+    code: onlineState.room?.code || "",
+    role: isHost ? "host" : "client",
+    seq: onlineState.firebaseLiveSeq,
+    reason,
+    stale: stalePlayerIds.length,
+  });
   firebaseOnline
     .updateLobbyLiveState(onlineState.room.code, {
       player: serializeLocalLivePlayerSnapshot(),
       state: liveState,
+      stalePlayerIds,
     })
     .then((room) => {
       onlineState.firebaseLiveStatus = isHost ? "hosting" : "joined";
@@ -10797,6 +10873,35 @@ function debugLog(channel, ...args) {
   console.log(`[debug:${channel}]`, ...args);
 }
 
+const debugThrottleAt = new Map();
+function debugOnlineThrottled(event, payload = {}, intervalMs = 900) {
+  if (!DEBUG_FLAGS.enabled || !DEBUG_FLAGS.online) return;
+  const now = performance.now();
+  const last = debugThrottleAt.get(event) || 0;
+  if (now - last < intervalMs) return;
+  debugThrottleAt.set(event, now);
+  console.log(`[debug:online] ${event}`, payload);
+}
+
+function getLocalOnlinePlayerIds() {
+  const ids = new Set();
+  const add = (value) => {
+    const id = String(value || "").trim();
+    if (id) ids.add(id);
+  };
+  add(onlineState.user?.id);
+  add(onlineState.user?.uid);
+  add(onlineState.userId);
+  add(onlineState.uid);
+  try {
+    const status = firebaseOnline?.getStatus?.();
+    add(status?.uid);
+  } catch {
+    // Firebase status may not be initialized yet.
+  }
+  return ids;
+}
+
 function disposeObject3D(root) {
   if (!root) return;
   root.traverse((child) => {
@@ -11929,7 +12034,12 @@ function applyPlayerCustomization(options = {}) {
   rebuildPlayerCarMesh();
   refreshCustomizationMenu();
   refreshGaragePreview();
-  if (isFirebaseLiveRoom()) onlineState.firebaseLiveLastPublishAt = 0;
+  if (isFirebaseLiveRoom()) {
+    onlineState.firebaseLiveLastPublishAt = 0;
+    if (state.running) {
+      sendFirebaseLiveRoomFrame({ force: true, reason: "cosmetics" });
+    }
+  }
 }
 
 function makeBot(color) {
@@ -19950,6 +20060,7 @@ function stepGame(dt) {
   }
 
   if (state.running && !pausedByMenu) {
+    const firebaseLiveFollower = isFirebaseLiveFollower();
     if (state.postHitSafeFrames > 0) state.postHitSafeFrames -= 1;
     state.timeLeft = Math.max(0, state.timeLeft - dt);
     updateDifficulty(dt);
@@ -19963,10 +20074,11 @@ function stepGame(dt) {
     if (player.airborne && !state.modeRun.wasAirborne) state.modeRun.jumps += 1;
     state.modeRun.wasAirborne = Boolean(player.airborne);
     updateFirstDriveTutorial();
-    updateBots(dt);
+    if (firebaseLiveFollower) applyFirebaseLiveRoomState(onlineState.room);
+    else updateBots(dt);
     updateHunterThreatFeedback();
     if (isMaxMode()) {
-      if (!isFirebaseLiveFollower()) {
+      if (!firebaseLiveFollower) {
         updateMaxBall(dt);
         resolveMaxBumps();
       } else {
@@ -20005,11 +20117,15 @@ function stepGame(dt) {
       }
     } else {
       updateObstacles(player);
-      bots.forEach((bot) => updateObstacles(bot));
-      updatePowerups(dt);
-      updatePowerupCollisions();
+      if (!firebaseLiveFollower) {
+        bots.forEach((bot) => updateObstacles(bot));
+        updatePowerups(dt);
+        updatePowerupCollisions();
+        updateNonCampaignMode(dt);
+      } else if (isBattleMode()) {
+        updateBattleStateFromPlayer();
+      }
       updateBoostPads(dt);
-      updateNonCampaignMode(dt);
     }
     updateFx(dt);
 
@@ -23230,6 +23346,23 @@ window.__infernodriftTestApi = {
     );
     return JSON.parse(window.render_game_to_text());
   },
+  forceFirebaseLivePublishForTest: async () => {
+    onlineState.firebaseLiveLastPublishAt = 0;
+    await sendFirebaseLiveRoomFrame({ force: true, reason: "test" });
+    return {
+      snapshot: serializeLocalLivePlayerSnapshot(),
+      stalePlayerIds: getStaleFirebaseLivePlayerIds(),
+      role: isFirebaseLiveHost() ? "host" : isFirebaseLiveRoom() ? "client" : "none",
+    };
+  },
+  getFirebaseLiveDebugForTest: () => ({
+    localIds: [...getLocalOnlinePlayerIds()],
+    stalePlayerIds: getStaleFirebaseLivePlayerIds(),
+    role: isFirebaseLiveHost() ? "host" : isFirebaseLiveRoom() ? "client" : "none",
+    remotePlayers: JSON.parse(window.render_game_to_text()).online.remotePlayers,
+    liveSeq: onlineState.firebaseLiveSeq,
+    appliedSeq: onlineState.firebaseLiveLastApplySeq,
+  }),
   forceLevelUpRevealForTest: () => {
     state.modeRun.oldLevel = 1;
     state.modeRun.newLevel = 2;

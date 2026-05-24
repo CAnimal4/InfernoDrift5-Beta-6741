@@ -216,7 +216,7 @@ service cloud.firestore {
           'updatedAt'
         ])
         && request.resource.data.players is list
-        && request.resource.data.players.size() >= resource.data.players.size()
+        && request.resource.data.players.size() >= 0
         && request.resource.data.players.size() <= 8
         && (!('livePlayers' in request.resource.data) || request.resource.data.livePlayers is map)
         && (!('liveState' in request.resource.data) || request.resource.data.liveState is map)
