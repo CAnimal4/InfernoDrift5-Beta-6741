@@ -85,6 +85,7 @@ service cloud.firestore {
           'cosmetics',
           'stats',
           'settings',
+          'serverUpdatedAt',
           'updatedAt'
         ]);
       allow delete: if false;
@@ -111,6 +112,7 @@ service cloud.firestore {
           'verified',
           'account',
           'guest',
+          'updatedAt',
           'createdAt'
         ]);
       allow delete: if false;

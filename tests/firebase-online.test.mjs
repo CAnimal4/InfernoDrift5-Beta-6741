@@ -455,8 +455,16 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(script, /function stripUnearnedSpecialProgressPayload/);
   assert.match(script, /cleanUnearnedSpecialProgress: Boolean\(message\.user\?\.account\)/);
   assert.match(script, /replaceNextProgressSync = true/);
+  assert.match(script, /function sanitizeSpecialBadgeLeaderboardRow\(row = \{\}\)/);
+  assert.match(script, /repairNote: "special-badge-xp-cap"/);
   assert.match(firebaseOnline, /syncProgress\(payload, \{ silent = false, replace = false \} = \{\}\)/);
   assert.match(firebaseOnline, /replace\s*\?\s*payload\s*:\s*mergeFirebaseSavePayload/);
+  const rules = fs.readFileSync(
+    new URL("../firestore.rules", import.meta.url),
+    "utf8",
+  );
+  assert.match(rules, /'serverUpdatedAt'/);
+  assert.match(rules, /'updatedAt'/);
 });
 
 test("Firebase leaderboard hides and stops syncing test-like accounts", () => {

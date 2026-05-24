@@ -1,6 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260523-badge-xp-repair";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260523-badge-xp-repair-v2";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -438,7 +438,7 @@ const SPECIAL_BADGE_ACCOUNT_KEYS = new Set([
   "tosh the sigma",
   "billy",
 ]);
-const SPECIAL_BADGE_REPAIR_VERSION = "2026-05-23-badge-xp-repair-v2";
+const SPECIAL_BADGE_REPAIR_VERSION = "2026-05-23-badge-xp-repair-v3";
 const SPECIAL_BADGE_SUSPECT_XP = 90000;
 const SPECIAL_BADGE_PROGRESS_POLICIES = new Map([
   ["clark", { repairXp: 22000, maxEmbers: 875 }],
@@ -8973,6 +8973,28 @@ function getLeaderboardXp(row) {
   );
 }
 
+function sanitizeSpecialBadgeLeaderboardRow(row = {}) {
+  if (!row || isCodexLeaderboardRow(row)) return row;
+  const policy = getSpecialBadgeProgressPolicy(row.username || row.name || "");
+  if (!policy) return row;
+  const xp = getLeaderboardXp(row);
+  if (xp < SPECIAL_BADGE_SUSPECT_XP) return row;
+  const repairedXp = Math.max(0, Math.floor(Number(policy.repairXp) || 0));
+  return {
+    ...row,
+    xp: repairedXp,
+    totalXp: repairedXp,
+    rating: repairedXp,
+    score: repairedXp,
+    source: row.source || "server",
+    repairNote: "special-badge-xp-cap",
+  };
+}
+
+function sanitizeSpecialBadgeLeaderboardRows(rows = []) {
+  return (Array.isArray(rows) ? rows : []).map(sanitizeSpecialBadgeLeaderboardRow);
+}
+
 function compareLeaderboard(a, b) {
   return getLeaderboardXp(b) - getLeaderboardXp(a);
 }
@@ -9096,7 +9118,9 @@ function getDisplayLeaderboardRows() {
     rows.push(playerRow);
   }
   return ensureCodexAlwaysFirst(
-    filterTestLikeLeaderboardRows(dedupeLeaderboardRows(rows)),
+    filterTestLikeLeaderboardRows(
+      dedupeLeaderboardRows(sanitizeSpecialBadgeLeaderboardRows(rows)),
+    ),
   ).sort(compareLeaderboard);
 }
 

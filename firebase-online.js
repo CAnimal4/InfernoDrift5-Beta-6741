@@ -16,7 +16,7 @@ import {
   validateFirebaseLobbyCode,
   validateFirebaseScore,
   validateFirebaseUsername,
-} from "./firebase-online-core.js?v=20260523-badge-xp-repair";
+} from "./firebase-online-core.js?v=20260523-badge-xp-repair-v2";
 
 const FIREBASE_SDK_VERSION = "10.13.2";
 const FIREBASE_SDK_BASE = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}`;

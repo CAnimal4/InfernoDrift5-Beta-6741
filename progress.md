@@ -404,3 +404,9 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Added explicit special-account progression policies: Clark is capped to the owner-reported hard-earned baseline of about 22k XP, while MODERATOR, Joshua, Tosh_the_Sigma, and Billy reset automatic seeded progression to fresh-account XP/Embers.
 - Restored the intended Founder Friend reward: friending Clark grants +1000 XP once to the non-Clark player, without seeding Clark or any other badge account.
 - Cache-busted the static client assets again for the repair deployment.
+
+2026-05-23 badge account XP rule unblock:
+
+- Found that Clark's live Firestore progress document still contained a legacy `serverUpdatedAt` key, so owner-authenticated repair writes were rejected by current rules before the new cleanup code could replace the polluted payload.
+- Added narrow Firestore rule compatibility for legacy `serverUpdatedAt` on progress docs and `updatedAt` on leaderboard docs, then added a display-side safety cap so known special badge rows with obviously polluted 90k+ XP cannot keep dragging Rankings upward while cleanup propagates.
+- Bumped the special badge repair marker/cache bust to force refreshed clients through the new cleanup path.
