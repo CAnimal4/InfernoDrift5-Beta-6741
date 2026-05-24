@@ -1,6 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260524-firebase-live-room-v2";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260524-mp-stabilize-v1";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -2314,6 +2314,7 @@ const onlineState = {
   lastSnapshotAt: 0,
   firebaseLiveSeq: 0,
   firebaseLiveLastPublishAt: 0,
+  firebaseLiveLastPlayerSignature: "",
   firebaseLiveLastApplySeq: 0,
   firebaseLiveStatus: "idle",
   firebaseLiveError: "",
@@ -7824,7 +7825,9 @@ function updateRemoteSnapshotsFromMatchLike(players = []) {
         speed: Number(remote.speed ?? 0),
         airborne: Boolean(remote.airborne),
         backflip: Boolean(remote.backflip),
+        backflipProgress: Number(remote.backflipProgress ?? 0),
         barrelRoll: Boolean(remote.barrelRoll),
+        barrelRollProgress: Number(remote.barrelRollProgress ?? 0),
         boost: Boolean(remote.boost),
         demolished: Boolean(remote.demolished),
         health: Number(remote.health ?? 0),
@@ -8004,7 +8007,9 @@ function serializeLocalLivePlayerSnapshot() {
     boost: Boolean(input.boost),
     airborne: isCarAirborne(player),
     backflip: Boolean(player.backflipActive),
+    backflipProgress: Number((player.backflipProgress || 0).toFixed(3)),
     barrelRoll: Boolean(player.barrelRollActive),
+    barrelRollProgress: Number((player.barrelRollProgress || 0).toFixed(3)),
     demolished: Boolean(player.demolished),
     health: isBattleMode()
       ? Math.round(player.battleHealth ?? 0)
@@ -8018,6 +8023,31 @@ function serializeLocalLivePlayerSnapshot() {
     ammo: Math.round(battle.ammo || player.battleAmmo || 0),
     cosmetics,
   });
+}
+
+function getFirebaseLivePlayerSignature(snapshot = {}) {
+  return JSON.stringify([
+    snapshot.x,
+    snapshot.y,
+    snapshot.z,
+    snapshot.heading,
+    snapshot.speed,
+    snapshot.boost,
+    snapshot.drift,
+    snapshot.airborne,
+    snapshot.backflip,
+    snapshot.backflipProgress,
+    snapshot.barrelRoll,
+    snapshot.barrelRollProgress,
+    snapshot.demolished,
+    snapshot.health,
+    snapshot.score,
+    snapshot.progress,
+    snapshot.checkpoint,
+    snapshot.ammo,
+    snapshot.battleFlag,
+    snapshot.cosmetics,
+  ]);
 }
 
 function serializeBotLiveSnapshots() {
@@ -8149,10 +8179,21 @@ function getStaleFirebaseLivePlayerIds(room = onlineState.room) {
 function sendFirebaseLiveRoomFrame({ force = false, reason = "" } = {}) {
   if (!isFirebaseLiveRoom() || !state.running || !firebaseOnline) return;
   const now = performance.now();
-  if (!force && now - onlineState.firebaseLiveLastPublishAt < 180) return;
-  onlineState.firebaseLiveLastPublishAt = now;
-  onlineState.firebaseLiveSeq += 1;
+  if (!force && now - onlineState.firebaseLiveLastPublishAt < 140) return;
+  const localSnapshot = serializeLocalLivePlayerSnapshot();
+  const localSignature = getFirebaseLivePlayerSignature(localSnapshot);
   const isHost = isFirebaseLiveHost();
+  if (
+    !force &&
+    !isHost &&
+    localSignature === onlineState.firebaseLiveLastPlayerSignature &&
+    now - onlineState.firebaseLiveLastPublishAt < 900
+  ) {
+    return;
+  }
+  onlineState.firebaseLiveLastPublishAt = now;
+  onlineState.firebaseLiveLastPlayerSignature = localSignature;
+  onlineState.firebaseLiveSeq += 1;
   const liveState = isHost ? serializeFirebaseLiveStateSnapshot() : null;
   const stalePlayerIds = isHost ? getStaleFirebaseLivePlayerIds() : [];
   debugOnlineThrottled("live_snapshot_sent", {
@@ -8164,7 +8205,7 @@ function sendFirebaseLiveRoomFrame({ force = false, reason = "" } = {}) {
   });
   firebaseOnline
     .updateLobbyLiveState(onlineState.room.code, {
-      player: serializeLocalLivePlayerSnapshot(),
+      player: localSnapshot,
       state: liveState,
       stalePlayerIds,
     })
@@ -8680,15 +8721,43 @@ function submitReportCommand(username, reason) {
 }
 
 async function submitFirebaseReport(username, reason) {
+  const diagnostics = JSON.parse(window.render_game_to_text());
+  const payload = {
+    feedbackType: "player_report",
+    message: [
+      `Reporter: ${onlineState.user?.username || onlineState.username || "Unknown"}`,
+      `Reported: ${username}`,
+      `Room: ${onlineState.room?.code || "none"}`,
+      `Time: ${new Date().toISOString()}`,
+      `Reason: ${reason}`,
+    ].join("\n"),
+    diagnostics,
+    client: "InfernoDrift4 static client",
+    at: new Date().toISOString(),
+  };
   try {
-    await firebaseOnline.submitFeedback({
-      feedbackType: "player_report",
-      message: `Report ${username}: ${reason}`,
-      diagnostics: JSON.parse(window.render_game_to_text()),
-    });
+    const storedResult = await firebaseOnline.submitFeedback(payload);
+    let emailResult = null;
+    try {
+      emailResult = await submitFeedbackHttpCopy(payload, {
+        includeWorkerFallback: true,
+      });
+    } catch (emailError) {
+      pushOnlineChatMessage({
+        from: "Reports",
+        text: `Report saved, but email delivery failed: ${describeOnlineError(emailError?.message || "")}`,
+        quick: true,
+      });
+      updateOnlineUi();
+      return;
+    }
     pushOnlineChatMessage({
       from: "Reports",
-      text: `Report for ${username} saved for moderator review.`,
+      text:
+        emailResult?.delivery === "delivered" ||
+        emailResult?.delivery === "delivered_sandbox"
+          ? `Report for ${username} sent to moderators.`
+          : `Report for ${username} saved for moderator review${storedResult?.delivery ? "" : "."}`,
       quick: true,
     });
   } catch (error) {
@@ -9833,13 +9902,37 @@ function getFeedbackDeliveryMessage(result = {}) {
     : "Feedback saved by the backend. Email delivery is not configured yet.";
 }
 
+function getFeedbackHttpEndpoint({ includeWorkerFallback = false } = {}) {
+  return (
+    onlineState.feedbackUrl ||
+    deriveFeedbackUrl(onlineState.backendUrl) ||
+    (includeWorkerFallback ? deriveFeedbackUrl(WORKER_FALLBACK_BACKEND_URL) : "")
+  );
+}
+
+async function submitFeedbackHttpCopy(payload = {}, options = {}) {
+  const configuredUrl = getFeedbackHttpEndpoint(options);
+  if (!configuredUrl) return null;
+  const response = await fetch(configuredUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || `feedback endpoint returned ${response.status}`);
+  }
+  onlineState.feedbackUrl = configuredUrl;
+  saveOnlineConfig();
+  return result;
+}
+
 async function submitFeedback() {
   if (isFirebaseBackendMode()) {
     await submitFirebaseFeedback();
     return;
   }
-  const configuredUrl =
-    onlineState.feedbackUrl || deriveFeedbackUrl(onlineState.backendUrl);
+  const configuredUrl = getFeedbackHttpEndpoint();
   const message = String(feedbackMessage?.value || "").trim();
   if (!message) {
     onlineState.lastFeedbackStatus = "error";
@@ -9925,21 +10018,38 @@ async function submitFirebaseFeedback() {
     return;
   }
   const age13 = Boolean(feedbackAge13?.checked);
+  const payload = {
+    feedbackType: feedbackType?.value || "other",
+    message,
+    diagnostics: feedbackDiagnostics?.checked
+      ? JSON.parse(window.render_game_to_text())
+      : null,
+    replyEmail: age13 ? String(feedbackEmail?.value || "").trim() : "",
+    age13OrOlder: age13,
+    client: "InfernoDrift4 static client",
+    at: new Date().toISOString(),
+  };
   try {
     updateFeedbackStatus("Saving feedback online...");
-    const result = await firebaseOnline.submitFeedback({
-      feedbackType: feedbackType?.value || "other",
-      message,
-      diagnostics: feedbackDiagnostics?.checked
-        ? JSON.parse(window.render_game_to_text())
-        : null,
-      replyEmail: age13 ? String(feedbackEmail?.value || "").trim() : "",
-      age13OrOlder: age13,
-    });
+    const storedResult = await firebaseOnline.submitFeedback(payload);
+    let result = storedResult;
+    try {
+      const emailResult = await submitFeedbackHttpCopy(payload, {
+        includeWorkerFallback: true,
+      });
+      if (emailResult) result = emailResult;
+    } catch (emailError) {
+      result = {
+        ...storedResult,
+        delivery: "stored_email_failed",
+        emailConfigured: true,
+        emailError: emailError?.message || "email request failed",
+      };
+    }
     onlineState.lastFeedbackStatus = "saved";
     onlineState.lastFeedbackDelivery = result.delivery || "stored_firebase";
-    onlineState.feedbackEmailConfigured = false;
-    onlineState.lastFeedbackError = "";
+    onlineState.feedbackEmailConfigured = Boolean(result.emailConfigured);
+    onlineState.lastFeedbackError = result.emailError || "";
     if (feedbackMessage) feedbackMessage.value = "";
     updateFeedbackCounter();
     updateFeedbackStatus(getFeedbackDeliveryMessage(result));
@@ -12230,6 +12340,11 @@ function removeRemotePlayer(id) {
   remotePlayers.delete(id);
 }
 
+function interpolateAngle(current, target, amount) {
+  const delta = Math.atan2(Math.sin(target - current), Math.cos(target - current));
+  return current + delta * amount;
+}
+
 function setRemoteHumanPlayers(players = []) {
   const keep = new Set();
   players.slice(0, 8).forEach((playerData, index) => {
@@ -12262,8 +12377,11 @@ function setRemoteHumanPlayers(players = []) {
         speed: 0,
         cosmetics: null,
         cosmeticsKey: "",
+        headingTarget: 0,
         backflip: false,
+        backflipProgress: 0,
         barrelRoll: false,
+        barrelRollProgress: 0,
         boost: false,
         airborne: false,
         visible: false,
@@ -12303,26 +12421,55 @@ function setRemoteHumanPlayers(players = []) {
       ? Number(playerData.speed)
       : 0;
     remote.car.speed = remote.speed / SPEED_TO_MPH_MULT;
-    if (!remote.visible) {
+    const wasVisible = remote.visible;
+    if (!wasVisible) {
       remote.car.setPosition(x, y, z);
       remote.visible = true;
     }
-    remote.car.heading = Number.isFinite(Number(playerData.heading))
+    const targetHeading = Number.isFinite(Number(playerData.heading))
       ? Number(playerData.heading)
-      : remote.car.heading;
-    remote.car.moveHeading = remote.car.heading;
+      : remote.headingTarget;
+    remote.headingTarget = targetHeading;
+    if (!wasVisible) {
+      remote.car.heading = targetHeading;
+      remote.car.moveHeading = targetHeading;
+    }
     remote.airborne = Boolean(playerData.airborne);
     remote.backflip = Boolean(playerData.backflip);
     remote.barrelRoll = Boolean(playerData.barrelRoll);
     remote.boost = Boolean(playerData.boost);
+    remote.backflipProgress = Number.isFinite(Number(playerData.backflipProgress))
+      ? THREE.MathUtils.clamp(Number(playerData.backflipProgress), 0, 1)
+      : remote.backflip
+        ? remote.backflipProgress
+        : 0;
+    remote.barrelRollProgress = Number.isFinite(Number(playerData.barrelRollProgress))
+      ? THREE.MathUtils.clamp(Number(playerData.barrelRollProgress), 0, 1)
+      : remote.barrelRoll
+        ? remote.barrelRollProgress
+        : 0;
     if (remote.backflip && !remote.car.backflipActive) {
       remote.car.backflipActive = true;
-      remote.car.backflipProgress = 0;
+      remote.car.backflipProgress = remote.backflipProgress;
+    } else if (remote.backflip) {
+      remote.car.backflipProgress = Math.max(
+        remote.car.backflipProgress || 0,
+        remote.backflipProgress,
+      );
+    } else {
+      remote.car.backflipActive = false;
     }
     if (remote.barrelRoll && !remote.car.barrelRollActive) {
       remote.car.barrelRollActive = true;
-      remote.car.barrelRollProgress = 0;
+      remote.car.barrelRollProgress = remote.barrelRollProgress;
       remote.car.barrelRollDirection = 1;
+    } else if (remote.barrelRoll) {
+      remote.car.barrelRollProgress = Math.max(
+        remote.car.barrelRollProgress || 0,
+        remote.barrelRollProgress,
+      );
+    } else {
+      remote.car.barrelRollActive = false;
     }
     remote.car.setDemolished(Boolean(playerData.demolished));
   });
@@ -12340,9 +12487,15 @@ function updateRemoteHumanPlayers(dt) {
     remote.car.group.visible = true;
     remote.car.position.lerp(remote.target, Math.min(1, dt * 12));
     remote.car.group.position.copy(remote.car.position);
+    remote.car.heading = interpolateAngle(
+      remote.car.heading,
+      remote.headingTarget ?? remote.car.heading,
+      Math.min(1, dt * 10),
+    );
+    remote.car.moveHeading = remote.car.heading;
     remote.car.group.rotation.y = remote.car.heading;
     remote.car.setBoostVisual(remote.boost);
-    remote.car.updateWheels(remote.speed * dt);
+    remote.car.update(dt);
     if (remote.boost && Math.random() < 0.16) {
       spawnFx(
         remote.car.position,
@@ -19465,6 +19618,44 @@ function updateBattleActorTimers(dt) {
   updateBattleStateFromPlayer();
 }
 
+function updateBattlePlayerActionTimers(dt) {
+  if (!isBattleMode()) return;
+  player.battleLaserCooldown = Math.max(
+    0,
+    (player.battleLaserCooldown ?? 0) - dt,
+  );
+  player.battleShieldTimer = Math.max(0, (player.battleShieldTimer ?? 0) - dt);
+  if (
+    (player.battleAmmo ?? 0) < BATTLE_RULES.maxAmmo &&
+    (player.battleReloadTimer ?? 0) <= 0
+  ) {
+    player.battleReloadTimer = BATTLE_RULES.reloadSeconds;
+  }
+  player.battleReloadTimer = Math.max(
+    0,
+    (player.battleReloadTimer ?? 0) - dt,
+  );
+  if (
+    (player.battleAmmo ?? 0) < BATTLE_RULES.maxAmmo &&
+    player.battleReloadTimer <= 0
+  ) {
+    player.battleAmmo = Math.min(
+      BATTLE_RULES.maxAmmo,
+      (player.battleAmmo ?? 0) + 1,
+    );
+    player.battleReloadTimer =
+      player.battleAmmo < BATTLE_RULES.maxAmmo ? BATTLE_RULES.reloadSeconds : 0;
+    if (player.battleAmmo === BATTLE_RULES.maxAmmo)
+      setEffectToast("Ammo Full", { pulse: 0.14 });
+  }
+  if (player.demolished) {
+    player.battleRespawnTimer = Math.max(0, (player.battleRespawnTimer ?? 0) - dt);
+    if (player.battleRespawnTimer <= 0) respawnBattleCar(player);
+  }
+  if (input.laser) fireBattleLaser(player);
+  updateBattleStateFromPlayer();
+}
+
 function fireBattleLaser(actor = player) {
   if (!isBattleMode() || !actor || actor.demolished) return false;
   if ((actor.battleLaserCooldown ?? 0) > 0) return false;
@@ -20123,7 +20314,7 @@ function stepGame(dt) {
         updatePowerupCollisions();
         updateNonCampaignMode(dt);
       } else if (isBattleMode()) {
-        updateBattleStateFromPlayer();
+        updateBattlePlayerActionTimers(dt);
       }
       updateBoostPads(dt);
     }
@@ -22538,7 +22729,9 @@ window.render_game_to_text = () => {
     speed: Number(remote.speed.toFixed(2)),
     airborne: Boolean(remote.airborne),
     backflip: Boolean(remote.backflip),
+    backflipProgress: Number((remote.car.backflipProgress || 0).toFixed(3)),
     barrelRoll: Boolean(remote.barrelRoll),
+    barrelRollProgress: Number((remote.car.barrelRollProgress || 0).toFixed(3)),
     boost: Boolean(remote.boost),
     cosmeticsKey: remote.cosmeticsKey,
     snapshotAgeMs: Math.max(
@@ -23172,6 +23365,12 @@ window.__infernodriftTestApi = {
       tab: document.querySelector(".tab-btn.active")?.dataset.tab ?? "",
     };
   },
+  closeMenuForTest: () => {
+    state.modeHelpOpen = false;
+    if (modeHelpCard) modeHelpCard.hidden = true;
+    setMenuOpen(false);
+    return { screen: getUiScreen(), running: state.running };
+  },
   selectLoadout: (loadoutId = GARAGE_LOADOUT_IDS[0]) => {
     selectGarageLoadout(loadoutId, { save: false });
     return serializeGarageState();
@@ -23466,6 +23665,10 @@ window.__infernodriftTestApi = {
     };
   },
   fireBattleLaser: () => fireBattleLaser(player),
+  setLaserHeldForTest: (held = true) => {
+    input.laser = Boolean(held);
+    return input.laser;
+  },
   setBattleAmmo: (value = BATTLE_RULES.maxAmmo) => {
     player.battleAmmo = THREE.MathUtils.clamp(
       Number(value) || 0,

@@ -76,6 +76,23 @@ function withTimeout(promise, timeoutMs, errorCode) {
   });
 }
 
+function waitMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableLobbyVersionError(error) {
+  const code = String(error?.code || "").toLowerCase();
+  const message = String(error?.message || error || "").toLowerCase();
+  return (
+    code.includes("aborted") ||
+    code.includes("conflict") ||
+    message.includes("stored version") ||
+    message.includes("required base version") ||
+    message.includes("aborted") ||
+    message.includes("transaction")
+  );
+}
+
 function stripUndefinedForFirestore(value) {
   if (value === undefined) return undefined;
   if (value === null || typeof value !== "object") return value;
@@ -482,7 +499,9 @@ function sanitizeLivePlayerSnapshot(input = {}, uid = "") {
       drift: Boolean(input.drift),
       airborne: Boolean(input.airborne),
       backflip: Boolean(input.backflip),
+      backflipProgress: Math.max(0, Math.min(1, n(input.backflipProgress, 0, 3))),
       barrelRoll: Boolean(input.barrelRoll),
+      barrelRollProgress: Math.max(0, Math.min(1, n(input.barrelRollProgress, 0, 3))),
       demolished: Boolean(input.demolished),
       health: Math.max(0, Math.min(999, Math.round(Number(input.health) || 0))),
       score: Math.max(0, Math.floor(Number(input.score) || 0)),
@@ -524,7 +543,9 @@ function sanitizeLiveStateSnapshot(input = {}) {
     boost: Boolean(car.boost),
     airborne: Boolean(car.airborne),
     backflip: Boolean(car.backflip),
+    backflipProgress: Math.max(0, Math.min(1, n(car.backflipProgress, 0, 3))),
     barrelRoll: Boolean(car.barrelRoll),
+    barrelRollProgress: Math.max(0, Math.min(1, n(car.barrelRollProgress, 0, 3))),
     demolished: Boolean(car.demolished),
     health: Math.max(0, Math.min(999, Math.round(Number(car.health) || 0))),
     role: String(car.role || "").slice(0, 24),
@@ -1644,38 +1665,50 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       validation.code,
     );
     let joinedRoom = null;
-    await firestore.runTransaction(internals.db, async (transaction) => {
-      const snapshot = await transaction.get(ref);
-      if (!snapshot.exists()) throw new Error("room_not_found");
-      const data = snapshot.data() || {};
-      const players = Array.isArray(data.players) ? data.players : [];
-      const existing = players.find((player) => player.uid === state.uid);
-      const nextPlayers = existing
-        ? players
-        : [
-            ...players,
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await firestore.runTransaction(internals.db, async (transaction) => {
+          const snapshot = await transaction.get(ref);
+          if (!snapshot.exists()) throw new Error("room_not_found");
+          const data = snapshot.data() || {};
+          const players = Array.isArray(data.players) ? data.players : [];
+          const existing = players.find((player) => player.uid === state.uid);
+          const nextPlayers = existing
+            ? players
+            : [
+                ...players,
+                {
+                  uid: state.uid,
+                  username: state.username || "Player",
+                  badges: internals.userProfile?.badges || [],
+                },
+              ];
+          if (nextPlayers.length > FIREBASE_LOBBY_MAX_PLAYERS) {
+            throw new Error("room_full");
+          }
+          transaction.set(
+            ref,
             {
-              uid: state.uid,
-              username: state.username || "Player",
-              badges: internals.userProfile?.badges || [],
+              players: nextPlayers,
+              updatedAt: firestore.serverTimestamp(),
             },
-          ];
-      if (nextPlayers.length > FIREBASE_LOBBY_MAX_PLAYERS) {
-        throw new Error("room_full");
+            { merge: true },
+          );
+          joinedRoom = mapLobbyDoc({
+            id: snapshot.id,
+            data: () => ({ ...data, players: nextPlayers }),
+          });
+        });
+        break;
+      } catch (error) {
+        if (attempt === 0 && isRetryableLobbyVersionError(error)) {
+          await waitMs(120);
+          continue;
+        }
+        throw error;
       }
-      transaction.set(
-        ref,
-        {
-          players: nextPlayers,
-          updatedAt: firestore.serverTimestamp(),
-        },
-        { merge: true },
-      );
-      joinedRoom = mapLobbyDoc({
-        id: snapshot.id,
-        data: () => ({ ...data, players: nextPlayers }),
-      });
-    });
+    }
+    if (!joinedRoom) throw new Error("room_join_failed");
     subscribeLobby(validation.code);
     emit("room.snapshot", { room: joinedRoom });
     return joinedRoom;

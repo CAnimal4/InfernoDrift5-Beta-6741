@@ -1,5 +1,15 @@
 Original prompt: Implement the InfernoDrift4 revamp plan on top of the current InfernoDrift-derived game: better radar, cleaner HUD/menu, stronger graphics/effects, distinct modes/minigames, live Cloudflare Workers + Durable Objects online, favicon from uploaded asset, tests, push, deploy, and verification.
 
+2026-05-24 Firebase multiplayer stabilization pass:
+
+- Started targeted stabilization after the shared Firebase multiplayer repair. Preserving the existing Firebase live-room architecture.
+- Patched remote player rendering to smooth heading changes and drive remote car trick/boost animation updates, including synced backflip/barrel-roll progress fields.
+- Added a lightweight unchanged-snapshot guard for non-host Firebase live player snapshots while keeping host live-state publishes active.
+- Added follower-side Battle Arena player action timers so F firing/reload/cooldown still works while host-owned bots/flags remain authoritative.
+- Added a one-retry Firebase lobby join recovery for Firestore transaction/base-version mismatch errors.
+- Began routing Firebase feedback and `/report` through the existing HTTP feedback endpoint for email delivery attempts, while still saving online review copies.
+- Validation for this pass: `node --check script.js firebase-online.js smoke_games.mjs`, `node --test tests/firebase-online.test.mjs`, focused Playwright multiplayer check, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run smoke:firebase`, and `npm run smoke:firebase-live` passed. `npm run format` still reports broad existing Prettier drift across unrelated files.
+
 2026-05-24 Firebase realtime sync repair:
 
 - Added a reliable Firebase DM inbox mirror under owner-scoped `dmInboxes/{uid}/messages/{messageId}` and listener so incoming DMs trigger the existing non-obstructive chat notice path; also added per-friend DM room listeners as a rules-compatible fallback when collection-group or inbox listeners are unavailable.

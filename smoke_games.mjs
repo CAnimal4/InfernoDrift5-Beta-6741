@@ -1215,6 +1215,10 @@ const maxLiveState = await page.evaluate(() => {
     ownId: "client-user",
     hostUid: "host-user",
     liveHostUid: "host-user",
+    players: [
+      { id: "client-user", uid: "client-user", username: "Client" },
+      { id: "host-user", uid: "host-user", username: "Host" },
+    ],
   });
   return window.__infernodriftTestApi.simulateFirebaseLiveSnapshotForTest({
     code: "MAX77",
@@ -1233,6 +1237,8 @@ const maxLiveState = await page.evaluate(() => {
         heading: 0.4,
         speed: 38,
         boost: true,
+        backflip: true,
+        backflipProgress: 0.42,
         cosmetics: { bodyId: "monster", paintId: "ember" },
       },
     },
@@ -1247,6 +1253,8 @@ assert.equal(maxLiveState.ball.x, 5);
 assert.ok(maxLiveState.bots.some((bot) => bot.x === -12 && bot.z === 18));
 assert.equal(maxLiveState.humanPlayers.length, 1);
 assert.match(maxLiveState.online.remotePlayers[0].cosmeticsKey, /monster/);
+assert.equal(maxLiveState.online.remotePlayers[0].backflip, true);
+assert.ok(maxLiveState.online.remotePlayers[0].backflipProgress >= 0.4);
 const twoWayLiveState = await page.evaluate(() => {
   window.__infernodriftTestApi.simulateRoomJoinForTest({
     code: "TWOWAY",
@@ -1321,6 +1329,10 @@ const battleLiveState = await page.evaluate(() => {
     ownId: "client-user",
     hostUid: "host-user",
     liveHostUid: "host-user",
+    players: [
+      { id: "client-user", uid: "client-user", username: "Client" },
+      { id: "host-user", uid: "host-user", username: "Host" },
+    ],
   });
   return window.__infernodriftTestApi.simulateFirebaseLiveSnapshotForTest({
     code: "BTT88",
@@ -1332,6 +1344,28 @@ const battleLiveState = await page.evaluate(() => {
 assert.equal(battleLiveState.mode, "battle-arena");
 assert.equal(battleLiveState.battle.score.blue, 1);
 assert.match(battleLiveState.battle.flagMessage, /Blue flag point/);
+const battleFollowerLaserState = await page.evaluate(() => {
+  window.__infernodriftTestApi.simulateRoomJoinForTest({
+    code: "BTTF1",
+    mode: "battle-arena",
+    ownId: "client-user",
+    hostUid: "host-user",
+    liveHostUid: "host-user",
+    players: [
+      { id: "client-user", uid: "client-user", username: "Client" },
+      { id: "host-user", uid: "host-user", username: "Host" },
+    ],
+  });
+  window.__infernodriftTestApi.closeMenuForTest();
+  window.__infernodriftTestApi.setBattleAmmo(2);
+  window.__infernodriftTestApi.setLaserHeldForTest(true);
+  window.advanceTime(80);
+  window.__infernodriftTestApi.setLaserHeldForTest(false);
+  return JSON.parse(window.render_game_to_text());
+});
+assert.equal(battleFollowerLaserState.mode, "battle-arena");
+assert.ok(battleFollowerLaserState.battle.ammo < 2);
+assert.ok(battleFollowerLaserState.battle.laserCooldown > 0);
 const levelRevealState = await page.evaluate(() =>
   window.__infernodriftTestApi.forceLevelUpRevealForTest(),
 );
