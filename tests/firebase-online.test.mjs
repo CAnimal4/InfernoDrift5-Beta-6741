@@ -254,6 +254,14 @@ test("Firebase error mapping feeds the offline fallback state machine", () => {
     "firebase_unavailable",
   );
   assert.equal(
+    mapFirebaseError({ code: "auth/too-many-requests" }),
+    "firebase_rate_limited",
+  );
+  assert.equal(
+    mapFirebaseError({ message: "HTTP 429 quota exceeded" }),
+    "firebase_rate_limited",
+  );
+  assert.equal(
     mapFirebaseError({ code: "permission-denied" }),
     "permission_denied",
   );
@@ -357,8 +365,13 @@ test("Firebase start account errors distinguish credentials from outages", () =>
   );
   assert.match(
     script,
-    /else \{\s*setOfflineGuestFallbackStatus\(\);\s*\}/,
+    /else \{\s*setOfflineGuestFallbackStatus\(errorCode\);\s*\}/,
   );
+  assert.doesNotMatch(
+    script,
+    new RegExp("Online services are unavailable" + " on this network"),
+  );
+  assert.match(script, /firebase_rate_limited/);
 });
 
 test("legacy Cloudflare progress manifest restores old account XP without secrets", () => {

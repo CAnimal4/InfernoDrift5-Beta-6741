@@ -1,6 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260524-runner-cleanup-v1";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260524-auth-retry-v1";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -326,7 +326,7 @@ const EXIT_LINK_KEY_CODE = "KeyQ";
 const ONLINE_PROGRESS_SYNC_INTERVAL_MS = 30_000;
 const ONLINE_HEALTH_TIMEOUT_MS = 6000;
 const ONLINE_CONNECT_TIMEOUT_MS = 8000;
-const ONLINE_AUTH_TIMEOUT_MS = 8000;
+const ONLINE_AUTH_TIMEOUT_MS = 20000;
 const ONLINE_WS_PROBE_TIMEOUT_MS = 4500;
 const LEGACY_IMPORT_TIMEOUT_MS = 4500;
 const LEGACY_IMPORT_STORAGE_PREFIX = "infernoDrift4.legacyImport.v1:";
@@ -6075,7 +6075,7 @@ async function runOnlineConnectionTest({ applyHealthy = true } = {}) {
       result.ok ? "connected" : "unavailable",
       result.ok
         ? "Firebase test passed"
-        : "Online services are unavailable on this network",
+        : "Online services did not connect",
       result.ok
         ? "Auth and Firestore read/write work. Live server rooms stay unavailable without a server."
         : describeOnlineError(result.error || "firebase_unavailable"),
@@ -6366,7 +6366,7 @@ function setStartAccountStatus(text, tone = "info") {
   }
 }
 
-function setOfflineGuestFallbackStatus() {
+function setOfflineGuestFallbackStatus(reason = "") {
   if (
     Number.isFinite(onlineState.blockOfflineFallbackUntil) &&
     Date.now() < onlineState.blockOfflineFallbackUntil
@@ -6374,8 +6374,8 @@ function setOfflineGuestFallbackStatus() {
     return;
   }
   setStartAccountStatus(
-    "Online services are unavailable on this network. You can still play Guest Offline.",
-    "error",
+    `${describeOnlineError(reason || onlineState.timeoutReason || "firebase_timeout")} You can retry online or play Guest Offline.`,
+    "warn",
   );
   if (startAccountSubmit) startAccountSubmit.textContent = "Retry Online";
   if (startBtn) startBtn.textContent = "Continue Offline";
@@ -6385,6 +6385,47 @@ function isAccountAuthFailureCode(error = "") {
   return /^(account_not_found|account_requires_upgrade|invalid_credentials|username_invalid|username_rejected|username_reserved|username_taken|weak_password)$/i.test(
     String(error || ""),
   );
+}
+
+function isRetryableFirebaseAuthCode(error = "") {
+  return /^(auth_timeout|firebase_timeout|firebase_unavailable|firebase_rate_limited)$/i.test(
+    String(error || ""),
+  );
+}
+
+function waitForOnlineRetry(ms = 650) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function runFirebaseAuthWithRetry(operation, { username = "" } = {}) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      const errorCode = error?.message || "firebase_unavailable";
+      if (attempt === 0 && isRetryableFirebaseAuthCode(errorCode)) {
+        setStartAccountStatus(
+          username
+            ? `${username}'s online sign-in is taking a moment. Retrying...`
+            : "Online sign-in is taking a moment. Retrying...",
+          "info",
+        );
+        setOnlineStatus(
+          "checking",
+          "Retrying online sign-in",
+          describeOnlineError(errorCode),
+        );
+        await waitForOnlineRetry(
+          errorCode === "firebase_rate_limited" ? 1600 : 750,
+        );
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError || new Error("firebase_timeout");
 }
 
 function syncStartAccountFields() {
@@ -6527,14 +6568,18 @@ async function submitFirebaseStartAccount() {
       payload.username,
     ).catch(() => null);
     const signInSavePayload = bundledLegacyEntry?.payload || null;
-    const result = await firebaseOnline.signInAccount({
-      username: payload.username,
-      password: payload.password,
-      age: payload.age,
-      savePayload: signInSavePayload,
-      timeoutMs: ONLINE_AUTH_TIMEOUT_MS,
-      allowLegacyAutoCreate: Boolean(bundledLegacyEntry),
-    });
+    const result = await runFirebaseAuthWithRetry(
+      () =>
+        firebaseOnline.signInAccount({
+          username: payload.username,
+          password: payload.password,
+          age: payload.age,
+          savePayload: signInSavePayload,
+          timeoutMs: ONLINE_AUTH_TIMEOUT_MS,
+          allowLegacyAutoCreate: Boolean(bundledLegacyEntry),
+        }),
+      { username: payload.username },
+    );
     syncFirebaseServiceStatus();
     await completeFirebaseAuth(result, { guest: false });
     importLegacyProgressForFirebaseAccount(payload).catch((error) => {
@@ -6561,7 +6606,7 @@ async function submitFirebaseStartAccount() {
       if (startAccountSubmit) startAccountSubmit.textContent = "Login / Sign Up";
       if (startBtn) startBtn.textContent = "Play as Guest";
     } else {
-      setOfflineGuestFallbackStatus();
+      setOfflineGuestFallbackStatus(errorCode);
     }
     setOnlineStatus(
       "failed",
@@ -6577,12 +6622,16 @@ async function startFirebaseGuestSession() {
   setOnlineStatus("checking", "Checking online guest mode");
   updateConnectionStage("checking-online");
   try {
-    const result = await firebaseOnline.signInGuest({
-      username: onlineState.username,
-      age: onlineState.age,
-      savePayload: buildPersistentSavePayload(),
-      timeoutMs: ONLINE_AUTH_TIMEOUT_MS,
-    });
+    const result = await runFirebaseAuthWithRetry(
+      () =>
+        firebaseOnline.signInGuest({
+          username: onlineState.username,
+          age: onlineState.age,
+          savePayload: buildPersistentSavePayload(),
+          timeoutMs: ONLINE_AUTH_TIMEOUT_MS,
+        }),
+      { username: onlineState.username },
+    );
     syncFirebaseServiceStatus();
     await completeFirebaseAuth(result, { guest: true });
     setStartAccountStatus(`${onlineState.username} is online as a guest.`);
@@ -6593,10 +6642,10 @@ async function startFirebaseGuestSession() {
     onlineState.profileMode = "guest";
     onlineState.guestTemporary = true;
     syncFirebaseServiceStatus();
-    setOfflineGuestFallbackStatus();
+    setOfflineGuestFallbackStatus(onlineState.timeoutReason);
     setOnlineStatus(
       "unavailable",
-      "Online services are unavailable on this network",
+      "Online guest did not connect",
       describeOnlineError(error?.message || "firebase_unavailable"),
     );
     updateOnlineUi();
@@ -7000,16 +7049,19 @@ function describeOnlineError(error = "") {
     firebase_not_configured:
       "Online services are not configured yet. Developer setup is required.",
     firebase_timeout:
-      "Online services did not answer quickly. You can still play Guest Offline.",
+      "Online services are taking too long. Try again in a moment, or play Guest Offline.",
     firebase_unavailable:
-      "Online services are unavailable on this network.",
+      "Online services did not connect. Try again in a moment, or play Guest Offline.",
+    firebase_rate_limited:
+      "Online sign-in is busy for a moment. Wait a bit, then tap Retry Online.",
     permission_denied:
       "Online services rejected that request. A developer may need to check account and database rules.",
     health_timeout:
-      "The online backend did not answer quickly. A school network may be blocking it.",
+      "The online backend did not answer quickly. Try again in a moment.",
     health_failed: "The online backend could not be reached from this browser.",
     websocket_timeout: "Live rooms are blocked or too slow on this network.",
-    auth_timeout: "Account sign-in took too long and was cancelled.",
+    auth_timeout:
+      "Account sign-in took too long. Try again in a moment.",
     mixed_content:
       "This page is secure, so online must use a secure wss:// backend.",
     not_found: "That online endpoint was not found.",
@@ -7114,12 +7166,12 @@ async function connectFirebaseOnline({ reconnect = false } = {}) {
     };
     setOnlineStatus(
       "unavailable",
-      "Online services are unavailable on this network",
+      "Online services did not connect",
       describeOnlineError(status.lastError || "firebase_unavailable"),
     );
     if (onlineState.pendingStartAfterAuth) {
       onlineState.pendingStartAfterAuth = false;
-      setOfflineGuestFallbackStatus();
+      setOfflineGuestFallbackStatus(status.lastError || "firebase_unavailable");
     }
     updateOnlineUi();
     return false;
@@ -7193,12 +7245,12 @@ async function connectOnline({ reconnect = false } = {}) {
       onlineState.timeoutReason = error;
       setOnlineStatus(
         "unavailable",
-        "Online services are unavailable on this network",
+        "Online backend did not connect",
         describeOnlineError(error),
       );
       if (onlineState.pendingStartAfterAuth) {
         onlineState.pendingStartAfterAuth = false;
-        setOfflineGuestFallbackStatus();
+        setOfflineGuestFallbackStatus(error);
       }
       updateOnlineUi();
       return false;
@@ -7257,7 +7309,7 @@ async function connectOnline({ reconnect = false } = {}) {
         onlineState.authTimer = window.setTimeout(() => {
           onlineState.timeoutReason = "auth_timeout";
           onlineState.pendingStartAfterAuth = false;
-          setOfflineGuestFallbackStatus();
+          setOfflineGuestFallbackStatus("auth_timeout");
           setOnlineStatus(
             "failed",
             "Account connection timed out",

@@ -355,6 +355,15 @@ export function mapFirebaseError(error) {
     .replace(/^Firebase:\s*/i, "")
     .replace(/[()]/g, "")
     .toLowerCase();
+  if (
+    code.includes("too-many") ||
+    code.includes("quota") ||
+    code.includes("rate-limit") ||
+    code.includes("rate_limited") ||
+    code.includes("429")
+  ) {
+    return "firebase_rate_limited";
+  }
   if (code.includes("network") || code.includes("unavailable")) {
     return "firebase_unavailable";
   }
