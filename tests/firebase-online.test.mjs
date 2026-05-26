@@ -54,8 +54,9 @@ test("Firebase username validation enforces launch-safe names", () => {
   assert.deepEqual(getFirebaseCredentialBadges("Tosh the Sigma", "iamthesigma"), ["Rizzler"]);
   assert.deepEqual(
     FIREBASE_STATIC_BADGE_ACCOUNTS.map((entry) => entry.username),
-    ["Clark", "JFine"],
+    ["Clark", "JFine", "Billy"],
   );
+  assert.deepEqual(getFirebaseBadges("Billy"), ["Advanced Player 2.0"]);
   assert.deepEqual(
     FIREBASE_PASSWORD_BADGE_ACCOUNTS.map((entry) => entry.username),
     ["Tosh_the_Sigma", "Joshua", "MODERATOR"],
@@ -182,6 +183,28 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
     }).customization.bodyId,
     "street",
   );
+  const newerServer = {
+    saveMeta: { updatedAtMs: 5_000 },
+    customization: { bodyId: "monster", wheelId: "reactor" },
+    garage: { activeLoadoutId: "loadout-b" },
+    progressionV2: {
+      totalXp: 1000,
+      xp: 1000,
+      embers: 200,
+      ownedCosmetics: ["bodyId-monster"],
+    },
+  };
+  const staleBrowser = {
+    saveMeta: { updatedAtMs: 1_000 },
+    customization: { bodyId: "interceptor", wheelId: "grip" },
+    garage: { activeLoadoutId: "loadout-a" },
+    progressionV2: { totalXp: 1000, xp: 1000, embers: 50 },
+  };
+  const mergedStale = mergeFirebaseSavePayload(newerServer, staleBrowser);
+  assert.equal(mergedStale.customization.bodyId, "monster");
+  assert.equal(mergedStale.customization.wheelId, "reactor");
+  assert.equal(mergedStale.garage.activeLoadoutId, "loadout-b");
+  assert.equal(mergedStale.progressionV2.embers, 200);
 });
 
 test("Firebase chat and feedback filters block unsafe text", () => {
@@ -198,10 +221,22 @@ test("Firebase chat and feedback filters block unsafe text", () => {
     "text_rejected",
   );
   assert.equal(
+    sanitizeFirebaseText("tell me your d i s c o r d").error,
+    "text_rejected",
+  );
+  assert.equal(
+    sanitizeFirebaseText("you are so dummm").error,
+    "text_rejected",
+  );
+  assert.equal(
     sanitizeFirebaseText("x".repeat(FIREBASE_CHAT_LIMIT + 20)).text.length,
     FIREBASE_CHAT_LIMIT,
   );
   assert.equal(validateFirebaseFeedback("Useful bug report").ok, true);
+  const longFeedback = `start\n${"x".repeat(7000)}\nend`;
+  const feedbackResult = validateFirebaseFeedback(longFeedback);
+  assert.equal(feedbackResult.ok, true);
+  assert.equal(feedbackResult.text, longFeedback);
   assert.equal(
     validateFirebaseFeedback("x".repeat(FIREBASE_FEEDBACK_LIMIT + 1)).error,
     "feedback_too_long",
@@ -471,6 +506,14 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(script, /function sanitizeSpecialBadgeLeaderboardRow\(row = \{\}\)/);
   assert.match(script, /repairNote: "special-badge-xp-cap"/);
   assert.match(script, /function sanitizeSpecialBadgeProgression\(/);
+  assert.doesNotMatch(script, /\["billy",\s*\{\s*repairXp:/i);
+  assert.match(script, /accountSaveDirty: false/);
+  assert.match(script, /function markAccountSaveDirty\(reason = "local-change"\)/);
+  assert.match(script, /markAccountSaveDirty\("garage-equip"\)/);
+  assert.match(script, /!onlineState\.accountSaveDirty[\s\S]*!onlineState\.replaceNextProgressSync[\s\S]*!onlineState\.freshAccountSaveSyncPending/);
+  assert.match(script, /function updateModeDecorFx\(dt\)/);
+  assert.match(script, /onlineRoomCode\?\.addEventListener\("keydown"/);
+  assert.match(script, /joinRoomPending: false/);
   assert.match(script, /const CODEX_LEADERBOARD_BASELINE_XP = 22153;/);
   assert.match(script, /codexLeaderboardXp = CODEX_LEADERBOARD_BASELINE_XP;/);
   assert.match(firebaseOnline, /syncProgress\(payload, \{ silent = false, replace = false \} = \{\}\)/);

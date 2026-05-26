@@ -129,22 +129,21 @@ try {
   assert.equal(state.online.firebase.projectId, "infernodrift4-online");
 
   await page.locator("#online-connect").click({ force: true });
-  await page.waitForFunction(() =>
-    /unavailable/i.test(
-      document.querySelector("#online-status")?.textContent || "",
-    ),
-  );
+  await page.waitForFunction(() => {
+    const state = JSON.parse(window.render_game_to_text());
+    return state.online.transport === "offline" || state.online.status === "error";
+  });
   state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   assert.equal(state.online.transport, "offline");
   assert.equal(state.online.chat.popoutOpen, false);
 
   await page.locator("#menu-feedback").click({ force: true });
-  await page.locator("#feedback-message").fill("x".repeat(2501));
+  await page.locator("#feedback-message").fill("x".repeat(8001));
   await page.locator("#feedback-submit").click({ force: true });
   await page.waitForTimeout(150);
   assert.match(
     (await page.locator("#feedback-status").textContent()) ?? "",
-    /too long|2,500/i,
+    /too long|8,000/i,
   );
 
   assert.deepEqual(consoleErrors, []);

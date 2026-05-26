@@ -1,6 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260524-auth-retry-v1";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260526-safety-sync-v1";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -334,7 +334,7 @@ const ACCOUNT_SYNC_TAB_ID = `${Date.now().toString(36)}-${Math.random()
   .toString(36)
   .slice(2, 9)}`;
 const LEGACY_CLOUDFLARE_PROGRESS_URL = "legacy-cloudflare-progress.json";
-const FEEDBACK_MESSAGE_LIMIT = 2500;
+const FEEDBACK_MESSAGE_LIMIT = 8000;
 const DAILY_GIFT_MIN_XP = 100;
 const DAILY_GIFT_MAX_XP = 1000;
 const DAILY_GIFT_STEP_XP = 25;
@@ -441,7 +441,6 @@ const SPECIAL_BADGE_ACCOUNT_KEYS = new Set([
   "joshua",
   "tosh_the_sigma",
   "tosh the sigma",
-  "billy",
 ]);
 const SPECIAL_BADGE_REPAIR_VERSION = "2026-05-23-badge-xp-repair-v3";
 const SPECIAL_BADGE_SUSPECT_XP = 90000;
@@ -451,7 +450,6 @@ const SPECIAL_BADGE_PROGRESS_POLICIES = new Map([
   ["joshua", { repairXp: 0, maxEmbers: 0, resetProgression: true }],
   ["tosh_the_sigma", { repairXp: 0, maxEmbers: 0, resetProgression: true }],
   ["tosh the sigma", { repairXp: 0, maxEmbers: 0, resetProgression: true }],
-  ["billy", { repairXp: 0, maxEmbers: 0, resetProgression: true }],
 ]);
 const FOUNDER_FRIEND_XP_REWARD = 1000;
 const CODEX_LEADERBOARD_USERNAME = "ChatGPT (Codex)";
@@ -1732,6 +1730,29 @@ const BODY_OPTIONS = [
     },
     stats: { topSpeed: 2, accel: 0.1, turnRate: 0.06, grip: 0.12, drift: -0.02, boost: 0.02 },
   },
+  {
+    id: "juggernaut",
+    name: "Juggernaut",
+    unlockLevel: 24,
+    emberCost: 760,
+    description: "Heavy endgame truck body with wide armor and tall stance.",
+    visual: {
+      primary: 0xffd35f,
+      accent: 0x171b23,
+      bodyType: "juggernaut",
+      bodyScale: [2.5, 0.82, 3.72],
+      hoodScale: [2.08, 0.54, 1.5],
+      cabinScale: [1.62, 0.72, 1.28],
+      trunkScale: [1.9, 0.5, 1.1],
+      lightScale: 1.34,
+      rideHeightBonus: 0.46,
+      wheelRadiusBonus: 0.2,
+      wheelWidthBonus: 0.22,
+      wheelTrackBonus: 0.3,
+      wheelbaseBonus: 0.08,
+    },
+    stats: { topSpeed: 1, accel: 0.02, turnRate: -0.08, grip: 0.28, drift: -0.08, boost: 0.06 },
+  },
 ];
 
 const WHEEL_OPTIONS = [
@@ -1769,6 +1790,15 @@ const WHEEL_OPTIONS = [
     unlock: { worldIndex: 4, levelIndex: 2 },
     visual: { radius: 0.43, width: 0.5, color: 0x141414, rim: 0xffd77a },
     stats: { topSpeed: -1, accel: 0.08, grip: 0.18, drift: -0.06, boost: 0.03 },
+  },
+  {
+    id: "reactor",
+    name: "Reactor",
+    unlockLevel: 22,
+    emberCost: 540,
+    description: "Glowing split-rim wheels for high-level drivers.",
+    visual: { radius: 0.41, width: 0.48, color: 0x090d12, rim: 0xa7c0ff },
+    stats: { topSpeed: 3, accel: 0.04, grip: 0.1, drift: 0.02, boost: 0.16 },
   },
 ];
 
@@ -2056,12 +2086,14 @@ const DECAL_OPTIONS = [
   { id: "none", name: "Clean", unlockLevel: 1, emberCost: 0, description: "No decal." },
   { id: "flame-stripe", name: "Flame Stripe", unlockLevel: 3, emberCost: 120, description: "Bright side flame graphics." },
   { id: "founder-star", name: "Founder Star", unlockLevel: 7, emberCost: 220, description: "Star badge door decal." },
+  { id: "solar-fangs", name: "Solar Fangs", unlockLevel: 20, emberCost: 520, description: "Sharp fang graphics across hood and doors." },
 ];
 
 const LIVERY_OPTIONS = [
   { id: "clean", name: "Clean", unlockLevel: 1, emberCost: 0, description: "Solid arcade paint." },
   { id: "heat-wave", name: "Heat Wave", unlockLevel: 4, emberCost: 160, description: "Layered orange body panels." },
   { id: "night-racer", name: "Night Racer", unlockLevel: 9, emberCost: 280, description: "Dark panels with glowing accents." },
+  { id: "voidline", name: "Voidline", unlockLevel: 23, emberCost: 620, description: "Deep black panels with icy edge highlights." },
 ];
 
 const TIRE_OPTIONS = [
@@ -2089,24 +2121,35 @@ const TIRE_OPTIONS = [
     description: "Deep tread for rough arenas.",
     visual: { tread: "knobby", sidewall: 0x0b0d0f, stripe: 0x3b4a58, treadBlocks: 14 },
   },
+  {
+    id: "titan",
+    name: "Titan",
+    unlockLevel: 21,
+    emberCost: 500,
+    description: "Huge clean tread blocks for monster and heavy bodies.",
+    visual: { tread: "titan", sidewall: 0x08090d, stripe: 0xffd35f, treadBlocks: 18 },
+  },
 ];
 
 const STANCE_OPTIONS = [
   { id: "normal", name: "Normal", unlockLevel: 1, emberCost: 0, rideHeight: 0, suspensionColor: 0x273445, description: "Balanced height." },
   { id: "low", name: "Low Drift", unlockLevel: 5, emberCost: 160, rideHeight: -0.18, suspensionColor: 0xff8a4f, description: "Lower, faster-looking stance." },
   { id: "lifted", name: "Lifted", unlockLevel: 8, emberCost: 220, rideHeight: 0.34, suspensionColor: 0x5feaff, description: "Raised monster-style stance." },
+  { id: "wide-pro", name: "Wide Pro", unlockLevel: 19, emberCost: 460, rideHeight: -0.08, suspensionColor: 0xa7c0ff, description: "Wide race stance with bright suspension arms." },
 ];
 
 const BOOST_TRAIL_OPTIONS = [
   { id: "ember-trail", name: "Ember Trail", unlockLevel: 1, emberCost: 0, color: 0xff8a4f, description: "Starter orange flame trail." },
   { id: "blue-flare", name: "Blue Flare", unlockLevel: 2, emberCost: 130, color: 0x5feaff, description: "Cool blue boost streak." },
   { id: "inferno-comet", name: "Inferno Comet", unlockLevel: 10, emberCost: 340, color: 0xffd35f, description: "Premium gold fire trail." },
+  { id: "plasma-crown", name: "Plasma Crown", unlockLevel: 24, emberCost: 680, color: 0xa7c0ff, description: "Bright crowned plasma burst when boosting." },
 ];
 
 const EXHAUST_OPTIONS = [
   { id: "single-flame", name: "Single Flame", unlockLevel: 1, emberCost: 0, description: "One clean exhaust flame." },
   { id: "twin-burst", name: "Twin Burst", unlockLevel: 4, emberCost: 150, description: "Twin rear flame pops." },
   { id: "lava-spit", name: "Lava Spit", unlockLevel: 9, emberCost: 300, description: "Chunky hot exhaust sparks." },
+  { id: "quad-star", name: "Quad Star", unlockLevel: 25, emberCost: 720, description: "Four polished exhaust tips with star-blue flames." },
 ];
 
 const HORN_OPTIONS = [
@@ -2125,6 +2168,7 @@ const PLATE_OPTIONS = [
   { id: "rookie", name: "Rookie", unlockLevel: 1, emberCost: 0, color: 0xffd680, accent: 0x1a2028, text: "R", description: "Starter nameplate." },
   { id: "spark", name: "Spark", unlockLevel: 4, emberCost: 120, color: 0xff8a4f, accent: 0xfff1d0, text: "S", description: "Bright orange plate." },
   { id: "legend", name: "Legend", unlockLevel: 15, emberCost: 500, color: 0x1a2028, accent: 0xffd35f, text: "L", description: "Long-term driver plate." },
+  { id: "mythic", name: "Mythic", unlockLevel: 26, emberCost: 780, color: 0x090d12, accent: 0xa7c0ff, text: "M", description: "Endgame glowing nameplate." },
 ];
 
 const FINISH_OPTIONS = [
@@ -2132,6 +2176,7 @@ const FINISH_OPTIONS = [
   { id: "matte", name: "Matte", unlockLevel: 5, emberCost: 140, roughness: 0.86, metalness: 0.03, clearcoat: 0, detail: "matte", description: "Soft non-glare finish." },
   { id: "metallic", name: "Metallic", unlockLevel: 8, emberCost: 240, roughness: 0.22, metalness: 0.68, clearcoat: 0.55, detail: "flake", description: "Premium metal sparkle." },
   { id: "lava-glow", name: "Lava Glow", unlockLevel: 14, emberCost: 520, roughness: 0.34, metalness: 0.32, clearcoat: 0.3, detail: "lava", description: "Hot glowing finish." },
+  { id: "prismatic", name: "Prismatic", unlockLevel: 27, emberCost: 840, roughness: 0.18, metalness: 0.55, clearcoat: 0.85, detail: "prism", description: "Clean reflective paint with bright prism rails." },
 ];
 
 const GARAGE_CATEGORIES = [
@@ -2275,6 +2320,8 @@ const onlineState = {
   room: null,
   queue: null,
   pendingRoomJoinLaunch: false,
+  joinRoomPending: false,
+  joinRoomPendingCode: "",
   chatOpen: false,
   feedbackReturnToMenu: false,
   chatMessages: [],
@@ -2285,6 +2332,8 @@ const onlineState = {
   lastProgressSyncAt: 0,
   nextProgressSyncAt: 0,
   saveSyncedAt: 0,
+  accountSaveDirty: false,
+  accountSaveDirtyReason: "",
   accountProgressReady: true,
   applyingAccountSync: false,
   lastAccountSyncPayloadAt: 0,
@@ -3097,6 +3146,7 @@ function claimDailySpark(id) {
     pulse: 0.45,
   });
   savePersistentState();
+  markAccountSaveDirty("daily-spark");
   syncProgressionToBackend();
   renderProgressPanel();
   updateOnlineUi();
@@ -3745,7 +3795,11 @@ function equipGarageCosmetic(categoryKey, optionId, { save = true } = {}) {
     return { ok: false, reason: "Buy it with Embers first." };
   customization[categoryKey] = option.id;
   applyPlayerCustomization();
-  if (save) savePersistentState();
+  if (save) {
+    savePersistentState();
+    markAccountSaveDirty("garage-equip");
+    syncProgressionToBackend();
+  }
   setEffectToast(`${option.name} equipped`, { pulse: 0.22 });
   return { ok: true, option, cosmeticId };
 }
@@ -3776,6 +3830,7 @@ function buyGarageCosmetic(categoryKey, optionId) {
   });
   equipGarageCosmetic(categoryKey, option.id, { save: false });
   savePersistentState();
+  markAccountSaveDirty("garage-buy");
   syncProgressionToBackend();
   renderProgressPanel();
   refreshCustomizationMenu();
@@ -3877,7 +3932,11 @@ function applyCarClass(classId, { save = true } = {}) {
     if (isOptionUnlocked(selected, progress)) customization[key] = selected.id;
   });
   applyPlayerCustomization();
-  if (save) savePersistentState();
+  if (save) {
+    savePersistentState();
+    markAccountSaveDirty("garage-class");
+    syncProgressionToBackend();
+  }
 }
 
 function selectGarageLoadout(loadoutId, { save = true } = {}) {
@@ -3887,7 +3946,11 @@ function selectGarageLoadout(loadoutId, { save = true } = {}) {
   garageState.activeLoadoutId = next.id;
   copyCustomizationFromLoadout(next);
   applyPlayerCustomization();
-  if (save) savePersistentState();
+  if (save) {
+    savePersistentState();
+    markAccountSaveDirty("garage-loadout");
+    syncProgressionToBackend();
+  }
 }
 
 function getClassSummary() {
@@ -4377,6 +4440,7 @@ function redeemDailyGift() {
   refreshGamesUi();
   updateOnlineUi();
   savePersistentState();
+  markAccountSaveDirty("daily-gift");
   syncProgressionToBackend();
   return {
     ok: true,
@@ -4407,6 +4471,19 @@ function savePersistentState() {
     debugLog("menu", "save_failed", error?.message || error);
   }
   broadcastAccountSync(payload, { reason: "local-save" });
+}
+
+function markAccountSaveDirty(reason = "local-change") {
+  if (
+    onlineState.profileMode !== "account" ||
+    onlineState.guestTemporary ||
+    !onlineState.user?.id
+  ) {
+    return false;
+  }
+  onlineState.accountSaveDirty = true;
+  onlineState.accountSaveDirtyReason = reason;
+  return true;
 }
 
 function getSavePayloadUpdatedAtMs(payload = {}) {
@@ -4935,6 +5012,8 @@ function syncProgressionToBackend() {
       .syncProgress(buildPersistentSavePayload(), { replace })
       .then(() => {
         onlineState.saveSyncedAt = Date.now();
+        onlineState.accountSaveDirty = false;
+        onlineState.accountSaveDirtyReason = "";
         requestOnlineLeaderboard({ force: true });
         syncFirebaseServiceStatus();
         updateOnlineUi();
@@ -4978,6 +5057,13 @@ function forceOnlineProgressSync({ force = false } = {}) {
       return false;
     }
     const now = performance.now();
+    if (
+      !onlineState.accountSaveDirty &&
+      !onlineState.replaceNextProgressSync &&
+      !onlineState.freshAccountSaveSyncPending
+    ) {
+      return false;
+    }
     if (!force && now < onlineState.nextProgressSyncAt) return false;
     return syncProgressionToBackend();
   }
@@ -5056,6 +5142,8 @@ function applyServerSave(
   renderProgressPanel();
   refreshGamesUi();
   onlineState.saveSyncedAt = Date.now();
+  onlineState.accountSaveDirty = false;
+  onlineState.accountSaveDirtyReason = "";
   savePersistentState();
   return true;
 }
@@ -7043,7 +7131,7 @@ function describeOnlineError(error = "") {
       "Sign in first to test account, chat, and leaderboard fallback.",
     mixed_content_blocked:
       "This page is secure, so online must use a secure wss:// backend.",
-    feedback_too_long: "Feedback must be 2,500 characters or fewer.",
+    feedback_too_long: `Feedback must be ${FEEDBACK_MESSAGE_LIMIT.toLocaleString()} characters or fewer.`,
     feedback_rejected:
       "Feedback was blocked by the safety filter. Try shorter, school-appropriate wording.",
     firebase_not_configured:
@@ -7580,6 +7668,8 @@ function handleOnlineMessage(raw) {
   } else if (message.type === "room.snapshot") {
     const previousCode = onlineState.room?.code || "";
     onlineState.room = message.room || null;
+    onlineState.joinRoomPending = false;
+    onlineState.joinRoomPendingCode = "";
     const joinedNewRoom = Boolean(
       onlineState.room?.code && onlineState.room.code !== previousCode,
     );
@@ -7631,6 +7721,8 @@ function handleOnlineMessage(raw) {
   } else if (message.type === "room.left") {
     onlineState.room = null;
     onlineState.queue = null;
+    onlineState.joinRoomPending = false;
+    onlineState.joinRoomPendingCode = "";
     onlineState.roomShared = false;
     onlineState.roomSharePending = false;
     onlineState.remoteSnapshots = [];
@@ -8027,10 +8119,8 @@ function removeEmptyPayloadFields(payload) {
   return payload;
 }
 
-function serializeLocalLivePlayerSnapshot() {
-  const mode = getModeDefinition();
-  const battle = state.modeRun?.battle || {};
-  const cosmetics = {
+function getLiveCosmeticsSnapshot() {
+  return {
     bodyId: customization.bodyId,
     wheelId: customization.wheelId,
     styleId: customization.styleId,
@@ -8040,8 +8130,22 @@ function serializeLocalLivePlayerSnapshot() {
     tintId: customization.tintId,
     spoilerId: customization.spoilerId,
     glowId: customization.glowId,
+    decalId: customization.decalId,
+    liveryId: customization.liveryId,
+    tireId: customization.tireId,
+    stanceId: customization.stanceId,
+    boostTrailId: customization.boostTrailId,
+    exhaustId: customization.exhaustId,
+    plateId: customization.plateId,
+    finishId: customization.finishId,
     classId: getActiveLoadout()?.classId || "balanced",
   };
+}
+
+function serializeLocalLivePlayerSnapshot() {
+  const mode = getModeDefinition();
+  const battle = state.modeRun?.battle || {};
+  const cosmetics = getLiveCosmeticsSnapshot();
   return removeEmptyPayloadFields({
     id: onlineState.user?.id || "",
     uid: onlineState.user?.id || "",
@@ -8314,16 +8418,7 @@ function sendOnlineInputFrame(dt = 1 / 60) {
       ammo: Math.round(battle.ammo || 0),
       team: isBattleMode() || isMaxMode() ? "blue" : "neutral",
       cosmetics: {
-        bodyId: customization.bodyId,
-        wheelId: customization.wheelId,
-        styleId: customization.styleId,
-        powerId: customization.powerId,
-        paintId: customization.paintId,
-        accentId: customization.accentId,
-        tintId: customization.tintId,
-        spoilerId: customization.spoilerId,
-        glowId: customization.glowId,
-        classId: getActiveLoadout()?.classId || "balanced",
+        ...getLiveCosmeticsSnapshot(),
       },
       client: {
         x: Number(player.position.x.toFixed(2)),
@@ -8638,13 +8733,23 @@ function joinRoomByCode(code, { source = "manual" } = {}) {
     updateOnlineUi();
     return false;
   }
+  if (onlineState.joinRoomPending && onlineState.joinRoomPendingCode === cleanCode) {
+    return false;
+  }
   if (onlineRoomCode) onlineRoomCode.value = cleanCode;
   if (isFirebaseBackendMode()) {
+    onlineState.joinRoomPending = true;
+    onlineState.joinRoomPendingCode = cleanCode;
     onlineState.pendingRoomJoinLaunch = true;
+    updateOnlineUi();
     joinFirebaseLobbyByCode(cleanCode, {
       source: source === "manual" && invite ? "invite" : source,
     }).catch(() => {
       onlineState.pendingRoomJoinLaunch = false;
+    }).finally(() => {
+      onlineState.joinRoomPending = false;
+      onlineState.joinRoomPendingCode = "";
+      updateOnlineUi();
     });
     return true;
   }
@@ -8662,6 +8767,8 @@ function joinRoomByCode(code, { source = "manual" } = {}) {
     { queue: false },
   );
   onlineState.pendingRoomJoinLaunch = Boolean(sent);
+  onlineState.joinRoomPending = Boolean(sent);
+  onlineState.joinRoomPendingCode = sent ? cleanCode : "";
   if (sent && source === "invite") {
     pushOnlineChatMessage({
       from: "System",
@@ -9804,6 +9911,13 @@ function updateOnlineUi() {
   [onlineCreateRoom, onlineJoinRoom].forEach((node) => {
     if (node) node.disabled = !connected || roomsNeedLive;
   });
+  if (onlineJoinRoom) {
+    onlineJoinRoom.disabled =
+      onlineJoinRoom.disabled || Boolean(onlineState.joinRoomPending);
+    onlineJoinRoom.textContent = onlineState.joinRoomPending
+      ? "Joining..."
+      : "Join Room";
+  }
   if (onlineCreateRoom) {
     onlineCreateRoom.textContent = firebaseMode
       ? "Create Online Lobby"
@@ -9831,12 +9945,12 @@ function updateOnlineUi() {
     const room = onlineState.room;
     onlineRoomState.textContent = room
       ? room.firebaseLobby
-        ? `Online lobby ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${getModeDefinition(room.mode).label}. Chat and invites are active; live racing needs a dedicated game server.`
+        ? `Online lobby ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${getModeDefinition(room.mode).label}. Shared live room active.`
         : `Room ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${room.bots || 0} bots, ${getModeDefinition(room.mode).label}`
       : onlineState.queue
         ? `Queued for ${onlineState.queue.playlist || "casual"} ${onlineState.queue.teamSize || 2}v${onlineState.queue.teamSize || 2}`
         : firebaseMode
-          ? "Online lobby mode is active. Create a lobby for chat/invites; live racing uses a dedicated game server when available."
+          ? "Online lobby mode is active. Create or join a lobby for shared live play."
           : roomsNeedLive
           ? "Rooms need live WebSocket connection. Account, chat, and leaderboard are using HTTPS fallback."
           : "No room joined.";
@@ -9985,8 +10099,8 @@ async function submitFeedback() {
     return;
   }
   const configuredUrl = getFeedbackHttpEndpoint();
-  const message = String(feedbackMessage?.value || "").trim();
-  if (!message) {
+  const message = String(feedbackMessage?.value || "");
+  if (!message.trim()) {
     onlineState.lastFeedbackStatus = "error";
     onlineState.lastFeedbackError = "Please add a feedback message.";
     updateFeedbackStatus();
@@ -9994,7 +10108,7 @@ async function submitFeedback() {
   }
   if (message.length > FEEDBACK_MESSAGE_LIMIT) {
     onlineState.lastFeedbackStatus = "error";
-    onlineState.lastFeedbackError = `Feedback is ${message.length - FEEDBACK_MESSAGE_LIMIT} characters too long. Keep it under 2,500 characters.`;
+    onlineState.lastFeedbackError = `Feedback is ${message.length - FEEDBACK_MESSAGE_LIMIT} characters too long. Keep it under ${FEEDBACK_MESSAGE_LIMIT.toLocaleString()} characters.`;
     updateFeedbackCounter();
     updateFeedbackStatus();
     return;
@@ -10048,8 +10162,8 @@ async function submitFeedback() {
 }
 
 async function submitFirebaseFeedback() {
-  const message = String(feedbackMessage?.value || "").trim();
-  if (!message) {
+  const message = String(feedbackMessage?.value || "");
+  if (!message.trim()) {
     onlineState.lastFeedbackStatus = "error";
     onlineState.lastFeedbackError = "Please add a feedback message.";
     updateFeedbackStatus();
@@ -10057,7 +10171,7 @@ async function submitFirebaseFeedback() {
   }
   if (message.length > FEEDBACK_MESSAGE_LIMIT) {
     onlineState.lastFeedbackStatus = "error";
-    onlineState.lastFeedbackError = `Feedback is ${message.length - FEEDBACK_MESSAGE_LIMIT} characters too long. Keep it under 2,500 characters.`;
+    onlineState.lastFeedbackError = `Feedback is ${message.length - FEEDBACK_MESSAGE_LIMIT} characters too long. Keep it under ${FEEDBACK_MESSAGE_LIMIT.toLocaleString()} characters.`;
     updateFeedbackCounter();
     updateFeedbackStatus();
     return;
@@ -10086,9 +10200,15 @@ async function submitFirebaseFeedback() {
     const storedResult = await firebaseOnline.submitFeedback(payload);
     let result = storedResult;
     try {
-      const emailResult = await submitFeedbackHttpCopy(payload, {
-        includeWorkerFallback: true,
-      });
+      const emailResult = await submitFeedbackHttpCopy(
+        {
+          ...payload,
+          message: storedResult?.message || payload.message,
+        },
+        {
+          includeWorkerFallback: true,
+        },
+      );
       if (emailResult) result = emailResult;
     } catch (emailError) {
       result = {
@@ -10128,7 +10248,7 @@ function updateFeedbackCounter() {
   if (count > FEEDBACK_MESSAGE_LIMIT) {
     feedbackCounter.dataset.state = "error";
     onlineState.lastFeedbackStatus = "error";
-    onlineState.lastFeedbackError = `Feedback is ${count - FEEDBACK_MESSAGE_LIMIT} characters too long. Keep it under 2,500 characters.`;
+    onlineState.lastFeedbackError = `Feedback is ${count - FEEDBACK_MESSAGE_LIMIT} characters too long. Keep it under ${FEEDBACK_MESSAGE_LIMIT.toLocaleString()} characters.`;
     updateFeedbackStatus();
   }
 }
@@ -11323,6 +11443,19 @@ class Car {
         0.89 + rideHeight,
         bodyLength * 0.18,
       ], darkDetailMat.clone());
+    } else if (config.finishDetail === "prism") {
+      [-1, 1].forEach((side) => {
+        addBox("prism-roof-rail", [0.045, 0.024, bodyLength * 0.58], [
+          side * bodyWidth * 0.28,
+          1.08 + rideHeight,
+          -0.04,
+        ], hotDetailMat.clone());
+        addBox("prism-side-rail", [0.028, 0.13, bodyLength * 0.54], [
+          side * (bodyWidth / 2 + 0.13),
+          0.58 + rideHeight,
+          -0.04,
+        ], hotDetailMat.clone());
+      });
     } else {
       addBox("gloss-highlight", [bodyWidth * 0.38, 0.018, bodyLength * 0.52], [
         -bodyWidth * 0.2,
@@ -11418,6 +11551,30 @@ class Car {
         0.22 + rideHeight,
         -bodyLength * 0.28,
       ], darkDetailMat.clone());
+    }
+    if (bodyType === "juggernaut") {
+      addBox("juggernaut-front-armor", [bodyWidth * 0.9, 0.22, 0.28], [
+        0,
+        0.55 + rideHeight,
+        bodyLength / 2 + 0.28,
+      ], darkDetailMat.clone());
+      addBox("juggernaut-roof-rack", [bodyWidth * 0.78, 0.09, 0.74], [
+        0,
+        1.38 + rideHeight,
+        -0.16,
+      ], accentMat.clone());
+      [-1, 1].forEach((side) => {
+        addBox("juggernaut-side-armor", [0.18, 0.3, bodyLength * 0.5], [
+          side * (bodyWidth / 2 + 0.02),
+          0.68 + rideHeight,
+          -0.08,
+        ], primaryMat.clone());
+        addBox("juggernaut-suspension-bar", [0.1, 0.12, bodyLength * 0.62], [
+          side * (bodyWidth / 2 + 0.24),
+          0.28 + rideHeight,
+          0,
+        ], darkDetailMat.clone());
+      });
     }
     if (bodyType === "interceptor" || bodyType === "prototype") {
       addBox("aero-front-splitter", [bodyWidth * 1.02, 0.08, 0.26], [
@@ -11540,6 +11697,24 @@ class Car {
           this.visualRoot.add(starA, starB);
         });
       }
+      if (config.decalStyle === "fang") {
+        [-1, 1].forEach((side) => {
+          const fangX = side * bodyWidth * 0.18;
+          const fang = new THREE.Mesh(
+            new THREE.BoxGeometry(bodyWidth * 0.1, 0.022, bodyLength * 0.42),
+            decalMat.clone(),
+          );
+          fang.position.set(fangX, 0.96 + rideHeight, bodyLength * 0.1);
+          fang.rotation.y = side * 0.34;
+          const sideFang = new THREE.Mesh(
+            new THREE.BoxGeometry(0.024, 0.22, bodyLength * 0.42),
+            decalMat.clone(),
+          );
+          sideFang.position.set(side * (bodyWidth / 2 + 0.12), 0.76 + rideHeight, 0.02);
+          sideFang.rotation.y = side * 0.28;
+          this.visualRoot.add(fang, sideFang);
+        });
+      }
     }
 
     if (
@@ -11586,7 +11761,10 @@ class Car {
       config.wheelWidth + 0.02,
       12,
     );
-    const wheelTrack = (config.wheelTrack ?? 0) + (config.wheelTrackBonus ?? 0);
+    const wheelTrack =
+      (config.wheelTrack ?? 0) +
+      (config.wheelTrackBonus ?? 0) +
+      (config.stanceTrackBonus ?? 0);
     const wheelbase = 0.34 + (config.wheelbaseBonus ?? 0);
     const wheelOffsets = [
       [-bodyWidth / 2 + 0.03 - wheelTrack, 0.25 + rideHeight, bodyLength * wheelbase],
@@ -11611,7 +11789,9 @@ class Car {
       color:
         config.tireTread === "hot"
           ? 0x3a1710
-          : config.tireTread === "knobby"
+          : config.tireTread === "titan"
+            ? 0x0a0b10
+            : config.tireTread === "knobby"
             ? 0x111820
             : 0x171d26,
       roughness: 0.88,
@@ -11647,7 +11827,11 @@ class Car {
       for (let i = 0; i < treadBlocks; i += 1) {
         const tread = new THREE.Mesh(
           new THREE.BoxGeometry(
-            config.tireTread === "knobby" ? 0.052 : 0.04,
+            config.tireTread === "titan"
+              ? 0.064
+              : config.tireTread === "knobby"
+                ? 0.052
+                : 0.04,
             0.026,
             config.wheelWidth + 0.035,
           ),
@@ -11700,11 +11884,24 @@ class Car {
     const exhaustGeo = new THREE.BoxGeometry(0.18, 0.14, 0.32);
     const exhaustL = new THREE.Mesh(exhaustGeo, exhaustMat);
     const exhaustR = exhaustL.clone();
-    const exhaustSpread = config.exhaustStyle === "dual" ? bodyWidth * 0.28 : 0;
+    const exhaustSpread =
+      config.exhaustStyle === "quad" || config.exhaustStyle === "dual"
+        ? bodyWidth * 0.28
+        : 0;
     exhaustL.position.set(-exhaustSpread, 0.3 + rideHeight, -bodyLength / 2 - 0.24);
     exhaustR.position.set(exhaustSpread, 0.3 + rideHeight, -bodyLength / 2 - 0.24);
     this.visualRoot.add(exhaustL);
-    if (config.exhaustStyle === "dual") this.visualRoot.add(exhaustR);
+    if (config.exhaustStyle === "dual" || config.exhaustStyle === "quad")
+      this.visualRoot.add(exhaustR);
+    if (config.exhaustStyle === "quad") {
+      const exhaustL2 = exhaustL.clone();
+      const exhaustR2 = exhaustR.clone();
+      exhaustL2.position.x *= 0.55;
+      exhaustR2.position.x *= 0.55;
+      exhaustL2.position.y += 0.08;
+      exhaustR2.position.y += 0.08;
+      this.visualRoot.add(exhaustL2, exhaustR2);
+    }
 
     const boostFlame = new THREE.Mesh(
       new THREE.ConeGeometry(0.18, 0.58, 12),
@@ -12079,7 +12276,9 @@ function getCarVisualConfig(loadout = getCurrentCustomization()) {
     plate: loadout.plate ?? defaults.plate,
   };
   const liveryAccent =
-    loadout.livery.id === "night-racer"
+    loadout.livery.id === "voidline"
+      ? 0x070b14
+      : loadout.livery.id === "night-racer"
       ? 0x121827
       : loadout.livery.id === "heat-wave"
         ? 0xffb15f
@@ -12089,6 +12288,8 @@ function getCarVisualConfig(loadout = getCurrentCustomization()) {
       ? "flame"
       : loadout.decal.id === "founder-star"
         ? "star"
+        : loadout.decal.id === "solar-fangs"
+          ? "fang"
         : "none";
   return {
     ...loadout.body.visual,
@@ -12097,11 +12298,23 @@ function getCarVisualConfig(loadout = getCurrentCustomization()) {
     tintColor: loadout.tint.color,
     wheelRadius:
       loadout.wheels.visual.radius +
-      (loadout.tires.id === "magma" ? 0.03 : loadout.tires.id === "rally" ? 0.05 : 0) +
+      (loadout.tires.id === "titan"
+        ? 0.08
+        : loadout.tires.id === "magma"
+          ? 0.03
+          : loadout.tires.id === "rally"
+            ? 0.05
+            : 0) +
       (loadout.body.visual.wheelRadiusBonus ?? 0),
     wheelWidth:
       loadout.wheels.visual.width +
-      (loadout.tires.id === "rally" ? 0.05 : loadout.tires.id === "magma" ? 0.03 : 0) +
+      (loadout.tires.id === "titan"
+        ? 0.1
+        : loadout.tires.id === "rally"
+          ? 0.05
+          : loadout.tires.id === "magma"
+            ? 0.03
+            : 0) +
       (loadout.body.visual.wheelWidthBonus ?? 0),
     wheelColor: loadout.tires.visual?.sidewall ?? loadout.wheels.visual.color,
     rimColor: loadout.wheels.visual.rim,
@@ -12109,6 +12322,7 @@ function getCarVisualConfig(loadout = getCurrentCustomization()) {
     tireStripeColor: loadout.tires.visual?.stripe ?? 0x232a34,
     tireTreadBlocks: loadout.tires.visual?.treadBlocks ?? 8,
     wheelTrackBonus: loadout.body.visual.wheelTrackBonus ?? 0,
+    stanceTrackBonus: loadout.stance.id === "wide-pro" ? 0.14 : 0,
     wheelbaseBonus: loadout.body.visual.wheelbaseBonus ?? 0,
     spoiler:
       loadout.spoiler.style === "none" && loadout.body.id === "interceptor"
@@ -12122,12 +12336,23 @@ function getCarVisualConfig(loadout = getCurrentCustomization()) {
     suspensionColor: loadout.stance.suspensionColor ?? 0x273445,
     boostColor: loadout.boostTrail.color ?? loadout.glow.color,
     exhaustColor:
-      loadout.exhaust.id === "lava-spit" ? 0xffd35f : loadout.boostTrail.color,
-    exhaustStyle: loadout.exhaust.id === "twin-burst" ? "dual" : "single",
+      loadout.exhaust.id === "quad-star"
+        ? 0xa7c0ff
+        : loadout.exhaust.id === "lava-spit"
+          ? 0xffd35f
+          : loadout.boostTrail.color,
+    exhaustStyle:
+      loadout.exhaust.id === "quad-star"
+        ? "quad"
+        : loadout.exhaust.id === "twin-burst"
+          ? "dual"
+          : "single",
     decalStyle,
     decalColor:
       loadout.decal.id === "founder-star"
         ? 0xffd35f
+        : loadout.decal.id === "solar-fangs"
+          ? 0xa7c0ff
         : loadout.decal.id === "flame-stripe"
           ? 0xffd35f
           : loadout.accent.color,
@@ -12136,12 +12361,24 @@ function getCarVisualConfig(loadout = getCurrentCustomization()) {
       roughness: loadout.finish.roughness,
       metalness: loadout.finish.metalness,
       clearcoat: loadout.finish.clearcoat ?? 0,
-      emissive: loadout.finish.id === "lava-glow" ? 0x331006 : 0x000000,
-      emissiveIntensity: loadout.finish.id === "lava-glow" ? 0.28 : 0,
+      emissive:
+        loadout.finish.id === "prismatic"
+          ? 0x111a33
+          : loadout.finish.id === "lava-glow"
+            ? 0x331006
+            : 0x000000,
+      emissiveIntensity:
+        loadout.finish.id === "prismatic"
+          ? 0.16
+          : loadout.finish.id === "lava-glow"
+            ? 0.28
+            : 0,
     },
     finishDetail: loadout.finish.detail ?? "shine",
     finishDetailColor:
-      loadout.finish.id === "lava-glow"
+      loadout.finish.id === "prismatic"
+        ? 0xa7c0ff
+        : loadout.finish.id === "lava-glow"
         ? 0xff6b2f
         : loadout.finish.id === "metallic"
           ? 0xffffff
@@ -12310,6 +12547,46 @@ function getRemoteVisualConfigFromIds(cosmetics = null, team = "neutral") {
       DEFAULT_CUSTOMIZATION.spoilerId,
     ),
     glow: getOptionById(GLOW_OPTIONS, ids.glowId, DEFAULT_CUSTOMIZATION.glowId),
+    decal: getOptionById(
+      DECAL_OPTIONS,
+      ids.decalId,
+      DEFAULT_CUSTOMIZATION.decalId,
+    ),
+    livery: getOptionById(
+      LIVERY_OPTIONS,
+      ids.liveryId,
+      DEFAULT_CUSTOMIZATION.liveryId,
+    ),
+    tires: getOptionById(
+      TIRE_OPTIONS,
+      ids.tireId,
+      DEFAULT_CUSTOMIZATION.tireId,
+    ),
+    stance: getOptionById(
+      STANCE_OPTIONS,
+      ids.stanceId,
+      DEFAULT_CUSTOMIZATION.stanceId,
+    ),
+    boostTrail: getOptionById(
+      BOOST_TRAIL_OPTIONS,
+      ids.boostTrailId,
+      DEFAULT_CUSTOMIZATION.boostTrailId,
+    ),
+    exhaust: getOptionById(
+      EXHAUST_OPTIONS,
+      ids.exhaustId,
+      DEFAULT_CUSTOMIZATION.exhaustId,
+    ),
+    finish: getOptionById(
+      FINISH_OPTIONS,
+      ids.finishId,
+      DEFAULT_CUSTOMIZATION.finishId,
+    ),
+    plate: getOptionById(
+      PLATE_OPTIONS,
+      ids.plateId,
+      DEFAULT_CUSTOMIZATION.plateId,
+    ),
   };
   const visual = getCarVisualConfig(loadout);
   if (team === "blue" || team === "red") {
@@ -18555,6 +18832,7 @@ function awardModeProgression({ won = true, reason = "" } = {}) {
     : `${reason || "Objective failed"}, +${xpGained} XP, +${embersGained} Embers`;
   savePersistentState();
   renderDailyGiftNotice();
+  markAccountSaveDirty("mode-run");
   syncProgressionToBackend();
   return { medal, xpGained, embersGained, award };
 }
@@ -18676,6 +18954,9 @@ function updateModeMarkerVisuals(dt) {
     pickup.group.visible = pickup.cooldown <= 0;
     pickup.group.rotation.y += dt * 1.9;
   });
+}
+
+function updateModeDecorFx(dt) {
   for (let i = modeDecor.length - 1; i >= 0; i -= 1) {
     const object = modeDecor[i];
     if (!Number.isFinite(object.userData?.fxLife)) continue;
@@ -20274,6 +20555,7 @@ function updateTransientEffects(dt) {
   state.screenPulse = Math.max(0, state.screenPulse - dt * 2.4);
   state.threatToastCooldown = Math.max(0, state.threatToastCooldown - dt);
   state.nearMissCooldown = Math.max(0, state.nearMissCooldown - dt);
+  updateModeDecorFx(dt);
 }
 
 function stepGame(dt) {
@@ -21477,6 +21759,7 @@ function finishFirstDriveTutorial() {
     reward: "Starter cosmetic unlocked",
   });
   savePersistentState();
+  markAccountSaveDirty("first-drive");
   syncProgressionToBackend();
   showMessage(
     "First Drive Complete",
@@ -22184,6 +22467,19 @@ bindPressAction(onlineJoinRoom, () => {
     .trim()
     .toUpperCase();
   joinRoomByCode(code);
+});
+onlineRoomCode?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  joinRoomByCode(onlineRoomCode.value);
+});
+onlineRoomCode?.addEventListener("blur", () => {
+  if (!onlineRoomCode) return;
+  onlineRoomCode.value = String(onlineRoomCode.value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 10);
 });
 bindPressAction(onlineShareRoom, () => {
   if (isFirebaseBackendMode() || isFirebaseLobbyRoom()) {
@@ -23446,6 +23742,8 @@ window.__infernodriftTestApi = {
         state.progressionV2.totalXp,
         getXPForLevel(unlockLevel),
       );
+      state.progressionV2.xp = state.progressionV2.totalXp;
+      state.progressionV2.level = getProgressionLevel();
     }
     const cosmeticId = getCosmeticId(categoryKey, optionId);
     if (!state.progressionV2.ownedCosmetics.includes(cosmeticId)) {
@@ -23469,15 +23767,21 @@ window.__infernodriftTestApi = {
       tireStripeColor: visual.tireStripeColor,
       tireTreadBlocks: visual.tireTreadBlocks,
       wheelTrackBonus: visual.wheelTrackBonus,
+      stanceTrackBonus: visual.stanceTrackBonus,
       wheelbaseBonus: visual.wheelbaseBonus,
       rideHeight: visual.rideHeight,
       stanceStyle: visual.stanceStyle,
       suspensionColor: visual.suspensionColor,
       decalStyle: visual.decalStyle,
+      decalColor: visual.decalColor,
       finishDetail: visual.finishDetail,
+      finishDetailColor: visual.finishDetailColor,
       finish: visual.finish,
       plateText: visual.plateText,
       plateColor: visual.plateColor,
+      boostColor: visual.boostColor,
+      exhaustColor: visual.exhaustColor,
+      exhaustStyle: visual.exhaustStyle,
       boostConeVisible: Boolean(player.boostFlame?.visible),
       primary: visual.primary,
       accent: visual.accent,
@@ -23899,7 +24203,10 @@ window.__infernodriftTestApi = {
     continuePastSchoolGate();
     return { ...state.schoolGate };
   },
-  forceOnlineProgressSync: () => forceOnlineProgressSync({ force: true }),
+  forceOnlineProgressSync: () => {
+    markAccountSaveDirty("test-force-sync");
+    return forceOnlineProgressSync({ force: true });
+  },
   simulateBackendFailure: (kind = "unavailable") => {
     onlineState.backendHealth = {
       ok: false,

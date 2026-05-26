@@ -16,7 +16,7 @@ import {
   validateFirebaseLobbyCode,
   validateFirebaseScore,
   validateFirebaseUsername,
-} from "./firebase-online-core.js?v=20260523-badge-xp-repair-v2";
+} from "./firebase-online-core.js?v=20260526-safety-sync-v1";
 
 const FIREBASE_SDK_VERSION = "10.13.2";
 const FIREBASE_SDK_BASE = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}`;
@@ -328,6 +328,12 @@ export function mergeFirebaseSavePayload(
   );
   const bestShell = chooseBestSavePayload(existingPayload, incomingPayload) || incomingPayload;
   const latestShell = chooseLatestSavePayload(existingPayload, incomingPayload) || incomingPayload;
+  if (latestShell.progressionV2 && Number.isFinite(Number(latestShell.progressionV2.embers))) {
+    mergedProgression.embers = Math.max(
+      0,
+      Math.floor(Number(latestShell.progressionV2.embers) || 0),
+    );
+  }
   return {
     ...bestShell,
     saveMeta: latestShell.saveMeta || incomingPayload.saveMeta || existingPayload.saveMeta,
@@ -1839,6 +1845,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       delivery: "stored_firebase",
       emailConfigured: false,
       emailError: "",
+      message: validation.text,
     };
   }
 

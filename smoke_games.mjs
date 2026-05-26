@@ -468,16 +468,16 @@ assert.equal(
 );
 await page.locator("#feedback-message").fill("Smoke feedback message");
 const feedbackLimitProbe = await page.evaluate(() => {
-  window.__infernodriftTestApi.setFeedbackTextForTest("x".repeat(2500));
+  window.__infernodriftTestApi.setFeedbackTextForTest("x".repeat(8000));
   const atLimit = window.__infernodriftTestApi.getFeedbackLimitState();
-  window.__infernodriftTestApi.setFeedbackTextForTest("x".repeat(2600));
+  window.__infernodriftTestApi.setFeedbackTextForTest("x".repeat(8100));
   const overLimit = window.__infernodriftTestApi.getFeedbackLimitState();
   return { atLimit, overLimit };
 });
-assert.equal(feedbackLimitProbe.atLimit.count, 2500);
-assert.equal(feedbackLimitProbe.overLimit.count, 2600);
+assert.equal(feedbackLimitProbe.atLimit.count, 8000);
+assert.equal(feedbackLimitProbe.overLimit.count, 8100);
 assert.equal(feedbackLimitProbe.overLimit.tooLong, true);
-assert.match(feedbackLimitProbe.overLimit.counter, /2,600 \/ 2,500/);
+assert.match(feedbackLimitProbe.overLimit.counter, /8,100 \/ 8,000/);
 assert.match(feedbackLimitProbe.overLimit.error, /100 characters too long/);
 await page.locator("#feedback-message").fill("Smoke feedback message");
 await page.locator("#feedback-submit").click({ force: true });
@@ -1179,7 +1179,23 @@ const garageVisualCategories = await page.evaluate(() => {
     window.__infernodriftTestApi.equipGarageCosmetic(category, option);
   });
   const after = window.__infernodriftTestApi.getCarVisualConfigForTest();
-  return { before, after };
+  [
+    ["bodyId", "juggernaut"],
+    ["wheelId", "reactor"],
+    ["tireId", "titan"],
+    ["stanceId", "wide-pro"],
+    ["decalId", "solar-fangs"],
+    ["liveryId", "voidline"],
+    ["boostTrailId", "plasma-crown"],
+    ["exhaustId", "quad-star"],
+    ["plateId", "mythic"],
+    ["finishId", "prismatic"],
+  ].forEach(([category, option]) => {
+    window.__infernodriftTestApi.grantGarageCosmeticForTest(category, option);
+    window.__infernodriftTestApi.equipGarageCosmetic(category, option);
+  });
+  const premium = window.__infernodriftTestApi.getCarVisualConfigForTest();
+  return { before, after, premium };
 });
 assert.equal(garageVisualCategories.after.body, "monster");
 assert.equal(garageVisualCategories.after.tireTread, "knobby");
@@ -1189,6 +1205,13 @@ assert.equal(garageVisualCategories.after.finishDetail, "lava");
 assert.ok(garageVisualCategories.after.rideHeight > garageVisualCategories.before.rideHeight + 0.5);
 assert.ok(garageVisualCategories.after.wheelRadius > garageVisualCategories.before.wheelRadius + 0.25);
 assert.notEqual(garageVisualCategories.after.wheelColor, garageVisualCategories.before.wheelColor);
+assert.equal(garageVisualCategories.premium.body, "juggernaut");
+assert.equal(garageVisualCategories.premium.tireTread, "titan");
+assert.equal(garageVisualCategories.premium.decalStyle, "fang");
+assert.equal(garageVisualCategories.premium.finishDetail, "prism");
+assert.equal(garageVisualCategories.premium.plateText, "M");
+assert.equal(garageVisualCategories.premium.exhaustStyle, "quad");
+assert.notEqual(garageVisualCategories.premium.boostColor, garageVisualCategories.before.boostColor);
 const tutorialState = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   return window.__infernodriftTestApi.startFirstDriveTutorial();

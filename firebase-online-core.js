@@ -1,7 +1,7 @@
 export const FIREBASE_USERNAME_PATTERN =
   /^(?!.* {2})[A-Za-z0-9][A-Za-z0-9 _-]{1,18}[A-Za-z0-9]$/;
 export const FIREBASE_CHAT_LIMIT = 300;
-export const FIREBASE_FEEDBACK_LIMIT = 2500;
+export const FIREBASE_FEEDBACK_LIMIT = 8000;
 export const FIREBASE_SCORE_LIMIT = 1_000_000;
 export const FIREBASE_LEADERBOARD_MODE = "all-modes";
 export const FIREBASE_BACKEND_MODE = "firebase";
@@ -25,10 +25,13 @@ const BLOCKED_TERMS = [
   /j[\W_]*(?:e|3)[\W_]*w[\W_]*(?:r[\W_]*[a4@][\W_]*t|p[\W_]*[i1!l|][\W_]*g|t[\W_]*r[\W_]*[a4@][\W_]*s[\W_]*h)/i,
   /(?:all[\W_]*)?(?:j[\W_]*(?:e|3)[\W_]*w[\W_]*s?|m[\W_]*u[\W_]*s[\W_]*l[\W_]*[i1!l|][\W_]*m[\W_]*s?|b[\W_]*l[\W_]*[a4@][\W_]*c[\W_]*k[\W_]*s?|g[\W_]*[a4@][\W_]*y[\W_]*s?|t[\W_]*r[\W_]*[a4@][\W_]*n[\W_]*s)[\W_]*(?:are|r)[\W_]*(?:evil|dirty|gross|inferior)/i,
   /(?:you|u)[\W_]*(?:are|r)[\W_]*(?:trash|garbage|worthless|ugly|[a4@][\W_]*l[\W_]*(?:o|0)[\W_]*s[\W_]*(?:e|3)[\W_]*r)/i,
+  /(?:you|u)[\W_]*(?:are|r)?[\W_]*(?:so[\W_]*)?d[\W_]*u[\W_]*m[\W_]*b*/i,
+  /(?:you|u)[\W_]*(?:are|r)[\W_]*(?:dumb|stupid|idiot|moron|pathetic|awful|terrible|hated|annoying)/i,
   /(?:you|u)[\W_]*(?:suck|should[\W_]*quit)/i,
+  /(?:shut[\W_]*up|go[\W_]*away|nobody[\W_]*likes[\W_]*(?:you|u)|delete[\W_]*(?:your[\W_]*)?account)/i,
   /no[\W_]*(?:one|1)[\W_]*likes[\W_]*(?:you|u)/i,
-  /(?:send|share|tell|give|text|dm|message|call)[\W_]*(?:me[\W_]*)?(?:your[\W_]*)?(?:password|address|phone|number|email|real[\W_]*name|school|where[\W_]*you[\W_]*live)/i,
-  /(?:what|where)[\W_]*(?:is|s|are|r)?[\W_]*(?:your[\W_]*)?(?:password|address|phone|number|email|real[\W_]*name|school|where[\W_]*you[\W_]*live)/i,
+  /(?:send|share|tell|give|text|dm|message|call|type|post)[\W_]*(?:me[\W_]*)?(?:your[\W_]*)?(?:password|passcode|address|phone|number|email|real[\W_]*name|full[\W_]*name|school|grade|teacher|home|location|snap|discord|where[\W_]*you[\W_]*live)/i,
+  /(?:what|where)[\W_]*(?:is|s|are|r)?[\W_]*(?:your[\W_]*)?(?:password|passcode|address|phone|number|email|real[\W_]*name|full[\W_]*name|school|grade|teacher|home|location|snap|discord|where[\W_]*you[\W_]*live)/i,
   /where[\W_]*(?:do[\W_]*)?(?:you|u)[\W_]*live/i,
   /\b(?:admin|moderator|mod)\b/i,
 ];
@@ -38,6 +41,7 @@ const MILD_REPLACEMENTS = [
   { pattern: /(^|[^a-z0-9])h[\W_]*(?:e|3)[\W_]*l[\W_]*l(?=$|[^a-z0-9])/gi, replacement: "heck" },
   { pattern: /(^|[^a-z0-9])c[\W_]*r[\W_]*[a4@][\W_]*p(?=$|[^a-z0-9])/gi, replacement: "stuff" },
   { pattern: /(^|[^a-z0-9])s[\W_]*h[\W_]*[i1!l|][\W_]*t(?=$|[^a-z0-9])/gi, replacement: "stuff" },
+  { pattern: /(^|[^a-z0-9])p[\W_]*[i1!l|][\W_]*s[\W_]*s(?=$|[^a-z0-9])/gi, replacement: "pee" },
 ];
 
 export const FIREBASE_STATIC_BADGE_ACCOUNTS = [
@@ -48,6 +52,10 @@ export const FIREBASE_STATIC_BADGE_ACCOUNTS = [
   {
     username: "JFine",
     badges: ["Advanced Player"],
+  },
+  {
+    username: "Billy",
+    badges: ["Advanced Player 2.0"],
   },
 ];
 
@@ -77,6 +85,8 @@ function deobfuscate(value = "") {
     .normalize("NFKD")
     .toLowerCase()
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[@]/g, "a")
+    .replace(/[€]/g, "e")
     .replace(/[4@]/g, "a")
     .replace(/[3]/g, "e")
     .replace(/[1!|]/g, "i")
@@ -94,6 +104,9 @@ function moderationVariants(value = "") {
   const normalized = deobfuscate(value);
   const compact = normalized.replace(/[\W_]+/g, "");
   const squashed = compact.replace(/([a-z])\1+/g, "$1");
+  const spaced = normalized.replace(/\b([a-z])(?:\s+([a-z])){2,}\b/g, (match) =>
+    match.replace(/\s+/g, ""),
+  );
   const noSeparator = String(value ?? "")
     .normalize("NFKD")
     .toLowerCase()
@@ -104,7 +117,7 @@ function moderationVariants(value = "") {
     .replace(/[5$]/g, "s")
     .replace(/[7+]/g, "t")
     .replace(/[^a-z0-9]/g, "");
-  return [normalized, compact, squashed, noSeparator].filter(Boolean);
+  return [normalized, spaced, compact, squashed, noSeparator].filter(Boolean);
 }
 
 function hasBlockedContent(value = "") {
@@ -266,13 +279,20 @@ export function getFirebaseCredentialBadges(username = "", password = "") {
   return [...new Set([...badges, ...(account?.badges || [])])];
 }
 
-export function sanitizeFirebaseText(value = "", limit = FIREBASE_CHAT_LIMIT) {
+export function sanitizeFirebaseText(
+  value = "",
+  limit = FIREBASE_CHAT_LIMIT,
+  { truncate = true, preserveFormatting = false } = {},
+) {
   let text = String(value)
     .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, limit);
-  if (!text) return { ok: false, error: "empty_text", text: "" };
+    .replace(/[<>]/g, "");
+  if (!preserveFormatting) text = text.replace(/\s+/g, " ").trim();
+  if (text.length > limit) {
+    if (!truncate) return { ok: false, error: "text_too_long", text: "" };
+    text = text.slice(0, limit);
+  }
+  if (!text.trim()) return { ok: false, error: "empty_text", text: "" };
   if (hasBlockedContent(text)) {
     return { ok: false, error: "text_rejected", text: "" };
   }
@@ -303,12 +323,17 @@ export function validateFirebaseScore(row = {}) {
 }
 
 export function validateFirebaseFeedback(message = "") {
-  const text = String(message || "").trim();
-  if (!text) return { ok: false, error: "empty_feedback" };
+  const text = String(message ?? "");
+  if (!text.trim()) return { ok: false, error: "empty_feedback" };
   if (text.length > FIREBASE_FEEDBACK_LIMIT) {
     return { ok: false, error: "feedback_too_long" };
   }
-  const clean = sanitizeFirebaseText(text, FIREBASE_FEEDBACK_LIMIT);
+  const clean = sanitizeFirebaseText(text, FIREBASE_FEEDBACK_LIMIT, {
+    truncate: false,
+    preserveFormatting: true,
+  });
+  if (clean.error === "text_too_long")
+    return { ok: false, error: "feedback_too_long" };
   if (!clean.ok) return { ok: false, error: "feedback_rejected" };
   return { ok: true, text: clean.text };
 }
