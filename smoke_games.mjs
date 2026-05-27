@@ -1179,6 +1179,7 @@ const garageVisualCategories = await page.evaluate(() => {
     window.__infernodriftTestApi.equipGarageCosmetic(category, option);
   });
   const after = window.__infernodriftTestApi.getCarVisualConfigForTest();
+  const premiumSteps = [];
   [
     ["bodyId", "juggernaut"],
     ["wheelId", "reactor"],
@@ -1191,11 +1192,18 @@ const garageVisualCategories = await page.evaluate(() => {
     ["plateId", "mythic"],
     ["finishId", "prismatic"],
   ].forEach(([category, option]) => {
-    window.__infernodriftTestApi.grantGarageCosmeticForTest(category, option);
-    window.__infernodriftTestApi.equipGarageCosmetic(category, option);
+    const granted = window.__infernodriftTestApi.grantGarageCosmeticForTest(
+      category,
+      option,
+    );
+    const equipped = window.__infernodriftTestApi.equipGarageCosmetic(
+      category,
+      option,
+    );
+    premiumSteps.push({ category, option, granted, equipped });
   });
   const premium = window.__infernodriftTestApi.getCarVisualConfigForTest();
-  return { before, after, premium };
+  return { before, after, premium, premiumSteps };
 });
 assert.equal(garageVisualCategories.after.body, "monster");
 assert.equal(garageVisualCategories.after.tireTread, "knobby");
@@ -1205,7 +1213,11 @@ assert.equal(garageVisualCategories.after.finishDetail, "lava");
 assert.ok(garageVisualCategories.after.rideHeight > garageVisualCategories.before.rideHeight + 0.5);
 assert.ok(garageVisualCategories.after.wheelRadius > garageVisualCategories.before.wheelRadius + 0.25);
 assert.notEqual(garageVisualCategories.after.wheelColor, garageVisualCategories.before.wheelColor);
-assert.equal(garageVisualCategories.premium.body, "juggernaut");
+assert.equal(
+  garageVisualCategories.premium.body,
+  "juggernaut",
+  JSON.stringify(garageVisualCategories.premiumSteps),
+);
 assert.equal(garageVisualCategories.premium.tireTread, "titan");
 assert.equal(garageVisualCategories.premium.decalStyle, "fang");
 assert.equal(garageVisualCategories.premium.finishDetail, "prism");

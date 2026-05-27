@@ -86,7 +86,7 @@ try {
   assert.equal(state.online.backendUrl, "");
   assert.deepEqual(state.online.backupBackendUrls, []);
 
-  const accountUsername = `Runner${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
+  const accountUsername = `Pilot${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
   await page.locator("#start-account-username").fill(accountUsername);
   await page.locator("#start-account-password").fill("smoke12345");
   await page.locator("#start-account-age").fill("13");
@@ -266,7 +266,7 @@ try {
   const lobbyCode = lobbyState.online.room.code;
   assert.match(
     (await page.locator("#online-room-state").textContent()) ?? "",
-    /Online lobby .*Chat and invites are active/i,
+    /Online lobby .*Shared live room active/i,
   );
   assert.equal(await page.locator("#online-queue").isDisabled(), true);
   await page.locator("#online-share-room").click({ force: true });

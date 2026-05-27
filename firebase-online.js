@@ -1362,43 +1362,10 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
   }
 
   function subscribeDirectMessages() {
-    const { firestore } = internals.sdk;
-    if (
-      internals.dmChatUnsubscribe ||
-      !state.uid ||
-      typeof firestore.collectionGroup !== "function"
-    ) {
-      return;
-    }
-    let initialSnapshot = true;
-    const q = firestore.query(
-      firestore.collectionGroup(internals.db, "messages"),
-      firestore.where("toUid", "==", state.uid),
-      firestore.limit(CHAT_HISTORY_LIMIT),
-    );
-    const unsubscribe = firestore.onSnapshot(
-      q,
-      (snapshot) => {
-        if (initialSnapshot) {
-          initialSnapshot = false;
-          return;
-        }
-        snapshot.docChanges().forEach((change) => {
-          if (change.type !== "added") return;
-          const message = mapChatDoc(change.doc);
-          if (!isVisibleChatMessage(message)) return;
-          if (!message.direct || message.userId === state.uid) return;
-          emit("chat.message", message);
-        });
-      },
-      (error) => {
-        state.chatStatus = "dm-listener-failed";
-        state.chatListenerActive = false;
-        console.warn("InfernoDrift4 DM listener unavailable", error);
-      },
-    );
-    internals.dmChatUnsubscribe = unsubscribe;
-    internals.unsubscribers.push(unsubscribe);
+    // Direct-message notifications now use the owner-scoped dmInboxes path.
+    // A collection-group listener over every "messages" collection also scans
+    // dmInboxes for other users, which Firestore correctly rejects.
+    return;
   }
 
   function subscribeDirectMessageInbox() {

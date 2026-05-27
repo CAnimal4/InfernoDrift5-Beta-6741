@@ -441,3 +441,11 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Changed Firebase lobby live-state writes so each client updates only its own `livePlayers.{uid}` snapshot, while the elected host owns shared `liveState` for scores, Max ball, battle/time state, bots, and stale-player cleanup.
 - Made Firebase live followers stop simulating shared bots/objects locally and apply the host snapshot instead, while still driving their own local car and publishing movement/cosmetics snapshots.
 - Hardened remote-player filtering against all local account ids, republished snapshots after room join/game start/garage changes, added a real lobby leave path, and updated the live smoke to verify two browser contexts share movement, monster-body cosmetics, score, and ball state.
+
+2026-05-26 runtime hunt and strategic stability fixes:
+
+- Found and fixed a deterministic gameplay-smoke issue where the test API could start a first-time mode with the mode intro still open, leaving Max Arena paused during acceleration checks. Real player-facing first-time overlays are unchanged.
+- Found and fixed a special-badge account safety bug where high XP could be capped again after a previous cleanup. Repaired/evidence-bearing saves now keep earned XP/Embers/progress, while the polluted-account cleanup path remains available for no-evidence legacy badge saves.
+- Found and fixed a Firebase DM listener/rules mismatch: the old collection-group listener collided with owner-scoped `dmInboxes` rules and produced missing-permission warnings. DM notifications now rely on the inbox listener that matches the rules.
+- Updated the live Firebase smoke so it uses a leaderboard-visible `Pilot...` account instead of a blocked `Runner...` test account, and matched the current shared-live-room lobby copy.
+- Verified with node checks, Firebase unit tests, full tests, build/typecheck, main gameplay smoke, Firebase offline smoke, online-local smoke, e2e smoke, and live Firebase smoke.

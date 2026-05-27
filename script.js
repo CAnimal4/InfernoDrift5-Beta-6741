@@ -4828,6 +4828,18 @@ function sanitizeSpecialBadgeProgression(
   if (normalized.totalXp < SPECIAL_BADGE_SUSPECT_XP) {
     return { progression: progress, changed: false };
   }
+  if (
+    hasSpecialBadgeRepairMarker(normalized) ||
+    hasHardEarnedProgressEvidence({
+      progressionV2: normalized,
+      worldIndex: state.worldIndex,
+      levelIndex: state.levelIndex,
+      customization,
+      garage: garageState,
+    })
+  ) {
+    return { progression: progress, changed: false };
+  }
   const repairXp = Math.max(0, Math.floor(Number(policy.repairXp) || 0));
   const maxEmbers = Number.isFinite(Number(policy.maxEmbers))
     ? Math.max(0, Math.floor(Number(policy.maxEmbers) || 0))
@@ -23736,6 +23748,10 @@ window.__infernodriftTestApi = {
           DEFAULT_CUSTOMIZATION[categoryKey],
         )
       : null;
+    const cosmeticId = getCosmeticId(categoryKey, option?.id || optionId);
+    if (!state.progressionV2.ownedCosmetics.includes(cosmeticId)) {
+      state.progressionV2.ownedCosmetics.push(cosmeticId);
+    }
     const unlockLevel = getOptionUnlockLevel(option);
     if (unlockLevel > getProgressionLevel()) {
       state.progressionV2.totalXp = Math.max(
@@ -23744,10 +23760,6 @@ window.__infernodriftTestApi = {
       );
       state.progressionV2.xp = state.progressionV2.totalXp;
       state.progressionV2.level = getProgressionLevel();
-    }
-    const cosmeticId = getCosmeticId(categoryKey, optionId);
-    if (!state.progressionV2.ownedCosmetics.includes(cosmeticId)) {
-      state.progressionV2.ownedCosmetics.push(cosmeticId);
     }
     return state.progressionV2.ownedCosmetics.includes(cosmeticId);
   },
@@ -24119,6 +24131,7 @@ window.__infernodriftTestApi = {
   startMode: (modeId) => {
     setActiveGameMode(modeId, { save: false, reset: false });
     startRun(true);
+    if (state.modeHelpOpen) closeModeHelp({ resume: true });
     const mode = getModeDefinition();
     return { ...mode, id: getPublicModeId(mode) };
   },
