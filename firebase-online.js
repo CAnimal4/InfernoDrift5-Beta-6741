@@ -418,15 +418,26 @@ function requestKey(fromUid, toUid) {
   return [String(fromUid || ""), String(toUid || "")].sort().join("_");
 }
 
+function getLobbyPlayerTeam(index = 0, teamSize = 1) {
+  const safeTeamSize = Math.max(1, Math.min(3, Math.floor(Number(teamSize) || 1)));
+  return Math.floor(Math.max(0, index) / safeTeamSize) % 2 === 0
+    ? "blue"
+    : "red";
+}
+
 function mapLobbyDoc(snapshot) {
   const data = snapshot.data() || {};
   const players = Array.isArray(data.players)
-    ? data.players.slice(0, FIREBASE_LOBBY_MAX_PLAYERS).map((player) => ({
+    ? data.players.slice(0, FIREBASE_LOBBY_MAX_PLAYERS).map((player, index) => ({
         id: player.uid || player.id || "",
         uid: player.uid || player.id || "",
         username: player.username || "Player",
         badge: Array.isArray(player.badges) ? player.badges[0] || "" : "",
         badges: Array.isArray(player.badges) ? player.badges : [],
+        team:
+          player.team === "red" || player.team === "blue"
+            ? player.team
+            : getLobbyPlayerTeam(index, data.teamSize),
         host: player.uid === data.hostUid || player.id === data.hostUid,
         firebaseLobby: true,
       }))
@@ -1591,10 +1602,12 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     requireReady();
     if (!state.uid) throw new Error("sign_in_required");
     const { firestore } = internals.sdk;
+    const teamSize = Math.max(1, Math.min(3, Number(options.teamSize) || 1));
     const player = {
       uid: state.uid,
       username: state.username || "Player",
       badges: internals.userProfile?.badges || [],
+      team: getLobbyPlayerTeam(0, teamSize),
     };
     for (let attempt = 0; attempt < 8; attempt += 1) {
       const code = createFirebaseLobbyCode();
@@ -1607,9 +1620,9 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
         hostUsername: state.username || "Player",
         mode: String(options.mode || "max-arena").slice(0, 40),
         playlist: String(options.playlist || "firebase-lobby").slice(0, 40),
-        teamSize: Math.max(1, Math.min(3, Number(options.teamSize) || 2)),
+        teamSize,
         size: FIREBASE_LOBBY_MAX_PLAYERS,
-        botFill: options.botFill !== false,
+        botFill: teamSize === 1 ? false : options.botFill !== false,
         private: true,
         live: false,
         backendMode: FIREBASE_BACKEND_MODE,
@@ -1654,6 +1667,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
                   uid: state.uid,
                   username: state.username || "Player",
                   badges: internals.userProfile?.badges || [],
+                  team: getLobbyPlayerTeam(players.length, data.teamSize),
                 },
               ];
           if (nextPlayers.length > FIREBASE_LOBBY_MAX_PLAYERS) {

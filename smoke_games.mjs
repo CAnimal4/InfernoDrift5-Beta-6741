@@ -458,6 +458,19 @@ onlineUiState = JSON.parse(
 );
 assert.equal(onlineUiState.online.chat.mode, "report");
 assert.equal(await page.locator("#chat-command-panel").isVisible(), true);
+const feedbackNudge = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetFeedbackNudgeForTest();
+  window.__infernodriftTestApi.openMenuTab("games");
+  const first = window.__infernodriftTestApi.getFeedbackNudgeStateForTest();
+  window.__infernodriftTestApi.closeMenuForTest();
+  window.__infernodriftTestApi.openMenuTab("games");
+  const second = window.__infernodriftTestApi.getFeedbackNudgeStateForTest();
+  return { first, second };
+});
+assert.equal(feedbackNudge.first.visible, true);
+assert.equal(feedbackNudge.first.hidden, false);
+assert.match(feedbackNudge.first.text, /ideas shape/i);
+assert.equal(feedbackNudge.second.visible, false);
 await page.locator("#menu-feedback").click({ force: true });
 await page.waitForTimeout(150);
 assert.equal(
@@ -574,6 +587,34 @@ const maxSpeedState = JSON.parse(
 assert.ok(
   maxSpeedState.player.speed_mph >= 38,
   `Max Arena acceleration should feel lively, got ${maxSpeedState.player.speed_mph} mph`,
+);
+const xpBalance = await page.evaluate(() => ({
+  fastRace: window.__infernodriftTestApi.estimateModeRewardsForTest("race", {
+    won: true,
+    score: 1200,
+    progress: 10,
+    timeLeft: 92,
+  }),
+  slowRace: window.__infernodriftTestApi.estimateModeRewardsForTest("race", {
+    won: true,
+    score: 1800,
+    progress: 10,
+    timeLeft: 18,
+  }),
+  maxWin: window.__infernodriftTestApi.estimateModeRewardsForTest("max-arena", {
+    won: true,
+    score: 1200,
+    progress: 5,
+    timeLeft: 55,
+  }),
+}));
+assert.ok(
+  xpBalance.fastRace.xp > xpBalance.slowRace.xp,
+  `fast race should beat slow high-score race: ${JSON.stringify(xpBalance)}`,
+);
+assert.ok(
+  xpBalance.maxWin.xp > xpBalance.fastRace.xp,
+  `long Max win should pay more than quick race: ${JSON.stringify(xpBalance)}`,
 );
 await page.keyboard.press("x");
 await page.evaluate(() => window.advanceTime(220));
@@ -1243,6 +1284,26 @@ assert.equal(roomJoinState.running, true);
 assert.equal(roomJoinState.ui.screen, "playing");
 assert.equal(roomJoinState.online.room.code, "BTTL7");
 assert.equal(roomJoinState.online.room.liveRole, "host");
+const duelRoomState = await page.evaluate(() => {
+  window.__infernodriftTestApi.simulateRoomJoinForTest({
+    code: "DUEL1",
+    mode: "battle-arena",
+    ownId: "joiner-user",
+    hostUid: "host-user",
+    liveHostUid: "host-user",
+    teamSize: 1,
+    botFill: false,
+    players: [
+      { id: "host-user", uid: "host-user", username: "Host", team: "blue" },
+      { id: "joiner-user", uid: "joiner-user", username: "Joiner", team: "red" },
+    ],
+  });
+  window.__infernodriftTestApi.startMode("battle-arena");
+  return JSON.parse(window.render_game_to_text());
+});
+assert.equal(duelRoomState.battle.team, "red");
+assert.equal(duelRoomState.bots.length, 0);
+assert.equal(duelRoomState.online.room.botFill, false);
 const maxLiveState = await page.evaluate(() => {
   window.__infernodriftTestApi.simulateRoomJoinForTest({
     code: "MAX77",

@@ -209,6 +209,9 @@
             </div>
             <button class="ghost" id="menu-feedback" type="button">Feedback</button>
           </div>
+          <div class="menu-feedback-nudge" id="menu-feedback-nudge" hidden>
+            Your ideas shape the next update. Leave feedback and real requests can become real game changes.
+          </div>
           <div class="menu-actions" aria-label="Pause actions">
             <button class="primary" id="menu-resume" type="button">Resume</button>
             <button class="ghost" id="menu-restart" type="button">Restart Run</button>
@@ -420,15 +423,15 @@
                     <label class="field">
                       <span>Team Size</span>
                       <select id="online-team-size">
-                        <option value="1">1v1</option>
-                        <option value="2" selected>2v2</option>
+                        <option value="1" selected>1v1</option>
+                        <option value="2">2v2</option>
                         <option value="3">3v3</option>
                       </select>
                     </label>
                   </div>
                   <label class="field toggle">
                     <span>Bot Fill</span>
-                    <input id="online-bot-fill" type="checkbox" checked />
+                    <input id="online-bot-fill" type="checkbox" />
                   </label>
                   <div class="cta-row compact-actions">
                     <button class="ghost" id="online-create-room" type="button">Create Private Room</button>

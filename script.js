@@ -67,6 +67,7 @@ const minimapCtx = minimapCanvas ? minimapCanvas.getContext("2d") : null;
 const menu = document.getElementById("menu");
 const menuBtn = document.getElementById("menu-btn");
 const menuFeedback = document.getElementById("menu-feedback");
+const menuFeedbackNudge = document.getElementById("menu-feedback-nudge");
 const menuStateLabel = document.getElementById("menu-state-label");
 const menuResume = document.getElementById("menu-resume");
 const menuRestart = document.getElementById("menu-restart");
@@ -320,6 +321,7 @@ const ACCOUNT_SYNC_STORAGE_KEY = "infernoDrift4.accountSync.last";
 const LEGACY_SAVE_STORAGE_KEYS = ["infernoDrift3.save.v1"];
 const ONLINE_STORAGE_KEY = "infernoDrift4.online.v1";
 const FEEDBACK_STORAGE_KEY = "infernoDrift4.feedback.v1";
+const FEEDBACK_NUDGE_STORAGE_KEY = "infernoDrift4.feedbackNudgeSeen.v1";
 const ONBOARDING_STORAGE_KEY = "infernoDrift4.onboarding.v1";
 const EXIT_LINK_DEFAULT_URL = "https://lbusd.instructure.com/?login_success=1";
 const EXIT_LINK_KEY_CODE = "KeyQ";
@@ -3320,6 +3322,7 @@ const state = {
   remapStatus: "",
   modeHelpOpen: false,
   modeHelpWasRunning: false,
+  feedbackNudgeVisible: false,
   onboarding: {
     firstVisit: false,
     recommendedMode: GAME_MODE_RACE,
@@ -6445,11 +6448,12 @@ function flushOnlinePending() {
 }
 
 function getOnlineRoomOptions() {
+  const teamSize = Math.max(1, Math.min(3, Number(onlineTeamSize?.value) || 1));
   return {
     mode: normalizeGameModeId(onlineRoomMode?.value || settings.activeGameMode),
     playlist: onlinePlaylist?.value || "casual",
-    teamSize: Math.max(1, Math.min(3, Number(onlineTeamSize?.value) || 2)),
-    botFill: onlineBotFill?.checked !== false,
+    teamSize,
+    botFill: teamSize === 1 ? false : onlineBotFill?.checked !== false,
   };
 }
 
@@ -8158,12 +8162,13 @@ function serializeLocalLivePlayerSnapshot() {
   const mode = getModeDefinition();
   const battle = state.modeRun?.battle || {};
   const cosmetics = getLiveCosmeticsSnapshot();
+  const liveTeam = getOwnLiveTeam("blue");
   return removeEmptyPayloadFields({
     id: onlineState.user?.id || "",
     uid: onlineState.user?.id || "",
     username: onlineState.user?.username || onlineState.username || "Player",
     mode: mode.id,
-    team: isBattleMode() || isMaxMode() ? "blue" : "neutral",
+    team: isBattleMode() || isMaxMode() ? liveTeam : "neutral",
     x: Number(player.position.x.toFixed(2)),
     y: Number(player.position.y.toFixed(2)),
     z: Number(player.position.z.toFixed(2)),
@@ -8404,6 +8409,8 @@ function sendOnlineInputFrame(dt = 1 / 60) {
     ? state.modeRun.stunt.trick.toLowerCase().replace(/[^a-z0-9-]+/g, "-")
     : "";
   sendOnlineMessage(
+    // Legacy WebSocket rooms keep their own server assignment; Firebase live
+    // rooms use serializeLocalLivePlayerSnapshot above.
     removeEmptyPayloadFields({
       type: "input.frame",
       seq: onlineState.inputSeq,
@@ -8428,7 +8435,7 @@ function sendOnlineInputFrame(dt = 1 / 60) {
       ),
       health: Math.round(battle.health || 0),
       ammo: Math.round(battle.ammo || 0),
-      team: isBattleMode() || isMaxMode() ? "blue" : "neutral",
+      team: isBattleMode() || isMaxMode() ? getOwnLiveTeam("blue") : "neutral",
       cosmetics: {
         ...getLiveCosmeticsSnapshot(),
       },
@@ -8592,6 +8599,24 @@ function getFirebaseLiveHostUid(room = onlineState.room) {
     activeIds[0] ||
     ""
   );
+}
+
+function getOwnFirebaseRoomMember(room = onlineState.room) {
+  const ids = getLocalOnlinePlayerIds();
+  return (Array.isArray(room?.players) ? room.players : []).find((member) =>
+    [member?.uid, member?.id, member?.userId]
+      .map((value) => String(value || ""))
+      .some((id) => ids.has(id)),
+  );
+}
+
+function getOwnLiveTeam(fallback = "blue", room = onlineState.room) {
+  const team = getOwnFirebaseRoomMember(room)?.team;
+  return team === "red" || team === "blue" ? team : fallback;
+}
+
+function shouldUseRoomBots(room = onlineState.room) {
+  return !(isFirebaseLiveRoom(room) && room?.botFill === false);
 }
 
 function isFirebaseLiveHost(room = onlineState.room) {
@@ -9941,6 +9966,11 @@ function updateOnlineUi() {
   }
   if (onlineRoomMode && document.activeElement !== onlineRoomMode) {
     onlineRoomMode.value = onlineState.room?.mode || settings.activeGameMode;
+  }
+  if (onlineBotFill && onlineTeamSize) {
+    const oneVsOne = Number(onlineTeamSize.value) === 1;
+    if (oneVsOne) onlineBotFill.checked = false;
+    onlineBotFill.disabled = oneVsOne;
   }
   if (onlineShareRoom) {
     onlineShareRoom.disabled =
@@ -15164,6 +15194,10 @@ function refreshMenuShell() {
   if (menuStateLabel) {
     menuStateLabel.textContent = state.running ? "Paused" : "Garage / Setup";
   }
+  if (menuFeedbackNudge) {
+    menuFeedbackNudge.hidden = !state.feedbackNudgeVisible;
+  }
+  menu?.classList.toggle("feedback-nudge-active", state.feedbackNudgeVisible);
   if (menuResume) menuResume.hidden = !state.running;
   renderProgressPanel();
   renderGarageLoadouts();
@@ -15174,8 +15208,28 @@ function refreshMenuShell() {
   }
 }
 
+function maybeShowFeedbackNudge() {
+  if (!menuFeedbackNudge) return;
+  let alreadySeen = false;
+  try {
+    alreadySeen = localStorage.getItem(FEEDBACK_NUDGE_STORAGE_KEY) === "1";
+  } catch {
+    alreadySeen = false;
+  }
+  state.feedbackNudgeVisible = !alreadySeen;
+  if (!alreadySeen) {
+    try {
+      localStorage.setItem(FEEDBACK_NUDGE_STORAGE_KEY, "1");
+    } catch {
+      // Local storage can be unavailable in private contexts.
+    }
+  }
+}
+
 function setMenuOpen(open, tabName = null) {
   if (open && state.modeHelpOpen) closeModeHelp({ resume: false });
+  if (open) maybeShowFeedbackNudge();
+  else state.feedbackNudgeVisible = false;
   menu.classList.toggle("show", open);
   document.body.classList.toggle("menu-open", open);
   if (!open && modeHelpCard) modeHelpCard.hidden = true;
@@ -15410,10 +15464,17 @@ function resetModeRunState() {
 
 function getModeSpawn() {
   if (isMaxMode()) {
-    const [x, z] = getTeamSpawnSlots("blue")[0];
-    return { x, y: getMaxSurfaceHeight(x, z), z, heading: 0 };
+    const team = getOwnLiveTeam("blue");
+    const [x, z] = getTeamSpawnSlots(team)[0];
+    return { x, y: getMaxSurfaceHeight(x, z), z, heading: team === "red" ? Math.PI : 0 };
   }
   const mode = getModeDefinition();
+  if (mode.id === GAME_MODE_BATTLE) {
+    const team = getOwnLiveTeam("blue");
+    return team === "red"
+      ? { x: 62, z: 146, heading: Math.PI, y: 0 }
+      : { x: -62, z: -146, heading: 0, y: 0 };
+  }
   if (mode.id === GAME_MODE_RACE || mode.id === GAME_MODE_TIME_TRIAL) {
     const layout = getRaceTrackLayout(mode);
     const start = layout.start;
@@ -15432,7 +15493,6 @@ function getModeSpawn() {
     [GAME_MODE_STUNT]: { x: -118, z: -118, heading: Math.PI * 0.22 },
     [GAME_MODE_RAMP_RUSH]: { x: -118, z: -118, heading: Math.PI * 0.22 },
     [GAME_MODE_BOOST_BOWLING]: { x: 0, z: -142, heading: 0 },
-    [GAME_MODE_BATTLE]: { x: -62, z: -146, heading: 0 },
     [GAME_MODE_HUNTER_TAG]: { x: 0, z: -128, heading: 0 },
     [GAME_MODE_BOT_ESCAPE]: { x: 0, z: -128, heading: 0 },
     [GAME_MODE_BOSS]: { x: 0, z: -132, heading: 0 },
@@ -15553,10 +15613,18 @@ function spawnMaxBots() {
   const aiRules = getMaxAiRules();
   const blueSlots = getTeamSpawnSlots("blue");
   const redSlots = getTeamSpawnSlots("red");
-  player.team = "blue";
+  player.team = getOwnLiveTeam("blue");
   player.role = "striker";
   player.visualRoot.scale.setScalar(1.14);
   player.collisionRadius = 1.72;
+  const [playerX, playerZ] = getTeamSpawnSlots(player.team)[0];
+  player.setPosition(playerX, getMaxSurfaceHeight(playerX, playerZ), playerZ);
+  player.heading = player.team === "red" ? Math.PI : 0;
+  player.moveHeading = player.heading;
+  if (!shouldUseRoomBots()) {
+    maxMode.teamCars = [player];
+    return;
+  }
   const botSpecs = [
     {
       team: "blue",
@@ -15683,14 +15751,15 @@ function configureBattleCar(car, team, role = "laser") {
 
 function spawnBattleBots() {
   clearBotState();
-  player.team = "blue";
+  player.team = getOwnLiveTeam("blue");
   player.role = "captain";
   player.battleHealth = BATTLE_RULES.maxHealth;
   player.battleAmmo = BATTLE_RULES.maxAmmo;
   player.battleLaserCooldown = 0;
   player.battleReloadTimer = 0;
   player.battleShieldTimer = 0;
-  player.rebuildVisual(getTeamCarVisualConfig("blue"));
+  player.rebuildVisual(getTeamCarVisualConfig(player.team));
+  if (!shouldUseRoomBots()) return;
   const specs = [
     { team: "blue", role: "support", x: 72, z: -132, heading: 0, speed: 36 },
     { team: "blue", role: "guard", x: -88, z: -178, heading: 0, speed: 32 },
@@ -17418,14 +17487,16 @@ function resetMaxKickoffPositions() {
   const ballTuning = getMaxBallTuning();
   const blueSpawns = getTeamSpawnSlots("blue");
   const redSpawns = getTeamSpawnSlots("red");
+  const playerSpawns = player.team === "red" ? redSpawns : blueSpawns;
+  const [playerX, playerZ] = playerSpawns[0] ?? blueSpawns[0];
   player.setDemolished(false);
   player.setPosition(
-    blueSpawns[0][0],
-    getMaxSurfaceHeight(...blueSpawns[0]),
-    blueSpawns[0][1],
+    playerX,
+    getMaxSurfaceHeight(playerX, playerZ),
+    playerZ,
   );
-  player.heading = 0;
-  player.moveHeading = 0;
+  player.heading = player.team === "red" ? Math.PI : 0;
+  player.moveHeading = player.heading;
   player.speed = 0;
   player.verticalVel = 0;
   player.maxHealth = MAX_HEALTH_MAX;
@@ -18760,6 +18831,71 @@ function medalForScore(score, mode = getModeDefinition()) {
   return "Clear";
 }
 
+function getModeXpProfile(mode = getModeDefinition()) {
+  const seconds = Math.max(60, Number(mode.time || getLevel().time || 120));
+  const base = Math.round(145 + seconds * 1.65);
+  const longModeBonus =
+    mode.id === GAME_MODE_MAX1 || mode.id === GAME_MODE_BATTLE
+      ? 75
+      : mode.id === GAME_MODE_BOOST_BOWLING
+        ? 55
+        : 0;
+  return {
+    base: base + longModeBonus,
+    scoreCap: Math.round((base + longModeBonus) * 0.42),
+    speedCap:
+      mode.id === GAME_MODE_RACE || mode.id === GAME_MODE_TIME_TRIAL
+        ? 230
+        : 160,
+  };
+}
+
+function getMedalXpBonus(medal = "Clear") {
+  return {
+    Clear: 25,
+    Bronze: 70,
+    Silver: 115,
+    Gold: 165,
+    Inferno: 230,
+  }[medal] ?? 25;
+}
+
+function calculateModeRewards({ won = true, score = 0, medal = "Clear" } = {}) {
+  const mode = getModeDefinition();
+  const profile = getModeXpProfile(mode);
+  const progress = modeProgressPercent();
+  const timeLimit = Math.max(1, Number(getLevel().time || mode.time || 0));
+  const elapsed = THREE.MathUtils.clamp(timeLimit - Number(state.timeLeft || 0), 0, timeLimit);
+  const timeEfficiency = won ? THREE.MathUtils.clamp(1 - elapsed / timeLimit, 0, 1) : 0;
+  const scoreBonus = Math.min(
+    profile.scoreCap,
+    Math.max(0, Math.round(Number(score || 0) / 32)),
+  );
+  const progressBonus = Math.round(progress * 95);
+  const speedBonus = Math.round(timeEfficiency * profile.speedCap);
+  if (!won) {
+    const xp = Math.round(35 + profile.base * 0.18 + progress * profile.base * 0.32);
+    return {
+      xp: Math.max(40, xp),
+      embers: Math.max(5, Math.round(8 + progress * 20)),
+    };
+  }
+  const xp = Math.round(
+    profile.base +
+      getMedalXpBonus(medal) +
+      progressBonus +
+      speedBonus +
+      scoreBonus,
+  );
+  const embers = Math.round(
+    16 +
+      profile.base / 28 +
+      timeEfficiency * 10 +
+      (medal === "Inferno" ? 42 : medal === "Gold" ? 25 : medal === "Silver" ? 12 : 0),
+  );
+  return { xp, embers: Math.max(12, embers) };
+}
+
 function modeProgressPercent() {
   const target = Math.max(1, state.modeRun.target || getLevel().time || 1);
   return THREE.MathUtils.clamp(state.modeRun.progress / target, 0, 1);
@@ -18788,12 +18924,9 @@ function awardModeProgression({ won = true, reason = "" } = {}) {
   const key = getModeProgressKey(mode);
   const score = Math.floor(state.score);
   const medal = won ? medalForScore(score, mode) : "Attempt";
-  const xpGained = won
-    ? 120 + Math.round(score / 18) + Math.round(modeProgressPercent() * 80)
-    : 30 + Math.round(modeProgressPercent() * 40);
-  const embersGained = won
-    ? 18 + Math.round(score / 220) + (medal === "Inferno" ? 45 : medal === "Gold" ? 25 : 0)
-    : Math.max(5, Math.round(modeProgressPercent() * 14));
+  const rewards = calculateModeRewards({ won, score, medal });
+  const xpGained = rewards.xp;
+  const embersGained = rewards.embers;
   const progression = state.progressionV2;
   progression.medals[key] = medal;
   const previousBest = progression.personalBests[mode.id]?.score ?? 0;
@@ -23604,6 +23737,8 @@ window.render_game_to_text = () => {
             members: onlineState.room.players || [],
             players: onlineState.room.players?.length ?? 0,
             bots: onlineState.room.bots ?? 0,
+            teamSize: onlineState.room.teamSize,
+            botFill: onlineState.room.botFill !== false,
             liveHostUid: getFirebaseLiveHostUid(onlineState.room),
             liveRole: isFirebaseLiveHost(onlineState.room) ? "host" : "client",
             liveSeq: onlineState.room.liveSeq || 0,
@@ -23827,6 +23962,8 @@ window.__infernodriftTestApi = {
           code: String(room.code || "TEST7").toUpperCase(),
           mode: normalizeGameModeId(room.mode || GAME_MODE_BATTLE),
           playlist: room.playlist || "private",
+          teamSize: Math.max(1, Math.min(3, Number(room.teamSize) || 1)),
+          botFill: room.botFill !== false,
           firebaseLobby: Boolean(room.firebaseLobby ?? true),
           live: Boolean(room.live ?? true),
           hostUid: room.hostUid || onlineState.user.id,
@@ -23864,6 +24001,8 @@ window.__infernodriftTestApi = {
           code: String(room.code || "LIVE7").toUpperCase(),
           mode,
           playlist: "firebase-live",
+          teamSize: Math.max(1, Math.min(3, Number(room.teamSize) || 1)),
+          botFill: room.botFill !== false,
           firebaseLobby: true,
           live: true,
           hostUid: room.hostUid || "host-user",
@@ -24123,6 +24262,38 @@ window.__infernodriftTestApi = {
   getStuntState: () => structuredClone(state.modeRun.stunt),
   getModeCatalog: () =>
     MODE_CATALOG.map((mode) => ({ ...mode, id: getPublicModeId(mode) })),
+  estimateModeRewardsForTest: (
+    modeId,
+    { won = true, score = 0, progress = null, timeLeft = null } = {},
+  ) => {
+    const previousMode = settings.activeGameMode;
+    const previousModeRun = structuredClone(state.modeRun);
+    const previousScore = state.score;
+    const previousTimeLeft = state.timeLeft;
+    setActiveGameMode(modeId, { save: false, reset: false });
+    resetModeRunState();
+    state.score = Math.max(0, Math.floor(Number(score) || 0));
+    state.timeLeft = Number.isFinite(Number(timeLeft))
+      ? Number(timeLeft)
+      : getLevel().time;
+    state.modeRun.progress = Number.isFinite(Number(progress))
+      ? Number(progress)
+      : state.modeRun.target;
+    const medal = won ? medalForScore(state.score, getModeDefinition()) : "Attempt";
+    const rewards = calculateModeRewards({ won, score: state.score, medal });
+    const result = {
+      mode: getPublicModeId(),
+      medal,
+      xp: rewards.xp,
+      embers: rewards.embers,
+      progressPercent: modeProgressPercent(),
+    };
+    setActiveGameMode(previousMode, { save: false, reset: false });
+    state.modeRun = previousModeRun;
+    state.score = previousScore;
+    state.timeLeft = previousTimeLeft;
+    return result;
+  },
   selectMode: (modeId) => {
     setActiveGameMode(modeId, { save: false, reset: false });
     const mode = getModeDefinition();
@@ -24340,6 +24511,22 @@ window.__infernodriftTestApi = {
     counter: feedbackCounter?.textContent || "",
     status: onlineState.lastFeedbackStatus,
     error: onlineState.lastFeedbackError,
+  }),
+  resetFeedbackNudgeForTest: () => {
+    try {
+      localStorage.removeItem(FEEDBACK_NUDGE_STORAGE_KEY);
+    } catch {
+      // Local storage can be unavailable in private contexts.
+    }
+    state.feedbackNudgeVisible = false;
+    refreshMenuShell();
+    return true;
+  },
+  getFeedbackNudgeStateForTest: () => ({
+    visible: Boolean(state.feedbackNudgeVisible),
+    hidden: Boolean(menuFeedbackNudge?.hidden),
+    menuClass: menu?.className || "",
+    text: menuFeedbackNudge?.textContent || "",
   }),
   sampleDailyGiftRolls: (count = 1000) =>
     Array.from(

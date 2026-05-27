@@ -449,3 +449,9 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Found and fixed a Firebase DM listener/rules mismatch: the old collection-group listener collided with owner-scoped `dmInboxes` rules and produced missing-permission warnings. DM notifications now rely on the inbox listener that matches the rules.
 - Updated the live Firebase smoke so it uses a leaderboard-visible `Pilot...` account instead of a blocked `Runner...` test account, and matched the current shared-live-room lobby copy.
 - Verified with node checks, Firebase unit tests, full tests, build/typecheck, main gameplay smoke, Firebase offline smoke, online-local smoke, e2e smoke, and live Firebase smoke.
+
+2026-05-26 XP fairness, 1v1 rooms, and feedback nudge:
+
+- Rebalanced mode-run XP around expected mode duration plus clear performance bonuses, so longer matches pay more overall while faster/cleaner completions beat slow completions with random score padding.
+- Made Firebase 1v1 lobbies default to true two-player rooms: team size defaults to 1v1, Bot Fill is off/disabled for 1v1, and lobby members get alternating blue/red teams that drive local team spawn, cosmetics, and snapshots.
+- Added a one-time menu Feedback nudge with a short clean banner and a pulsing Feedback button highlight; it marks itself seen immediately so it only appears once per browser profile.

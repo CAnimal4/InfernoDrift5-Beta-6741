@@ -838,6 +838,39 @@ body:has(#school-gate.show) #overlay {
   margin: 0 0 8px;
 }
 
+.menu-feedback-nudge {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 211, 95, 0.36);
+  border-radius: 14px;
+  background:
+    linear-gradient(120deg, rgba(255, 122, 69, 0.2), rgba(126, 178, 255, 0.08)),
+    rgba(7, 11, 18, 0.62);
+  color: #fff0c4;
+  font-weight: 800;
+  line-height: 1.25;
+  box-shadow: 0 10px 26px rgba(255, 122, 69, 0.12);
+}
+
+.feedback-nudge-active #menu-feedback {
+  border-color: rgba(255, 211, 95, 0.86);
+  color: #fff4c9;
+  animation: feedback-nudge-pulse 1.25s ease-in-out 3;
+  box-shadow: 0 0 0 3px rgba(255, 211, 95, 0.12);
+}
+
+@keyframes feedback-nudge-pulse {
+  0%,
+  100% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 3px rgba(255, 211, 95, 0.08);
+  }
+  50% {
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 7px rgba(255, 122, 69, 0.18);
+  }
+}
+
 .menu-actions {
   display: flex;
   flex-wrap: wrap;
