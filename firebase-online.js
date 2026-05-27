@@ -51,9 +51,9 @@ function isFirebaseTestLikeAccountName(value = "") {
   const compact = normalized.replace(/[^a-z0-9]/g, "");
   if (!compact) return false;
   if (FIREBASE_TEST_ACCOUNT_NAME_BLOCKLIST.has(compact)) return true;
-  if (/(^|[^a-z])(test|teest|smoke|fresh|runner)([^a-z]|$)/i.test(normalized))
+  if (/(^|[^a-z])(test|teest|smoke|fresh|runner|pilot)([^a-z]|$)/i.test(normalized))
     return true;
-  if (/^(test|teest|smoke|fresh|runner)[a-z0-9_-]*$/i.test(compact)) return true;
+  if (/^(test|teest|smoke|fresh|runner|pilot)[a-z0-9_-]*$/i.test(compact)) return true;
   return compact.length >= 14 && /^[a-z]+$/.test(compact);
 }
 const FIREBASE_LIVE_STATE_LIMIT = 12000;
@@ -62,6 +62,47 @@ let sdkPromise = null;
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+const DM_INBOX_SEEN_STORAGE_PREFIX = "infernoDrift4.dmInboxSeen.v1.";
+
+function getDmInboxSeenStorageKey(uid = state.uid) {
+  return `${DM_INBOX_SEEN_STORAGE_PREFIX}${String(uid || "guest")}`;
+}
+
+function readDmInboxSeenIds(uid = state.uid) {
+  try {
+    const raw = globalThis.localStorage?.getItem(getDmInboxSeenStorageKey(uid));
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeDmInboxSeenIds(ids, uid = state.uid) {
+  try {
+    const trimmed = [...ids].filter(Boolean).slice(-240);
+    globalThis.localStorage?.setItem(
+      getDmInboxSeenStorageKey(uid),
+      JSON.stringify(trimmed),
+    );
+  } catch {
+    // Local storage is optional; live inbox messages still notify this session.
+  }
+}
+
+function rememberDmInboxMessages(messages = [], uid = state.uid) {
+  const seen = readDmInboxSeenIds(uid);
+  let changed = false;
+  (Array.isArray(messages) ? messages : []).forEach((message) => {
+    if (!message?.id) return;
+    if (!seen.has(message.id)) {
+      seen.add(message.id);
+      changed = true;
+    }
+  });
+  if (changed) writeDmInboxSeenIds(seen, uid);
 }
 
 function withTimeout(promise, timeoutMs, errorCode) {
@@ -1399,6 +1440,45 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       (snapshot) => {
         if (initialSnapshot) {
           initialSnapshot = false;
+          const seenIds = readDmInboxSeenIds();
+          const catchUpMessages = snapshot.docs
+            .map(mapChatDoc)
+            .filter((message) => {
+              if (!isVisibleChatMessage(message)) return false;
+              if (!message.direct || message.userId === state.uid) return false;
+              return message.id && !seenIds.has(message.id);
+            });
+          if (catchUpMessages.length) {
+            const grouped = new Map();
+            catchUpMessages.forEach((message) => {
+              const key = String(message.userId || message.from || "dm");
+              const group = grouped.get(key) || {
+                ...message,
+                count: 0,
+                latestText: "",
+              };
+              group.count += 1;
+              if (!group.latestText) group.latestText = message.text || "";
+              grouped.set(key, group);
+            });
+            grouped.forEach((group) => {
+              emit("chat.dmDigest", {
+                id: `dm-digest-${group.userId || group.from}-${Date.now()}`,
+                from: group.from,
+                userId: group.userId,
+                direct: true,
+                channel: "friend",
+                count: group.count,
+                text:
+                  group.count === 1
+                    ? `You got 1 message from ${group.from}.`
+                    : `You got ${group.count} messages from ${group.from}.`,
+                preview: group.latestText,
+                at: group.at,
+              });
+            });
+            rememberDmInboxMessages(catchUpMessages);
+          }
           return;
         }
         snapshot.docChanges().forEach((change) => {
@@ -1406,6 +1486,8 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
           const message = mapChatDoc(change.doc);
           if (!isVisibleChatMessage(message)) return;
           if (!message.direct || message.userId === state.uid) return;
+          if (readDmInboxSeenIds().has(message.id)) return;
+          rememberDmInboxMessages([message]);
           emit("chat.message", message);
         });
       },

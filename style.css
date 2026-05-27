@@ -1685,11 +1685,18 @@ body:has(#school-gate.show) #overlay {
   display: none;
 }
 
-.chat-notice {
+.chat-notice-stack {
   position: fixed;
   right: clamp(14px, 2vw, 24px);
   bottom: clamp(86px, 10vh, 132px);
   z-index: 44;
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+  pointer-events: none;
+}
+
+.chat-notice {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
@@ -3309,9 +3316,12 @@ body.device-phone .chat-popout {
 }
 
 body.device-phone .chat-notice {
+  width: min(310px, calc(100vw - 20px));
+}
+
+body.device-phone .chat-notice-stack {
   right: 10px;
   bottom: 10px;
-  width: min(310px, calc(100vw - 20px));
 }
 
 body.device-phone .menu-panel,

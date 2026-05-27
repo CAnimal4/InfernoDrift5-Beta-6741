@@ -205,6 +205,7 @@ const chatPopoutLog = document.getElementById("chat-popout-log");
 const chatPopoutInput = document.getElementById("chat-popout-input");
 const chatPopoutSend = document.getElementById("chat-popout-send");
 const chatNotice = document.getElementById("chat-notice");
+const chatNoticeStack = document.getElementById("chat-notice-stack");
 const chatNoticeFrom = document.getElementById("chat-notice-from");
 const chatNoticeText = document.getElementById("chat-notice-text");
 const chatNoticeClose = document.getElementById("chat-notice-close");
@@ -2379,6 +2380,7 @@ const onlineState = {
   legacyImportSource: "",
   legacySessionToken: "",
   chatNoticeTimer: 0,
+  chatNoticeItems: [],
   lastSystemMessageText: "",
   lastSystemMessageAt: 0,
   firebase: {
@@ -7761,6 +7763,18 @@ function handleOnlineMessage(raw) {
       roomInvite: message.roomInvite || null,
       at: message.at ? Date.parse(message.at) || Date.now() : Date.now(),
     });
+  } else if (message.type === "chat.dmDigest") {
+    showChatNotice({
+      id: message.id || "",
+      from: message.from || "Player",
+      userId: message.userId || "",
+      text:
+        message.text ||
+        `You got ${Math.max(1, Number(message.count) || 1)} message${Number(message.count) === 1 ? "" : "s"} from ${message.from || "someone"}.`,
+      direct: true,
+      channel: "friend",
+      at: message.at ? Date.parse(message.at) || Date.now() : Date.now(),
+    });
   } else if (message.type === "chat.history") {
     onlineState.chatMessages = [];
     (Array.isArray(message.messages) ? message.messages : []).forEach((entry) =>
@@ -8452,16 +8466,105 @@ function sendOnlineInputFrame(dt = 1 / 60) {
   );
 }
 
-function hideChatNotice() {
+function getChatNoticeKey(message = {}) {
+  if (message.direct) {
+    const userKey = message.userId || sanitizeRemoteUsername(message.from || "");
+    return `dm:${userKey || "unknown"}`;
+  }
+  return "chat:lobby";
+}
+
+function updateChatNoticeElement(element, item, isPrimary = false) {
+  if (!element || !item) return;
+  element.hidden = false;
+  element.dataset.noticeKey = item.key;
+  element.dataset.dmUserId = item.direct ? item.userId || "" : "";
+  element.dataset.dmUsername = item.direct ? item.from || "" : "";
+  const fromNode = isPrimary
+    ? chatNoticeFrom
+    : element.querySelector("[data-chat-notice-from]");
+  const textNode = isPrimary
+    ? chatNoticeText
+    : element.querySelector("[data-chat-notice-text]");
+  if (fromNode) {
+    fromNode.textContent = `${item.direct ? "DM from " : "Chat from "}${item.from}`.slice(
+      0,
+      34,
+    );
+  }
+  if (textNode) textNode.textContent = item.text;
+}
+
+function createStackedChatNoticeElement(item) {
+  const element = document.createElement("div");
+  element.className = "chat-notice";
+  element.innerHTML = `
+    <div>
+      <strong data-chat-notice-from>Chat</strong>
+      <span data-chat-notice-text></span>
+    </div>
+    <button class="ghost icon-btn" type="button" aria-label="Dismiss chat notice">×</button>
+  `;
+  const close = element.querySelector("button");
+  close?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    hideChatNotice(item.key);
+  });
+  element.addEventListener("click", () => openChatNoticeItem(item.key));
+  updateChatNoticeElement(element, item);
+  return element;
+}
+
+function renderChatNotices() {
+  if (!chatNotice) return;
+  const items = onlineState.chatNoticeItems.slice(0, 3);
+  onlineState.chatNoticeItems = items;
+  chatNoticeStack
+    ?.querySelectorAll(".chat-notice[data-stacked='true']")
+    .forEach((node) => node.remove());
+  if (!items.length) {
+    chatNotice.hidden = true;
+    chatNotice.dataset.dmUserId = "";
+    chatNotice.dataset.dmUsername = "";
+    chatNotice.dataset.noticeKey = "";
+    return;
+  }
+  updateChatNoticeElement(chatNotice, items[0], true);
+  items.slice(1).forEach((item) => {
+    const element = createStackedChatNoticeElement(item);
+    element.dataset.stacked = "true";
+    chatNoticeStack?.appendChild(element);
+  });
+}
+
+function hideChatNotice(key = "") {
   if (onlineState.chatNoticeTimer) {
     clearTimeout(onlineState.chatNoticeTimer);
     onlineState.chatNoticeTimer = 0;
   }
-  if (chatNotice) {
-    chatNotice.hidden = true;
-    chatNotice.dataset.dmUserId = "";
-    chatNotice.dataset.dmUsername = "";
+  onlineState.chatNoticeItems = key
+    ? onlineState.chatNoticeItems.filter((item) => item.key !== key)
+    : [];
+  renderChatNotices();
+}
+
+function openChatNoticeItem(key = "") {
+  const item =
+    onlineState.chatNoticeItems.find((entry) => entry.key === key) ||
+    onlineState.chatNoticeItems[0];
+  if (!item) return;
+  if (item.direct) {
+    openDirectMessageThread({
+      username: item.from,
+      userId: item.userId || "",
+    });
+  } else {
+    onlineState.chatMode = "lobby";
+    onlineState.activeDmUserId = "";
+    onlineState.activeDmUsername = "";
+    setChatPopoutOpen(true);
   }
+  hideChatNotice(item.key);
 }
 
 function showChatNotice(message) {
@@ -8479,15 +8582,21 @@ function showChatNotice(message) {
     .replace(/[<>]/g, "")
     .trim();
   if (!text || from === "System") return;
-  if (chatNoticeFrom)
-    chatNoticeFrom.textContent = `${message.direct ? "DM from " : "Chat from "}${from}`.slice(0, 34);
-  if (chatNoticeText) {
-    chatNoticeText.textContent =
-      text.length > 96 ? `${text.slice(0, 93).trim()}...` : text;
-  }
-  chatNotice.dataset.dmUserId = message.direct ? message.userId || "" : "";
-  chatNotice.dataset.dmUsername = message.direct ? from : "";
-  chatNotice.hidden = false;
+  const noticeText = text.length > 96 ? `${text.slice(0, 93).trim()}...` : text;
+  const key = getChatNoticeKey({ ...message, from });
+  const item = {
+    key,
+    direct: Boolean(message.direct),
+    from,
+    userId: message.userId || "",
+    text: noticeText,
+    at: Date.now(),
+  };
+  onlineState.chatNoticeItems = [
+    item,
+    ...onlineState.chatNoticeItems.filter((entry) => entry.key !== key),
+  ].slice(0, 3);
+  renderChatNotices();
   if (onlineState.chatNoticeTimer) clearTimeout(onlineState.chatNoticeTimer);
   onlineState.chatNoticeTimer = window.setTimeout(() => hideChatNotice(), 9000);
 }
@@ -9682,9 +9791,9 @@ function isTestLikeAccountName(value = "") {
   const compact = normalized.replace(/[^a-z0-9]/g, "");
   if (!compact) return false;
   if (TEST_ACCOUNT_NAME_BLOCKLIST.has(compact)) return true;
-  if (/(^|[^a-z])(test|teest|smoke|fresh|runner)([^a-z]|$)/i.test(normalized))
+  if (/(^|[^a-z])(test|teest|smoke|fresh|runner|pilot)([^a-z]|$)/i.test(normalized))
     return true;
-  if (/^(test|teest|smoke|fresh|runner)[a-z0-9_-]*$/i.test(compact)) return true;
+  if (/^(test|teest|smoke|fresh|runner|pilot)[a-z0-9_-]*$/i.test(compact)) return true;
   return compact.length >= 14 && /^[a-z]+$/.test(compact);
 }
 
@@ -22654,19 +22763,7 @@ bindPressAction(chatPopoutClose, () => setChatPopoutOpen(false));
 bindPressAction(chatNoticeClose, () => hideChatNotice());
 chatNotice?.addEventListener("click", (event) => {
   if (event.target === chatNoticeClose) return;
-  const dmUsername = chatNotice.dataset.dmUsername || "";
-  if (dmUsername) {
-    openDirectMessageThread({
-      username: dmUsername,
-      userId: chatNotice.dataset.dmUserId || "",
-    });
-  } else {
-    onlineState.chatMode = "lobby";
-    onlineState.activeDmUserId = "";
-    onlineState.activeDmUsername = "";
-    setChatPopoutOpen(true);
-  }
-  hideChatNotice();
+  openChatNoticeItem(chatNotice.dataset.noticeKey || "");
 });
 bindPressAction(onlineChatSend, () => sendFreeChat(onlineChatInput?.value));
 bindPressAction(chatPopoutSend, () => sendFreeChat(chatPopoutInput?.value));
@@ -23710,6 +23807,8 @@ window.render_game_to_text = () => {
         historyWindowMs: 30 * 60 * 1000,
         noticeVisible: Boolean(chatNotice && !chatNotice.hidden),
         noticeDmUsername: chatNotice?.dataset?.dmUsername || "",
+        noticeCount: onlineState.chatNoticeItems.length,
+        noticeUsernames: onlineState.chatNoticeItems.map((item) => item.from),
         lastMessage: onlineState.chatMessages.at(-1) ?? null,
       },
       queue: onlineState.queue
@@ -24130,6 +24229,34 @@ window.__infernodriftTestApi = {
         direct,
         toUserId: onlineState.user.id,
         toUsername: onlineState.user.username,
+        at: new Date().toISOString(),
+      }),
+    );
+    updateOnlineUi();
+    return JSON.parse(window.render_game_to_text()).online.chat;
+  },
+  simulateIncomingDmDigestForTest: ({
+    username = "OfflineFriend",
+    userId = "offline-friend",
+    count = 2,
+  } = {}) => {
+    onlineState.user = onlineState.user || {
+      id: "test-user",
+      username: onlineState.username || "SmokeRacer",
+    };
+    setChatPopoutOpen(false);
+    handleOnlineMessage(
+      JSON.stringify({
+        type: "chat.dmDigest",
+        id: `dm-digest-${userId}`,
+        from: username,
+        userId,
+        direct: true,
+        count,
+        text:
+          count === 1
+            ? `You got 1 message from ${username}.`
+            : `You got ${count} messages from ${username}.`,
         at: new Date().toISOString(),
       }),
     );

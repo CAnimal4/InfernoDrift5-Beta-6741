@@ -428,6 +428,34 @@ assert.equal(onlineUiState.online.chat.popoutOpen, true);
 assert.equal(onlineUiState.online.chat.mode, "dm");
 assert.equal(onlineUiState.online.chat.activeDmUsername, "DmSmokeFriend");
 await page.locator("#chat-popout-close").click({ force: true });
+const offlineDigestState = await page.evaluate(() => {
+  const first = window.__infernodriftTestApi.simulateIncomingDmDigestForTest({
+    username: "OfflineOne",
+    userId: "offline-one",
+    count: 3,
+  });
+  const second = window.__infernodriftTestApi.simulateIncomingDmDigestForTest({
+    username: "OfflineTwo",
+    userId: "offline-two",
+    count: 2,
+  });
+  return { first, second };
+});
+assert.equal(offlineDigestState.second.noticeVisible, true);
+assert.equal(offlineDigestState.second.noticeCount, 2);
+assert.deepEqual(offlineDigestState.second.noticeUsernames, [
+  "OfflineTwo",
+  "OfflineOne",
+]);
+assert.equal(await page.locator(".chat-notice:not([hidden])").count(), 2);
+await page.locator("#chat-notice").click({ force: true });
+onlineUiState = JSON.parse(
+  await page.evaluate(() => window.render_game_to_text()),
+);
+assert.equal(onlineUiState.online.chat.mode, "dm");
+assert.equal(onlineUiState.online.chat.activeDmUsername, "OfflineTwo");
+await page.locator("#chat-popout-close").click({ force: true });
+await page.locator("#chat-notice-close").click({ force: true });
 const ownOnlineState = await page.evaluate(() =>
   window.__infernodriftTestApi.getOnlineState(),
 );

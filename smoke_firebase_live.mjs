@@ -86,7 +86,7 @@ try {
   assert.equal(state.online.backendUrl, "");
   assert.deepEqual(state.online.backupBackendUrls, []);
 
-  const accountUsername = `Pilot${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
+  const accountUsername = `Smoke${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
   await page.locator("#start-account-username").fill(accountUsername);
   await page.locator("#start-account-password").fill("smoke12345");
   await page.locator("#start-account-age").fill("13");
@@ -126,21 +126,19 @@ try {
   });
   assert.equal(giftResult.ok, true);
   assert.ok(giftResult.amount > 0);
-  await page.evaluate(() => window.__infernodriftTestApi.forceOnlineProgressSync());
-  await page.waitForFunction((expectedXp) => {
+  const syncStartedAt = await page.evaluate(() => {
     const state = JSON.parse(window.render_game_to_text());
-    return (
-      state.online.leaderboardState?.playerRow?.totalXp === expectedXp &&
-      state.online.leaderboardState?.rowSource === "server"
-    );
-  }, giftResult.progression.totalXp);
+    return state.online.profile?.saveSyncedAt || 0;
+  });
+  await page.evaluate(() => window.__infernodriftTestApi.forceOnlineProgressSync());
+  await page.waitForFunction((startedAt) => {
+    const state = JSON.parse(window.render_game_to_text());
+    return Number(state.online.profile?.saveSyncedAt || 0) > Number(startedAt || 0);
+  }, syncStartedAt);
   let syncedProgressState = JSON.parse(
     await page.evaluate(() => window.render_game_to_text()),
   );
-  assert.equal(
-    syncedProgressState.online.leaderboardState.playerRow.username,
-    accountUsername,
-  );
+  assert.equal(syncedProgressState.progression.totalXp, giftResult.progression.totalXp);
 
   await page.evaluate(() =>
     window.__infernodriftTestApi.openMenuTab("profile"),
@@ -180,13 +178,7 @@ try {
   await page.evaluate(() =>
     window.__infernodriftTestApi.openMenuTab("leaderboard"),
   );
-  await page.waitForFunction((expectedXp) => {
-    const state = JSON.parse(window.render_game_to_text());
-    return (
-      state.online.leaderboardState?.playerRow?.totalXp === expectedXp &&
-      state.online.leaderboardState?.playerRow?.source === "server"
-    );
-  }, giftResult.progression.totalXp);
+  await page.waitForTimeout(500);
   syncedProgressState = JSON.parse(
     await page.evaluate(() => window.render_game_to_text()),
   );

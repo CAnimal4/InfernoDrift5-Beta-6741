@@ -689,12 +689,14 @@
           <button class="primary" id="chat-popout-send" type="button">Send</button>
         </div>
       </div>
-      <div class="chat-notice" id="chat-notice" hidden>
-        <div>
-          <strong id="chat-notice-from">Chat</strong>
-          <span id="chat-notice-text"></span>
+      <div class="chat-notice-stack" id="chat-notice-stack" aria-live="polite">
+        <div class="chat-notice" id="chat-notice" hidden>
+          <div>
+            <strong id="chat-notice-from">Chat</strong>
+            <span id="chat-notice-text"></span>
+          </div>
+          <button class="ghost icon-btn" id="chat-notice-close" type="button" aria-label="Dismiss chat notice">×</button>
         </div>
-        <button class="ghost icon-btn" id="chat-notice-close" type="button" aria-label="Dismiss chat notice">×</button>
       </div>
 
       <div class="overlay" id="feedback-modal">
