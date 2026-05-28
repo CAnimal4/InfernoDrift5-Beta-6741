@@ -330,7 +330,7 @@ const pollutedCodexLeaderboard = await page.evaluate(() =>
 );
 assert.equal(pollutedCodexLeaderboard[0].username, "ChatGPT (Codex)");
 assert.equal(pollutedCodexLeaderboard[0].xp, 22153);
-const cappedSpecialProgress = await page.evaluate(() => {
+const clarkSpecialProgress = await page.evaluate(() => {
   window.__infernodriftTestApi.setOnlineUserForTest({
     id: "clark-test",
     username: "Clark",
@@ -341,8 +341,8 @@ const cappedSpecialProgress = await page.evaluate(() => {
   );
   return JSON.parse(window.render_game_to_text()).progression;
 });
-assert.equal(cappedSpecialProgress.totalXp, 22000);
-assert.equal(cappedSpecialProgress.embers, 875);
+assert.equal(clarkSpecialProgress.totalXp, 22000);
+assert.equal(clarkSpecialProgress.embers, 875);
 await page.locator('[data-tab="profile"]').click({ force: true });
 await page.waitForTimeout(150);
 onlineUiState = JSON.parse(
@@ -1236,6 +1236,14 @@ assert.ok(
 );
 const garageVisualCategories = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
+  window.__infernodriftTestApi.setOnlineUserForTest({
+    id: "garage-premium-test",
+    username: "GarageTester",
+  });
+  window.__infernodriftTestApi.applySavePayloadForTest(
+    { progressionV2: { xp: 160000, totalXp: 160000, embers: 99999 } },
+    { forceProgression: true, replaceProgression: true },
+  );
   const before = window.__infernodriftTestApi.getCarVisualConfigForTest();
   [
     ["tireId", "rally"],

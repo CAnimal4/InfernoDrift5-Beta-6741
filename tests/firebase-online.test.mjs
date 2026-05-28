@@ -506,7 +506,12 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(script, /function sanitizeSpecialBadgeLeaderboardRow\(row = \{\}\)/);
   assert.match(script, /repairNote: "special-badge-xp-cap"/);
   assert.match(script, /function sanitizeSpecialBadgeProgression\(/);
+  assert.match(script, /\["clark",\s*\{\s*repairXp:\s*22000,\s*maxEmbers:\s*875\s*\}\]/i);
   assert.doesNotMatch(script, /\["billy",\s*\{\s*repairXp:/i);
+  assert.doesNotMatch(script, /\["jfine",\s*\{\s*repairXp:/i);
+  assert.match(script, /function hasEarnedSpecialProgressAfterRepair\(/);
+  assert.match(script, /specialBadgeProgressEarnedAfterRepair = true/);
+  assert.match(script, /!policy[\s\S]*return payload;/);
   assert.match(script, /accountSaveDirty: false/);
   assert.match(script, /function markAccountSaveDirty\(reason = "local-change"\)/);
   assert.match(script, /markAccountSaveDirty\("garage-equip"\)/);

@@ -440,7 +440,6 @@ const SEEDED_LEADERBOARD_ROWS = [];
 const SPECIAL_BADGE_ACCOUNT_KEYS = new Set([
   "clark",
   "moderator",
-  "jfine",
   "joshua",
   "tosh_the_sigma",
   "tosh the sigma",
@@ -3059,6 +3058,14 @@ function awardXP(source, amount, metadata = {}) {
   progression.xp = totalXp;
   progression.totalXp = totalXp;
   progression.level = getLevelFromXP(totalXp);
+  if (
+    hasSpecialBadgeRepairMarker(progression) &&
+    totalXp >= SPECIAL_BADGE_SUSPECT_XP &&
+    isSpecialBadgeAccountUsername(onlineState.user?.username || onlineState.username)
+  ) {
+    progression.specialBadgeProgressEarnedAfterRepair = true;
+    progression.specialBadgeProgressSource = "earned-after-repair";
+  }
   if (emberAmount > 0) progression.embers += emberAmount;
   if (metadata.cosmeticId) ownCosmetic(metadata.cosmeticId);
   const levelRewards = awardLevelRewards(oldLevel, progression.level);
@@ -4821,6 +4828,13 @@ function addSpecialBadgeRepairMarker(progression = {}, repairedXp = 0) {
   };
 }
 
+function hasEarnedSpecialProgressAfterRepair(progression = {}) {
+  return (
+    progression?.specialBadgeProgressEarnedAfterRepair === true ||
+    progression?.specialBadgeProgressSource === "earned-after-repair"
+  );
+}
+
 function sanitizeSpecialBadgeProgression(
   progress = {},
   username = onlineState.user?.username || onlineState.username,
@@ -4830,25 +4844,41 @@ function sanitizeSpecialBadgeProgression(
     return { progression: progress, changed: false };
   }
   const normalized = normalizeProgressionV2(progress);
-  if (normalized.totalXp < SPECIAL_BADGE_SUSPECT_XP) {
-    return { progression: progress, changed: false };
-  }
-  if (
-    hasSpecialBadgeRepairMarker(normalized) ||
-    hasHardEarnedProgressEvidence({
-      progressionV2: normalized,
-      worldIndex: state.worldIndex,
-      levelIndex: state.levelIndex,
-      customization,
-      garage: garageState,
-    })
-  ) {
-    return { progression: progress, changed: false };
-  }
+  const hardEarnedEvidence = hasHardEarnedProgressEvidence({
+    progressionV2: normalized,
+    worldIndex: state.worldIndex,
+    levelIndex: state.levelIndex,
+    customization,
+    garage: garageState,
+  });
   const repairXp = Math.max(0, Math.floor(Number(policy.repairXp) || 0));
   const maxEmbers = Number.isFinite(Number(policy.maxEmbers))
     ? Math.max(0, Math.floor(Number(policy.maxEmbers) || 0))
     : null;
+  if (
+    policy.resetProgression &&
+    !hardEarnedEvidence &&
+    (normalized.totalXp > repairXp ||
+      (maxEmbers !== null && normalized.embers > maxEmbers))
+  ) {
+    const fresh = createProgressionV2();
+    return {
+      progression: addSpecialBadgeRepairMarker(
+        {
+          ...fresh,
+          dailyGiftSalt: normalized.dailyGiftSalt || fresh.dailyGiftSalt,
+        },
+        repairXp,
+      ),
+      changed: true,
+    };
+  }
+  if (normalized.totalXp < SPECIAL_BADGE_SUSPECT_XP) {
+    return { progression: progress, changed: false };
+  }
+  if (hasEarnedSpecialProgressAfterRepair(normalized)) {
+    return { progression: progress, changed: false };
+  }
   const repairedXp = policy.resetProgression ? 0 : repairXp;
   const repairedLevel = getLevelFromXP(repairedXp);
   return {
@@ -4897,7 +4927,8 @@ function stripUnearnedSpecialProgressPayload(payload = {}, username = "") {
   if (
     !payload ||
     typeof payload !== "object" ||
-    !isSpecialBadgeAccountUsername(username)
+    !isSpecialBadgeAccountUsername(username) ||
+    !policy
   ) {
     return payload;
   }
@@ -4909,6 +4940,7 @@ function stripUnearnedSpecialProgressPayload(payload = {}, username = "") {
       ? Math.max(0, Math.floor(Number(policy.maxEmbers) || 0))
       : null;
     const hardEarnedEvidence = hasHardEarnedProgressEvidence(payload);
+    if (hasEarnedSpecialProgressAfterRepair(normalized)) return payload;
     if (
       hasSpecialBadgeRepairMarker(normalized) &&
       normalized.totalXp < SPECIAL_BADGE_SUSPECT_XP &&
