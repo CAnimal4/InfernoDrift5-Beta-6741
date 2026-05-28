@@ -5,7 +5,7 @@ Status: active work is the InfernoDrift4 static launch rescue. The current shipp
 ## URLs
 
 - Repo: https://github.com/CAnimal4/InfernoDrift4
-- Pages target: https://canimal4.github.io/InfernoDrift/
+- Pages target: https://canimal4.github.io/InfernoDrift4/
 - Primary online backend mode: Firebase online-lite
 - Legacy Worker fallback/reference: wss://infernodrift4-online.clarkbythebay.workers.dev/ws
 

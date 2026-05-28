@@ -6,7 +6,7 @@ Read this first when continuing InfernoDrift4 online/backend work from an older 
 
 Use this repo and this policy:
 
-- Work in `CAnimal4/InfernoDrift4`; the public game still deploys to `https://canimal4.github.io/InfernoDrift`.
+- Work in `CAnimal4/InfernoDrift4`; the public game still deploys to `https://canimal4.github.io/InfernoDrift4`.
 - Treat Firebase as the production online backend unless the owner explicitly asks for legacy Worker/WebSocket work.
 - Keep Cloudflare Workers as legacy fallback/import/reference only.
 - Do not use Replit for production and do not ask the owner to pay for Replit.
@@ -31,7 +31,7 @@ Current high-signal files:
 
 Firebase is now the default production backend for InfernoDrift4 online-lite features.
 
-- Main game URL: `https://canimal4.github.io/InfernoDrift`
+- Main game URL: `https://canimal4.github.io/InfernoDrift4`
 - Firebase project ID: `infernodrift4-online`
 - Firebase plan: Spark/no-cost
 - Backend mode for production: `firebase`
@@ -295,8 +295,8 @@ npm run worker:types
 After publishing to GitHub Pages, test the public URL with cache-bust:
 
 ```bash
-SMOKE_URL='https://canimal4.github.io/InfernoDrift/?firebaseLive=<commit>' node smoke_firebase_live.mjs
-SMOKE_URL='https://canimal4.github.io/InfernoDrift/?firebaseOffline=<commit>' node smoke_firebase_offline.mjs
+SMOKE_URL='https://canimal4.github.io/InfernoDrift4/?firebaseLive=<commit>' node smoke_firebase_live.mjs
+SMOKE_URL='https://canimal4.github.io/InfernoDrift4/?firebaseOffline=<commit>' node smoke_firebase_offline.mjs
 ```
 
 Expected live smoke shape:
@@ -320,7 +320,7 @@ Recent known-good validation from the current Firebase cleanup/publish path:
 - `npm run smoke:firebase`
 - `npm run smoke:firebase-live`
 - develop-web-game Playwright client against `http://127.0.0.1:4173/index.html`
-- public smoke against `https://canimal4.github.io/InfernoDrift/?v=279a8fd`
+- public smoke against `https://canimal4.github.io/InfernoDrift4/?v=279a8fd`
 - GitHub Actions for commit `279a8fd`: CI, Deploy GitHub Pages, Pages build/deployment, and peer sync all passed
 
 ## Deployment Rules For Future Codex Chats

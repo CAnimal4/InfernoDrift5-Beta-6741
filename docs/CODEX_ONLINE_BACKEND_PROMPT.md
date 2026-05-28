@@ -10,7 +10,7 @@ InfernoDrift4 production online now defaults to Firebase:
 - Firebase project ID `infernodrift4-online`
 - Firebase Auth for accounts and anonymous guests
 - Firestore for usernames, progress, leaderboard, Firebase lobby rooms, chat, friends, feedback, and diagnostics
-- GitHub Pages remains the frontend host at `https://canimal4.github.io/InfernoDrift`
+- GitHub Pages remains the frontend host at `https://canimal4.github.io/InfernoDrift4`
 
 ## Do Not Use As Production
 
