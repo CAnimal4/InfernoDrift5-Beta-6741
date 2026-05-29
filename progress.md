@@ -10,6 +10,14 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Began routing Firebase feedback and `/report` through the existing HTTP feedback endpoint for email delivery attempts, while still saving online review copies.
 - Validation for this pass: `node --check script.js firebase-online.js smoke_games.mjs`, `node --test tests/firebase-online.test.mjs`, focused Playwright multiplayer check, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run smoke:firebase`, and `npm run smoke:firebase-live` passed. `npm run format` still reports broad existing Prettier drift across unrelated files.
 
+2026-05-28 mobile/tablet revamp pass:
+
+- Started the normal InfernoDrift4 mobile/tablet revamp before any Coolmath Games copy. Current focus is preserving desktop while making touch play first-class.
+- Added phone portrait rotation guidance, larger/safe-area-aware touch controls, touch pressed states, mode-aware touch labels, touch haptics/opacity/sensitivity settings, reduced motion/lower camera shake settings, and an Auto/Low/Medium/High mobile quality preset.
+- Mobile tutorial/help copy now switches to touch-specific prompts instead of keyboard-only WASD text when a touch profile is active.
+- Expanded `smoke_mobile.mjs` to cover phone landscape, phone portrait, tablet portrait, tablet landscape, small laptop, desktop, touch sizing, touch state, rotate prompt, Battle Laser, Max Boost/Hit label, and page errors.
+- Validation for this pass: `node --check script.js`, `node --check firebase-online.js`, `node --check firebase-online-core.js`, `node --check smoke_mobile.mjs`, local `node smoke_mobile.mjs`, local `node smoke_games.mjs`, `npm test`, `npm run typecheck`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:firebase`, `git diff --check`, and the shared `develop-web-game` Playwright client passed. Visual screenshots reviewed at `output/playwright/mobile-phone-landscape-game.png`, `mobile-phone-portrait-rotate.png`, `mobile-tablet-landscape-game.png`, `mobile-desktop-game.png`, and `output/web-game/shot-0.png`.
+
 2026-05-24 Firebase realtime sync repair:
 
 - Added a reliable Firebase DM inbox mirror under owner-scoped `dmInboxes/{uid}/messages/{messageId}` and listener so incoming DMs trigger the existing non-obstructive chat notice path; also added per-friend DM room listeners as a rules-compatible fallback when collection-group or inbox listeners are unavailable.

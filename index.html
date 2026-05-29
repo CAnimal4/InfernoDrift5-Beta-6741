@@ -118,6 +118,18 @@
           </div>
       </div>
 
+      <div class="mobile-rotate-prompt" id="mobile-rotate-prompt" hidden>
+        <div class="mobile-rotate-card">
+          <div class="mobile-rotate-icon" aria-hidden="true">↻</div>
+          <strong>Rotate for best driving</strong>
+          <span>Landscape gives you room for steering, boost, drift, and jumps.</span>
+          <div class="cta-row compact-actions">
+            <button class="primary" id="mobile-rotate-continue" type="button">Play Anyway</button>
+            <button class="ghost" id="mobile-rotate-menu" type="button">Menu</button>
+          </div>
+        </div>
+      </div>
+
       <div class="minimap-wrap">
         <div class="minimap-title">Radar</div>
         <canvas id="minimap" width="180" height="180" aria-label="Minimap"></canvas>
@@ -504,6 +516,23 @@
               </label>
               <p class="hint" id="device-mode-active">Active device: Desktop</p>
               <label class="field">
+                <span>Mobile Quality</span>
+                <select id="mobile-quality-select">
+                  <option value="auto" selected>Auto</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </label>
+              <label class="field toggle">
+                <span>Reduced Motion</span>
+                <input id="reduced-motion-toggle" type="checkbox" />
+              </label>
+              <label class="field toggle">
+                <span>Lower Camera Shake</span>
+                <input id="camera-shake-toggle" type="checkbox" />
+              </label>
+              <label class="field">
                 <span>Ramp Density</span>
                 <select id="ramp-density-select">
                   <option value="low">Low</option>
@@ -648,6 +677,26 @@
                       <option value="1" selected>Normal</option>
                       <option value="1.14">Large</option>
                     </select>
+                  </label>
+                  <label class="field">
+                    <span>Touch Sensitivity</span>
+                    <select id="touch-sensitivity-select">
+                      <option value="0.78">Calm</option>
+                      <option value="1" selected>Normal</option>
+                      <option value="1.16">Quick</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Button Opacity</span>
+                    <select id="touch-opacity-select">
+                      <option value="0.62">Low</option>
+                      <option value="0.78" selected>Normal</option>
+                      <option value="0.92">Bright</option>
+                    </select>
+                  </label>
+                  <label class="field toggle">
+                    <span>Touch Haptics</span>
+                    <input id="touch-haptics-toggle" type="checkbox" />
                   </label>
                   <div class="controller-card" id="controller-status">Controller: not detected</div>
                   <p class="hint controls-hint">

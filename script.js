@@ -121,6 +121,9 @@ const devForceDemo = document.getElementById("dev-force-demo");
 const devResetTuning = document.getElementById("dev-reset-tuning");
 const deviceModeSelect = document.getElementById("device-mode-select");
 const deviceModeActive = document.getElementById("device-mode-active");
+const mobileQualitySelect = document.getElementById("mobile-quality-select");
+const reducedMotionToggle = document.getElementById("reduced-motion-toggle");
+const cameraShakeToggle = document.getElementById("camera-shake-toggle");
 const progressPanel = document.getElementById("progress-panel");
 const garagePreviewHost = document.getElementById("garage-preview");
 const garageZoomIn = document.getElementById("garage-zoom-in");
@@ -143,10 +146,18 @@ const customStats = document.getElementById("custom-stats");
 const customHint = document.getElementById("custom-hint");
 const touchLayoutSelect = document.getElementById("touch-layout-select");
 const touchScaleSelect = document.getElementById("touch-scale-select");
+const touchSensitivitySelect = document.getElementById(
+  "touch-sensitivity-select",
+);
+const touchOpacitySelect = document.getElementById("touch-opacity-select");
+const touchHapticsToggle = document.getElementById("touch-haptics-toggle");
 const exitLinkUrlInput = document.getElementById("exit-link-url");
 const touchControlsRoot = document.getElementById("touch-controls");
 const touchSteerPad = document.getElementById("touch-steer-pad");
 const touchSteerKnob = document.getElementById("touch-steer-knob");
+const mobileRotatePrompt = document.getElementById("mobile-rotate-prompt");
+const mobileRotateContinue = document.getElementById("mobile-rotate-continue");
+const mobileRotateMenu = document.getElementById("mobile-rotate-menu");
 const onlineBackendUrlInput = document.getElementById("online-backend-url");
 const onlineBackupUrlsInput = document.getElementById("online-backup-urls");
 const onlineTestConnection = document.getElementById("online-test-connection");
@@ -235,12 +246,31 @@ remoteNameLayer.className = "remote-name-layer";
 remoteNameLayer.setAttribute("aria-hidden", "true");
 gameWrap?.appendChild(remoteNameLayer);
 
+let activeRendererQuality = "auto";
+
+function getRendererPixelRatio() {
+  const dpr = window.devicePixelRatio || 1;
+  const quality = activeRendererQuality;
+  const viewportMax = Math.max(window.innerWidth, window.innerHeight);
+  const isSmallTouch =
+    (navigator.maxTouchPoints || 0) > 0 && viewportMax <= 900;
+  const cap =
+    quality === "low"
+      ? 1.1
+      : quality === "medium"
+        ? 1.35
+        : isSmallTouch
+          ? 1.25
+          : 1.6;
+  return Math.min(dpr, cap);
+}
+
 const renderer = new THREE.WebGLRenderer({
   canvas,
   antialias: true,
   powerPreference: "high-performance",
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
+renderer.setPixelRatio(getRendererPixelRatio());
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = false;
 
@@ -655,6 +685,8 @@ const TOUCH_LAYOUT_OPTIONS = {
   compact: { label: "Compact", className: "touch-layout-compact" },
   lefty: { label: "Lefty", className: "touch-layout-lefty" },
 };
+const MOBILE_QUALITY_OPTIONS = new Set(["auto", "low", "medium", "high"]);
+const MOBILE_ROTATE_PROMPT_KEY = "infernodrift4.mobile.rotatePromptDismissed";
 const DEFAULT_MAX_TEAM_CUSTOMIZATION = {
   blue: {
     paintId: "frost",
@@ -1392,6 +1424,7 @@ const DEVICE_PROFILES = {
     touchSteerScale: 0.98,
     touchDeadzone: 0.07,
     touchResponse: 0.22,
+    qualityScale: 1,
     botSpeedMult: 1,
     botReactionMult: 1,
     powerupRadiusMult: 1,
@@ -1413,6 +1446,7 @@ const DEVICE_PROFILES = {
     touchSteerScale: 0.9,
     touchDeadzone: 0.05,
     touchResponse: 0.19,
+    qualityScale: 0.9,
     botSpeedMult: 0.95,
     botReactionMult: 0.96,
     powerupRadiusMult: 1.12,
@@ -1423,17 +1457,18 @@ const DEVICE_PROFILES = {
     type: "phone",
     usesTouch: true,
     compactHud: true,
-    hudScale: 0.9,
+    hudScale: 0.86,
     overlayScale: 0.9,
     minimapSize: 116,
     cameraDistanceMult: 0.78,
     cameraHeightMult: 0.78,
-    controlScale: 0.84,
-    touchStickSize: 118,
-    touchButtonSize: 0.94,
-    touchSteerScale: 0.82,
+    controlScale: 1,
+    touchStickSize: 132,
+    touchButtonSize: 1,
+    touchSteerScale: 0.88,
     touchDeadzone: 0.04,
-    touchResponse: 0.16,
+    touchResponse: 0.18,
+    qualityScale: 0.76,
     botSpeedMult: 0.89,
     botReactionMult: 0.9,
     powerupRadiusMult: 1.22,
@@ -2230,6 +2265,12 @@ const settings = {
   deviceMode: "auto",
   touchLayout: "classic",
   touchScale: 1,
+  touchSensitivity: 1,
+  touchOpacity: 0.78,
+  touchHaptics: false,
+  mobileQuality: "auto",
+  reducedMotion: false,
+  lowerCameraShake: false,
   devMode: false,
   activeGameMode: GAME_MODE_ID33,
   exitLinkUrl: EXIT_LINK_DEFAULT_URL,
@@ -3331,6 +3372,8 @@ const state = {
   remapStatus: "",
   modeHelpOpen: false,
   modeHelpWasRunning: false,
+  mobileRotatePromptVisible: false,
+  mobileRotatePromptDismissed: false,
   feedbackNudgeVisible: false,
   onboarding: {
     firstVisit: false,
@@ -3594,6 +3637,24 @@ function getDeviceAssistTuning() {
   return state.deviceProfile ?? { mode: "auto", ...DEVICE_PROFILES.desktop };
 }
 
+function getEffectiveMobileQuality(profile = state.deviceProfile) {
+  const requested = MOBILE_QUALITY_OPTIONS.has(settings.mobileQuality)
+    ? settings.mobileQuality
+    : "auto";
+  if (requested !== "auto") return requested;
+  return profile?.type === "phone"
+    ? "low"
+    : profile?.type === "tablet"
+      ? "medium"
+      : "high";
+}
+
+function prefersReducedMotion() {
+  return Boolean(
+    window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches,
+  );
+}
+
 function setMinimapSize(size) {
   if (!minimapCanvas) return;
   minimapCanvas.width = size;
@@ -3636,12 +3697,38 @@ function applyDeviceProfile() {
     inputMode: state.deviceInputMode,
     ...profile,
   };
+  state.deviceProfile.mobileQuality = getEffectiveMobileQuality({
+    ...profile,
+    type: resolvedType,
+  });
+  state.deviceProfile.reducedMotion =
+    Boolean(settings.reducedMotion) || prefersReducedMotion();
+  state.deviceProfile.touchSteerScale =
+    profile.touchSteerScale * (Number(settings.touchSensitivity) || 1);
+  state.deviceProfile.qualityScale =
+    state.deviceProfile.mobileQuality === "low"
+      ? Math.min(profile.qualityScale ?? 1, 0.68)
+      : state.deviceProfile.mobileQuality === "medium"
+        ? Math.min(profile.qualityScale ?? 1, 0.86)
+        : 1;
+  activeRendererQuality = state.deviceProfile.mobileQuality;
+  renderer?.setPixelRatio(getRendererPixelRatio());
   document.body.classList.remove(
     "device-desktop",
     "device-tablet",
     "device-phone",
+    "mobile-quality-low",
+    "mobile-quality-medium",
+    "mobile-quality-high",
   );
   document.body.classList.add(`device-${resolvedType}`);
+  document.body.classList.add(
+    `mobile-quality-${state.deviceProfile.mobileQuality}`,
+  );
+  document.body.classList.toggle(
+    "reduced-motion",
+    state.deviceProfile.reducedMotion,
+  );
   document.documentElement.style.setProperty(
     "--minimap-size",
     `${profile.minimapSize}px`,
@@ -3657,6 +3744,10 @@ function applyDeviceProfile() {
   document.documentElement.style.setProperty(
     "--touch-button-size",
     String(profile.touchButtonSize),
+  );
+  document.documentElement.style.setProperty(
+    "--touch-button-opacity",
+    String(settings.touchOpacity),
   );
   document.documentElement.style.setProperty(
     "--overlay-panel-scale",
@@ -3680,6 +3771,11 @@ function applyDeviceProfile() {
   applyTouchLayout();
   refreshDevModeUi();
   if (deviceModeSelect) deviceModeSelect.value = settings.deviceMode;
+  if (mobileQualitySelect) mobileQualitySelect.value = settings.mobileQuality;
+  if (reducedMotionToggle)
+    reducedMotionToggle.checked = Boolean(settings.reducedMotion);
+  if (cameraShakeToggle)
+    cameraShakeToggle.checked = Boolean(settings.lowerCameraShake);
   if (deviceModeActive) {
     const label = resolvedType.charAt(0).toUpperCase() + resolvedType.slice(1);
     if (settings.deviceMode === "auto") {
@@ -3702,6 +3798,11 @@ function applyTouchLayout() {
   document.body.classList.add(TOUCH_LAYOUT_OPTIONS[layout].className);
   if (touchLayoutSelect) touchLayoutSelect.value = layout;
   if (touchScaleSelect) touchScaleSelect.value = String(settings.touchScale);
+  if (touchSensitivitySelect)
+    touchSensitivitySelect.value = String(settings.touchSensitivity);
+  if (touchOpacitySelect) touchOpacitySelect.value = String(settings.touchOpacity);
+  if (touchHapticsToggle)
+    touchHapticsToggle.checked = Boolean(settings.touchHaptics);
 }
 
 function getGarageUnlockLevel(unlock) {
@@ -4645,6 +4746,12 @@ function buildPersistentSavePayload() {
       deviceMode: settings.deviceMode,
       touchLayout: settings.touchLayout,
       touchScale: settings.touchScale,
+      touchSensitivity: settings.touchSensitivity,
+      touchOpacity: settings.touchOpacity,
+      touchHaptics: settings.touchHaptics,
+      mobileQuality: settings.mobileQuality,
+      reducedMotion: settings.reducedMotion,
+      lowerCameraShake: settings.lowerCameraShake,
       devMode: settings.devMode,
       activeGameMode: settings.activeGameMode,
       exitLinkUrl: settings.exitLinkUrl,
@@ -4702,6 +4809,12 @@ function buildFreshAccountSavePayload() {
       deviceMode: "auto",
       touchLayout: "classic",
       touchScale: 1,
+      touchSensitivity: 1,
+      touchOpacity: 0.78,
+      touchHaptics: false,
+      mobileQuality: "auto",
+      reducedMotion: false,
+      lowerCameraShake: false,
       devMode: false,
       activeGameMode: GAME_MODE_ID33,
       exitLinkUrl: EXIT_LINK_DEFAULT_URL,
@@ -5233,6 +5346,29 @@ function applyPersistentSavePayload(
           0.86,
           1.14,
         );
+      if (Number.isFinite(data.settings.touchSensitivity))
+        settings.touchSensitivity = THREE.MathUtils.clamp(
+          Number(data.settings.touchSensitivity),
+          0.72,
+          1.22,
+        );
+      if (Number.isFinite(data.settings.touchOpacity))
+        settings.touchOpacity = THREE.MathUtils.clamp(
+          Number(data.settings.touchOpacity),
+          0.5,
+          0.95,
+        );
+      if (typeof data.settings.touchHaptics === "boolean")
+        settings.touchHaptics = data.settings.touchHaptics;
+      if (
+        typeof data.settings.mobileQuality === "string" &&
+        MOBILE_QUALITY_OPTIONS.has(data.settings.mobileQuality)
+      )
+        settings.mobileQuality = data.settings.mobileQuality;
+      if (typeof data.settings.reducedMotion === "boolean")
+        settings.reducedMotion = data.settings.reducedMotion;
+      if (typeof data.settings.lowerCameraShake === "boolean")
+        settings.lowerCameraShake = data.settings.lowerCameraShake;
       if (typeof data.settings.devMode === "boolean")
         settings.devMode = data.settings.devMode;
       if (typeof data.settings.activeGameMode === "string")
@@ -10876,8 +11012,14 @@ function enterOnlineRoomMode(mode, { start = false } = {}) {
 }
 
 function getModeHelp(mode = getModeDefinition()) {
+  const touchActive =
+    Boolean(input.touchEnabled) ||
+    Boolean(state.deviceProfile?.usesTouch || state.deviceProfile?.touchActive);
+  const baseControls = touchActive
+    ? "Steer with the left pad. Hold Boost and Drift on the right. Tap Jump for airtime and Trick for flips."
+    : `Drive with WASD or arrows. ${formatCodeLabel(controlBindings.jumpTrick[0])} jumps and flips in air. Space drifts. Shift boosts.`;
   const common = {
-    controls: `Drive with WASD or arrows. ${formatCodeLabel(controlBindings.jumpTrick[0])} jumps and flips in air. Space drifts. Shift boosts.`,
+    controls: baseControls,
     tips: "Restart with R for a fast retry.",
   };
   const table = {
@@ -10896,7 +11038,9 @@ function getModeHelp(mode = getModeDefinition()) {
       scoring:
         "Goals decide the match; touches, saves, boosts, and replays add score.",
       win: "First to the goal target, or most goals when time ends.",
-      tips: "Use Ball Cam with L and lunge with Ctrl or Command near the ball.",
+      tips: touchActive
+        ? "Use Boost near the ball and keep the goal arrow in front."
+        : "Use Ball Cam with L and lunge with Ctrl or Command near the ball.",
     },
     [GAME_MODE_RACE]: {
       title: "Race",
@@ -10936,7 +11080,9 @@ function getModeHelp(mode = getModeDefinition()) {
         "Blue team fights Red in toy-like laser tag. Use cover, ammo, and shields.",
       scoring:
         "Laser KOs score for your team. First team to the KO target wins.",
-      controls: `${common.controls} F fires your forward laser. Pick up Ammo Refill and Shield Bubble.`,
+      controls: touchActive
+        ? `${common.controls} Tap Laser to fire forward. Pick up Ammo Refill and Shield Bubble.`
+        : `${common.controls} F fires your forward laser. Pick up Ammo Refill and Shield Bubble.`,
       win: "Blue wins by reaching the KO target before Red.",
       tips: "Face enemies before firing; hide behind solid barriers while reloading.",
     },
@@ -11013,8 +11159,22 @@ function renderModeHelpCard() {
 function refreshModeCopy() {
   const maxModeActive = isMaxMode();
   if (tips) {
-    tips.innerHTML = maxModeActive
+    const touchActive =
+      Boolean(input.touchEnabled) ||
+      Boolean(state.deviceProfile?.usesTouch || state.deviceProfile?.touchActive);
+    tips.innerHTML = touchActive
       ? `
+        <div><span>Steer:</span> Left touch pad</div>
+        <div><span>Go:</span> Push the pad forward</div>
+        <div><span>Reverse:</span> Pull the pad back</div>
+        <div><span>Drift:</span> Hold Drift</div>
+        <div><span>Boost:</span> Hold Boost</div>
+        <div><span>Jump / Trick:</span> Tap Jump or Trick</div>
+        <div><span>Action:</span> Laser appears in Battle; Boost helps in Max</div>
+        <div><span>Menu:</span> HUD Menu button</div>
+      `
+      : maxModeActive
+        ? `
         <div><span>Forward:</span> W / Arrow Up</div>
         <div><span>Left:</span> A / Arrow Left</div>
         <div><span>Right:</span> D / Arrow Right</div>
@@ -11028,7 +11188,7 @@ function refreshModeCopy() {
         <div><span>Restart:</span> R</div>
         <div><span>Menu:</span> Esc</div>
       `
-      : `
+        : `
         <div><span>Forward:</span> W / Arrow Up</div>
         <div><span>Left:</span> A / Arrow Left</div>
         <div><span>Right:</span> D / Arrow Right</div>
@@ -11056,9 +11216,15 @@ function refreshModeCopy() {
   if (touchDrift) {
     touchDrift.textContent = "Drift";
   }
+  if (touchBoost) {
+    touchBoost.textContent = isMaxMode() ? "Boost / Hit" : "Boost";
+  }
+  if (touchJump) {
+    touchJump.textContent = isBattleMode() ? "Hop" : "Jump";
+  }
   if (touchBackflip) {
-    touchBackflip.textContent = "Trick";
-    touchBackflip.hidden = !input.touchEnabled;
+    touchBackflip.textContent = isStuntMode() ? "Flip" : "Trick";
+    touchBackflip.hidden = !input.touchEnabled || isBattleMode();
   }
   if (touchLaser) {
     touchLaser.textContent = "Laser";
@@ -11249,6 +11415,11 @@ function renderControlsUi() {
   }
   if (touchLayoutSelect) touchLayoutSelect.value = settings.touchLayout;
   if (touchScaleSelect) touchScaleSelect.value = String(settings.touchScale);
+  if (touchSensitivitySelect)
+    touchSensitivitySelect.value = String(settings.touchSensitivity);
+  if (touchOpacitySelect) touchOpacitySelect.value = String(settings.touchOpacity);
+  if (touchHapticsToggle)
+    touchHapticsToggle.checked = Boolean(settings.touchHaptics);
   if (exitLinkUrlInput && document.activeElement !== exitLinkUrlInput) {
     exitLinkUrlInput.value = settings.exitLinkUrl;
   }
@@ -13170,7 +13341,11 @@ function spawnBurst(
   count = 10,
   { scale = 0.48, life = 0.34, force = 3.2, lift = 1.2 } = {},
 ) {
-  for (let i = 0; i < count; i += 1) {
+  const qualityCount = Math.max(
+    1,
+    Math.round(count * (getDeviceAssistTuning().qualityScale ?? 1)),
+  );
+  for (let i = 0; i < qualityCount; i += 1) {
     const angle = Math.random() * Math.PI * 2;
     const radius = 0.35 + Math.random() * force;
     spawnFx(
@@ -13196,6 +13371,10 @@ function spawnBurst(
 }
 
 function spawnLaserImpactSparks(position, color, forward, count = 18) {
+  count = Math.max(
+    1,
+    Math.round(count * (getDeviceAssistTuning().qualityScale ?? 1)),
+  );
   const origin = position.clone().add(new THREE.Vector3(0, 0.95, 0));
   const beamForward = (forward || tempVector).clone();
   beamForward.y = 0;
@@ -13283,11 +13462,18 @@ function makePowerup(type) {
 }
 
 function setEffectToast(text, { shake = 0, pulse = 0 } = {}) {
+  const shakeScale =
+    settings.lowerCameraShake || getDeviceAssistTuning().type === "phone"
+      ? 0.45
+      : 1;
   state.effectToast = text;
   state.lastEffectToast = text;
   state.effectToastTimer = 1.4;
-  state.cameraShake = Math.max(state.cameraShake, shake);
-  state.screenPulse = Math.max(state.screenPulse, pulse);
+  state.cameraShake = Math.max(state.cameraShake, shake * shakeScale);
+  state.screenPulse = Math.max(
+    state.screenPulse,
+    getDeviceAssistTuning().reducedMotion ? pulse * 0.35 : pulse,
+  );
   if (effectToast) {
     effectToast.textContent = text;
     effectToast.classList.add("show");
@@ -21945,7 +22131,57 @@ function startRun(resetLives = false) {
   state.running = true;
   savePersistentState();
   resetLevel();
+  if (maybeShowMobileRotatePrompt()) return;
   maybeShowModeIntro();
+}
+
+function isPhonePortraitGameplay() {
+  const profile = state.deviceProfile ?? {};
+  return (
+    profile.type === "phone" &&
+    Boolean(profile.touchActive || profile.usesTouch) &&
+    window.innerHeight > window.innerWidth
+  );
+}
+
+function getMobileRotatePromptDismissed() {
+  if (state.mobileRotatePromptDismissed) return true;
+  try {
+    return localStorage.getItem(MOBILE_ROTATE_PROMPT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setMobileRotatePromptVisible(visible) {
+  state.mobileRotatePromptVisible = Boolean(visible);
+  if (mobileRotatePrompt) mobileRotatePrompt.hidden = !visible;
+  document.body.classList.toggle("mobile-rotate-open", Boolean(visible));
+}
+
+function maybeShowMobileRotatePrompt() {
+  if (!isPhonePortraitGameplay() || getMobileRotatePromptDismissed()) {
+    setMobileRotatePromptVisible(false);
+    return false;
+  }
+  state.running = false;
+  setMobileRotatePromptVisible(true);
+  return true;
+}
+
+function continuePastMobileRotatePrompt({ remember = true } = {}) {
+  if (remember) {
+    state.mobileRotatePromptDismissed = true;
+    try {
+      localStorage.setItem(MOBILE_ROTATE_PROMPT_KEY, "1");
+    } catch {
+      // Rotation advice is optional; ignore storage failures.
+    }
+  }
+  setMobileRotatePromptVisible(false);
+  state.running = true;
+  maybeShowModeIntro();
+  returnFocusToGame();
 }
 
 function maybeShowModeIntro() {
@@ -22009,13 +22245,21 @@ function startFirstRace() {
 }
 
 const FIRST_DRIVE_STEPS = [
-  { label: "Steer left and right", test: () => Math.abs(input.touchSteer || state.steerSmoothed) > 0.22 || input.left || input.right },
-  { label: "Boost", test: () => state.modeRun.boosts >= 1 },
-  { label: "Jump", test: () => state.modeRun.jumps >= 1 || player.position.y > 0.2 },
-  { label: "Drift", test: () => state.modeRun.driftSeconds > 0.35 },
-  { label: "Collect the reward gate", test: () => state.modeRun.progress > 0 },
+  { label: "Steer left and right", touchLabel: "Move the left steering pad", test: () => Math.abs(input.touchSteer || state.steerSmoothed) > 0.22 || input.left || input.right },
+  { label: "Boost", touchLabel: "Hold Boost", test: () => state.modeRun.boosts >= 1 },
+  { label: "Jump", touchLabel: "Tap Jump", test: () => state.modeRun.jumps >= 1 || player.position.y > 0.2 },
+  { label: "Drift", touchLabel: "Hold Drift", test: () => state.modeRun.driftSeconds > 0.35 },
+  { label: "Collect the reward gate", touchLabel: "Drive through the glowing gate", test: () => state.modeRun.progress > 0 },
   { label: "Finish", test: () => state.elapsed - state.firstDrive.startedAt > 18 },
 ];
+
+function getFirstDriveStepLabel(step) {
+  if (!step) return "";
+  const touchActive =
+    Boolean(input.touchEnabled) ||
+    Boolean(state.deviceProfile?.usesTouch || state.deviceProfile?.touchActive);
+  return touchActive && step.touchLabel ? step.touchLabel : step.label;
+}
 
 function startFirstDriveTutorial() {
   settings.activeGameMode = GAME_MODE_RACE;
@@ -22069,11 +22313,14 @@ function updateFirstDriveTutorial() {
     finishFirstDriveTutorial();
     return;
   }
-  setEffectToast(`First Drive: ${step.label}`, { pulse: 0.08 });
+  setEffectToast(`First Drive: ${getFirstDriveStepLabel(step)}`, { pulse: 0.08 });
   if (step.test()) {
     state.firstDrive.step += 1;
     const next = FIRST_DRIVE_STEPS[state.firstDrive.step];
-    if (next) setEffectToast(`Nice. Next: ${next.label}`, { pulse: 0.28 });
+    if (next)
+      setEffectToast(`Nice. Next: ${getFirstDriveStepLabel(next)}`, {
+        pulse: 0.28,
+      });
     else finishFirstDriveTutorial();
   }
 }
@@ -22306,7 +22553,10 @@ window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
+  renderer.setPixelRatio(getRendererPixelRatio());
+  if (state.mobileRotatePromptVisible && !isPhonePortraitGameplay()) {
+    continuePastMobileRotatePrompt({ remember: false });
+  }
 });
 
 window.addEventListener(
@@ -22316,6 +22566,14 @@ window.addEventListener(
     if (event.pointerType === "mouse") updateAutoInputMode("desktop");
   },
   { capture: true },
+);
+
+document.addEventListener(
+  "touchmove",
+  (event) => {
+    if (document.body.classList.contains("playing")) event.preventDefault();
+  },
+  { passive: false },
 );
 
 window.addEventListener(
@@ -22572,6 +22830,20 @@ function bindPressAction(element, handler) {
   });
 }
 
+function pulseTouchHaptic(duration = 16) {
+  if (!settings.touchHaptics || !navigator.vibrate) return;
+  try {
+    navigator.vibrate(duration);
+  } catch {
+    // Optional platform affordance.
+  }
+}
+
+function setTouchButtonPressed(element, pressed) {
+  element?.classList.toggle("pressed", Boolean(pressed));
+  element?.setAttribute("aria-pressed", pressed ? "true" : "false");
+}
+
 function returnFocusToGame() {
   if (document.activeElement instanceof HTMLElement) {
     document.activeElement.blur();
@@ -22600,60 +22872,93 @@ function initTouchControls() {
   touchSteerPad.addEventListener("pointercancel", endSteer);
   touchSteerPad.addEventListener("pointerleave", endSteer);
 
-  touchDrift.addEventListener("pointerdown", () => {
+  touchDrift.addEventListener("pointerdown", (event) => {
     if (input.touchEnabled) {
+      event.preventDefault();
       updateAutoInputMode("touch");
       input.drift = true;
+      setTouchButtonPressed(touchDrift, true);
+      pulseTouchHaptic();
     }
   });
-  touchDrift.addEventListener("pointerup", () => {
+  touchDrift.addEventListener("pointerup", (event) => {
+    event.preventDefault();
     if (input.touchEnabled) input.drift = false;
+    setTouchButtonPressed(touchDrift, false);
+  });
+  touchDrift.addEventListener("pointercancel", () => {
+    if (input.touchEnabled) input.drift = false;
+    setTouchButtonPressed(touchDrift, false);
   });
   touchDrift.addEventListener("pointerleave", () => {
     if (input.touchEnabled) input.drift = false;
+    setTouchButtonPressed(touchDrift, false);
   });
-  touchBoost.addEventListener("pointerdown", () => {
+  touchBoost.addEventListener("pointerdown", (event) => {
     if (input.touchEnabled) {
+      event.preventDefault();
       updateAutoInputMode("touch");
       input.boost = true;
+      setTouchButtonPressed(touchBoost, true);
+      pulseTouchHaptic();
+      if (isMaxMode()) performMaxBallLunge() || performMaxBotLunge();
     }
   });
-  touchBoost.addEventListener("pointerup", () => {
+  touchBoost.addEventListener("pointerup", (event) => {
+    event.preventDefault();
     if (input.touchEnabled) input.boost = false;
+    setTouchButtonPressed(touchBoost, false);
+  });
+  touchBoost.addEventListener("pointercancel", () => {
+    if (input.touchEnabled) input.boost = false;
+    setTouchButtonPressed(touchBoost, false);
   });
   touchBoost.addEventListener("pointerleave", () => {
     if (input.touchEnabled) input.boost = false;
+    setTouchButtonPressed(touchBoost, false);
   });
   if (touchJump) {
-    bindPressAction(touchJump, () => {
+    bindPressAction(touchJump, (event) => {
       if (input.touchEnabled) {
+        event?.preventDefault?.();
         updateAutoInputMode("touch");
+        setTouchButtonPressed(touchJump, true);
+        window.setTimeout(() => setTouchButtonPressed(touchJump, false), 120);
+        pulseTouchHaptic(20);
         performJumpOrBackflip();
       }
     });
   }
   if (touchBackflip) {
-    touchBackflip.addEventListener("pointerdown", () => {
+    touchBackflip.addEventListener("pointerdown", (event) => {
       if (!input.touchEnabled) return;
+      event.preventDefault();
       updateAutoInputMode("touch");
+      setTouchButtonPressed(touchBackflip, true);
+      pulseTouchHaptic(20);
       performJumpOrBackflip();
     });
     const clearBackflip = () => {
       input.backflip = false;
+      setTouchButtonPressed(touchBackflip, false);
     };
     touchBackflip.addEventListener("pointerup", clearBackflip);
     touchBackflip.addEventListener("pointercancel", clearBackflip);
     touchBackflip.addEventListener("pointerleave", clearBackflip);
   }
   if (touchLaser) {
-    touchLaser.addEventListener("pointerdown", () => {
+    touchLaser.addEventListener("pointerdown", (event) => {
       if (!input.touchEnabled) return;
+      event.preventDefault();
       updateAutoInputMode("touch");
       input.laser = true;
+      setTouchButtonPressed(touchLaser, true);
+      pulseTouchHaptic(14);
       fireBattleLaser(player);
     });
     const clearLaser = () => {
       input.laser = false;
+      setTouchButtonPressed(touchLaser, false);
     };
     touchLaser.addEventListener("pointerup", clearLaser);
     touchLaser.addEventListener("pointercancel", clearLaser);
@@ -22667,6 +22972,11 @@ bindPressAction(startAccountSubmit, () => submitStartAccount());
 bindPressAction(schoolLeave, () => leaveFromSchoolGate());
 bindPressAction(schoolContinue, () => continuePastSchoolGate());
 bindPressAction(tutorialBtn, () => startFirstDriveTutorial());
+bindPressAction(mobileRotateContinue, () => continuePastMobileRotatePrompt());
+bindPressAction(mobileRotateMenu, () => {
+  setMobileRotatePromptVisible(false);
+  setMenuOpen(true);
+});
 bindPressAction(nextBtn, () => {
   dispatchGameAction("message-next");
 });
@@ -22885,6 +23195,52 @@ touchScaleSelect?.addEventListener("change", (event) => {
     0.86,
     1.14,
   );
+  applyDeviceProfile();
+  savePersistentState();
+});
+
+touchSensitivitySelect?.addEventListener("change", (event) => {
+  settings.touchSensitivity = THREE.MathUtils.clamp(
+    Number(event.target.value),
+    0.72,
+    1.22,
+  );
+  applyDeviceProfile();
+  savePersistentState();
+});
+
+touchOpacitySelect?.addEventListener("change", (event) => {
+  settings.touchOpacity = THREE.MathUtils.clamp(
+    Number(event.target.value),
+    0.5,
+    0.95,
+  );
+  applyDeviceProfile();
+  savePersistentState();
+});
+
+touchHapticsToggle?.addEventListener("change", (event) => {
+  settings.touchHaptics = Boolean(event.target.checked);
+  applyDeviceProfile();
+  savePersistentState();
+});
+
+mobileQualitySelect?.addEventListener("change", (event) => {
+  settings.mobileQuality = MOBILE_QUALITY_OPTIONS.has(event.target.value)
+    ? event.target.value
+    : "auto";
+  applyDeviceProfile();
+  savePersistentState();
+});
+
+reducedMotionToggle?.addEventListener("change", (event) => {
+  settings.reducedMotion = Boolean(event.target.checked);
+  applyDeviceProfile();
+  savePersistentState();
+});
+
+cameraShakeToggle?.addEventListener("change", (event) => {
+  settings.lowerCameraShake = Boolean(event.target.checked);
   applyDeviceProfile();
   savePersistentState();
 });
@@ -23469,6 +23825,19 @@ window.render_game_to_text = () => {
       bindings: serializeControlBindings(),
       touchLayout: settings.touchLayout,
       touchScale: Number(settings.touchScale),
+      touchSensitivity: Number(settings.touchSensitivity),
+      touchOpacity: Number(settings.touchOpacity),
+      touchHaptics: Boolean(settings.touchHaptics),
+      mobileQuality: settings.mobileQuality,
+      reducedMotion: Boolean(settings.reducedMotion),
+      lowerCameraShake: Boolean(settings.lowerCameraShake),
+      touchState: {
+        steer: Number(input.touchSteer.toFixed(3)),
+        target: Number(input.touchSteerTarget.toFixed(3)),
+        drift: Boolean(input.drift),
+        boost: Boolean(input.boost),
+        laser: Boolean(input.laser),
+      },
       controller: {
         connected: gamepadState.connected,
         id: gamepadState.id,
@@ -23652,6 +24021,9 @@ window.render_game_to_text = () => {
       touchAvailable: Boolean(state.deviceProfile.touchAvailable),
       layoutClass: TOUCH_LAYOUT_OPTIONS[settings.touchLayout]?.className ?? "",
       compactHud: Boolean(state.deviceProfile.compactHud),
+      mobileQuality: state.deviceProfile.mobileQuality,
+      reducedMotion: Boolean(state.deviceProfile.reducedMotion),
+      rotatePromptVisible: Boolean(state.mobileRotatePromptVisible),
     },
     ball: maxMode.ball
       ? {
@@ -24320,6 +24692,67 @@ window.__infernodriftTestApi = {
     applyDeviceProfile();
     return { layout: settings.touchLayout, scale: settings.touchScale };
   },
+  setMobileControlSettings: ({
+    sensitivity = settings.touchSensitivity,
+    opacity = settings.touchOpacity,
+    haptics = settings.touchHaptics,
+    quality = settings.mobileQuality,
+    reducedMotion = settings.reducedMotion,
+    lowerCameraShake = settings.lowerCameraShake,
+  } = {}) => {
+    settings.touchSensitivity = THREE.MathUtils.clamp(
+      Number(sensitivity) || 1,
+      0.72,
+      1.22,
+    );
+    settings.touchOpacity = THREE.MathUtils.clamp(
+      Number(opacity) || 0.78,
+      0.5,
+      0.95,
+    );
+    settings.touchHaptics = Boolean(haptics);
+    settings.mobileQuality = MOBILE_QUALITY_OPTIONS.has(quality)
+      ? quality
+      : "auto";
+    settings.reducedMotion = Boolean(reducedMotion);
+    settings.lowerCameraShake = Boolean(lowerCameraShake);
+    applyDeviceProfile();
+    return {
+      sensitivity: settings.touchSensitivity,
+      opacity: settings.touchOpacity,
+      haptics: settings.touchHaptics,
+      quality: settings.mobileQuality,
+      reducedMotion: settings.reducedMotion,
+      lowerCameraShake: settings.lowerCameraShake,
+    };
+  },
+  setTouchInputForTest: ({
+    steer = 0,
+    drift = false,
+    boost = false,
+    laser = false,
+  } = {}) => {
+    updateAutoInputMode("touch");
+    input.touchSteerTarget = THREE.MathUtils.clamp(Number(steer) || 0, -1, 1);
+    input.touchSteer = input.touchSteerTarget;
+    input.throttle = true;
+    input.drift = Boolean(drift);
+    input.boost = Boolean(boost);
+    input.laser = Boolean(laser);
+    setTouchButtonPressed(touchDrift, input.drift);
+    setTouchButtonPressed(touchBoost, input.boost);
+    setTouchButtonPressed(touchLaser, input.laser);
+    return {
+      steer: input.touchSteer,
+      drift: input.drift,
+      boost: input.boost,
+      laser: input.laser,
+    };
+  },
+  dismissMobileRotatePromptForTest: () => {
+    continuePastMobileRotatePrompt({ remember: false });
+    return Boolean(state.mobileRotatePromptVisible);
+  },
   setControlBinding: (actionId, code) => setPrimaryBinding(actionId, code),
   openModeHelp: () => {
     openModeHelp();
@@ -24745,6 +25178,13 @@ if (rampDensitySelect) rampDensitySelect.value = settings.rampDensity;
 if (devModeToggle) devModeToggle.checked = settings.devMode;
 if (touchLayoutSelect) touchLayoutSelect.value = settings.touchLayout;
 if (touchScaleSelect) touchScaleSelect.value = String(settings.touchScale);
+if (touchSensitivitySelect)
+  touchSensitivitySelect.value = String(settings.touchSensitivity);
+if (touchOpacitySelect) touchOpacitySelect.value = String(settings.touchOpacity);
+if (touchHapticsToggle) touchHapticsToggle.checked = settings.touchHaptics;
+if (mobileQualitySelect) mobileQualitySelect.value = settings.mobileQuality;
+if (reducedMotionToggle) reducedMotionToggle.checked = settings.reducedMotion;
+if (cameraShakeToggle) cameraShakeToggle.checked = settings.lowerCameraShake;
 if (exitLinkUrlInput) exitLinkUrlInput.value = settings.exitLinkUrl;
 applyDeviceProfile();
 refreshDevModeUi();
