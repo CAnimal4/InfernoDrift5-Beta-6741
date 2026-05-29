@@ -1441,11 +1441,11 @@ const DEVICE_PROFILES = {
     cameraDistanceMult: 0.93,
     cameraHeightMult: 0.94,
     controlScale: 1.03,
-    touchStickSize: 150,
+    touchStickSize: 156,
     touchButtonSize: 1.18,
-    touchSteerScale: 0.9,
-    touchDeadzone: 0.05,
-    touchResponse: 0.19,
+    touchSteerScale: 1.02,
+    touchDeadzone: 0.035,
+    touchResponse: 0.27,
     qualityScale: 0.9,
     botSpeedMult: 0.95,
     botReactionMult: 0.96,
@@ -1460,14 +1460,14 @@ const DEVICE_PROFILES = {
     hudScale: 0.86,
     overlayScale: 0.9,
     minimapSize: 116,
-    cameraDistanceMult: 0.78,
-    cameraHeightMult: 0.78,
+    cameraDistanceMult: 0.88,
+    cameraHeightMult: 0.86,
     controlScale: 1,
-    touchStickSize: 132,
-    touchButtonSize: 1,
-    touchSteerScale: 0.88,
-    touchDeadzone: 0.04,
-    touchResponse: 0.18,
+    touchStickSize: 154,
+    touchButtonSize: 1.08,
+    touchSteerScale: 1.08,
+    touchDeadzone: 0.025,
+    touchResponse: 0.3,
     qualityScale: 0.76,
     botSpeedMult: 0.89,
     botReactionMult: 0.9,
@@ -16966,9 +16966,13 @@ function updatePlayer(dt) {
   const steerFilter =
     (input.drift ? DRIVING_TUNING.grounded.driftSteerFilter : steerFilterBase) *
     (battleModeActive
-      ? BATTLE_RULES.playerSteerFilterMult
+      ? deviceAssist.usesTouch
+        ? 0.92
+        : BATTLE_RULES.playerSteerFilterMult
       : raceModeActive
-        ? 0.62
+        ? deviceAssist.usesTouch
+          ? 0.9
+          : 0.62
         : 1);
   state.steerSmoothed += (inputSteer - state.steerSmoothed) * dt * steerFilter;
   const steer = state.steerSmoothed;
@@ -17159,11 +17163,17 @@ function updatePlayer(dt) {
   }
 
   const steerInputDamp = maxModeActive
-    ? 0.66
+    ? deviceAssist.usesTouch
+      ? 0.84
+      : 0.66
     : battleModeActive
-      ? 0.72
+      ? deviceAssist.usesTouch
+        ? 0.86
+        : 0.72
       : raceModeActive
-        ? 0.64
+        ? deviceAssist.usesTouch
+          ? 0.82
+          : 0.64
         : 1;
   const maxSteer = steer * steerInputDamp;
   const turnAssist =
@@ -22571,7 +22581,12 @@ window.addEventListener(
 document.addEventListener(
   "touchmove",
   (event) => {
-    if (document.body.classList.contains("playing")) event.preventDefault();
+    if (
+      document.body.classList.contains("playing") &&
+      !isAllowedGameplayScrollTarget(event.target)
+    ) {
+      event.preventDefault();
+    }
   },
   { passive: false },
 );
@@ -22738,7 +22753,7 @@ function updateTouchInput(clientX, clientY) {
   touchSteerKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
   const normalizedX = THREE.MathUtils.clamp(knobX / radius, -1, 1);
   const curvedSteer =
-    Math.sign(normalizedX) * Math.pow(Math.abs(normalizedX), 1.45);
+    Math.sign(normalizedX) * Math.pow(Math.abs(normalizedX), 1.18);
   input.touchSteerTarget =
     Math.abs(curvedSteer) < deviceAssist.touchDeadzone
       ? 0
@@ -22749,9 +22764,9 @@ function updateTouchInput(clientX, clientY) {
         );
   input.touchSteer +=
     (input.touchSteerTarget - input.touchSteer) *
-    THREE.MathUtils.clamp(deviceAssist.touchResponse, 0.08, 0.35);
-  input.throttle = clampedDist > radius * 0.14 || ny < -0.08;
-  input.brake = ny > 0.38 && clampedDist > radius * 0.28;
+    THREE.MathUtils.clamp(deviceAssist.touchResponse, 0.12, 0.48);
+  input.throttle = clampedDist > radius * 0.1 || ny < -0.06;
+  input.brake = ny > 0.42 && clampedDist > radius * 0.34;
 }
 
 function resetTouchSteer() {
@@ -22849,6 +22864,28 @@ function returnFocusToGame() {
     document.activeElement.blur();
   }
   window.focus();
+}
+
+function isAllowedGameplayScrollTarget(target) {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest(
+      [
+        "#menu.show",
+        "#message.show",
+        "#feedback-modal.show",
+        "#mode-help-card:not([hidden])",
+        ".chat-popout.open",
+        ".chat-log",
+        ".online-chat-panel",
+        ".connection-report",
+        ".garage-option-row",
+        ".menu-tabs",
+        ".driver-track",
+        ".level-track",
+      ].join(","),
+    ),
+  );
 }
 
 function initTouchControls() {

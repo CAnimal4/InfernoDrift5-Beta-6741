@@ -893,6 +893,7 @@ body:has(#school-gate.show) #overlay {
   margin: 20px 0 12px;
   flex-wrap: wrap;
   flex-shrink: 0;
+  touch-action: pan-x;
 }
 
 .menu-content {
@@ -900,7 +901,10 @@ body:has(#school-gate.show) #overlay {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 2px 10px 18px 0;
+  flex: 1 1 auto;
   min-height: 0;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   mask-image: linear-gradient(
     to bottom,
@@ -3083,10 +3087,33 @@ button:hover {
   touch-action: none;
 }
 
+.touch-steer-pad::before {
+  content: "";
+  position: absolute;
+  inset: 18%;
+  border: 1px solid rgba(126, 255, 255, 0.2);
+  border-radius: 50%;
+  box-shadow: inset 0 0 18px rgba(86, 233, 255, 0.1);
+}
+
+.touch-steer-pad::after {
+  content: "↔";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(232, 249, 255, 0.5);
+  font-size: calc(var(--touch-stick-size) * 0.32);
+  font-weight: 900;
+  letter-spacing: 0;
+  pointer-events: none;
+}
+
 .touch-steer-knob {
   position: absolute;
   left: 50%;
   top: 50%;
+  z-index: 1;
   width: var(--touch-knob-size);
   height: var(--touch-knob-size);
   margin-left: calc(var(--touch-knob-size) * -0.5);
@@ -3099,7 +3126,7 @@ button:hover {
   );
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
   will-change: transform;
-  opacity: 0;
+  opacity: 0.42;
   transition: opacity 0.15s ease;
 }
 
@@ -3350,6 +3377,7 @@ body.device-phone.playing .daily-gift {
 body.device-phone .menu-panel {
   max-width: min(94vw, 620px);
   padding: 16px 14px calc(16px + var(--safe-bottom));
+  max-height: calc(100dvh - 28px);
 }
 
 body.device-phone .menu-tabs {
@@ -3426,10 +3454,16 @@ body.device-phone .chat-notice-stack {
   bottom: calc(10px + var(--safe-bottom));
 }
 
-body.device-phone .menu-panel,
+body.device-phone .menu-panel {
+  max-height: calc(100dvh - 28px);
+  overflow-y: hidden;
+}
+
 body.device-phone #feedback-modal .feedback-panel {
   max-height: calc(100dvh - 28px);
   overflow-y: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 body.device-phone .online-panel,

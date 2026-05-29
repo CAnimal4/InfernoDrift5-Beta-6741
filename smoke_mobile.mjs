@@ -111,6 +111,29 @@ assert.equal(state.controls.touchState.drift, true);
 assert.equal(state.device.rotatePromptVisible, false);
 assert.equal(await phoneLandscape.locator("#mobile-rotate-prompt").isVisible(), false);
 await screenshot(phoneLandscape, "mobile-phone-landscape-game");
+const scrollGuard = await phoneLandscape.evaluate(() => {
+  window.__infernodriftTestApi?.openMenuTab?.("controls");
+  const menuContent = document.getElementById("menu-content");
+  const canvas = document.querySelector("canvas");
+  const menuEvent = new Event("touchmove", { bubbles: true, cancelable: true });
+  const gameEvent = new Event("touchmove", { bubbles: true, cancelable: true });
+  const menuAllowed = menuContent.dispatchEvent(menuEvent);
+  const gameAllowed = canvas.dispatchEvent(gameEvent);
+  return {
+    menuAllowed,
+    menuPrevented: menuEvent.defaultPrevented,
+    gameAllowed,
+    gamePrevented: gameEvent.defaultPrevented,
+    canScroll: menuContent.scrollHeight > menuContent.clientHeight,
+    touchAction: getComputedStyle(menuContent).touchAction,
+  };
+});
+assert.equal(scrollGuard.menuAllowed, true);
+assert.equal(scrollGuard.menuPrevented, false);
+assert.equal(scrollGuard.gameAllowed, false);
+assert.equal(scrollGuard.gamePrevented, true);
+assert.equal(scrollGuard.canScroll, true);
+assert.match(scrollGuard.touchAction, /pan-y/i);
 await phoneLandscape.close();
 
 const phonePortrait = await makePage({
