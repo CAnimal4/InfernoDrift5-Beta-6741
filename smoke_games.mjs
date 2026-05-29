@@ -336,13 +336,71 @@ const clarkSpecialProgress = await page.evaluate(() => {
     username: "Clark",
   });
   window.__infernodriftTestApi.applySavePayloadForTest(
-    { progressionV2: { xp: 100000, totalXp: 100000, embers: 9999 } },
+    {
+      progressionV2: {
+        xp: 100000,
+        totalXp: 100000,
+        embers: 9999,
+        specialBadgeRepairVersion: "old-bad-cap",
+        specialBadgeProgressRepairedAt: "2026-05-23T00:00:00.000Z",
+        specialBadgeProgressBaselineXp: 22000,
+      },
+    },
     { forceProgression: true, replaceProgression: true },
   );
   return JSON.parse(window.render_game_to_text()).progression;
 });
-assert.equal(clarkSpecialProgress.totalXp, 22000);
-assert.equal(clarkSpecialProgress.embers, 875);
+assert.equal(clarkSpecialProgress.totalXp, 100000);
+assert.equal(clarkSpecialProgress.embers, 9999);
+assert.equal(clarkSpecialProgress.specialBadgeRepairVersion, undefined);
+assert.equal(clarkSpecialProgress.specialBadgeProgressBaselineXp, undefined);
+const specialBadgeStatsAreDisplayOnly = await page.evaluate(() => {
+  const usernames = ["MODERATOR", "Joshua", "Tosh_the_Sigma", "Billy", "JFine"];
+  return usernames.map((username, index) => {
+    window.__infernodriftTestApi.resetLocalProgressionForTest();
+    window.__infernodriftTestApi.setOnlineUserForTest({
+      id: `badge-display-${index}`,
+      username,
+    });
+    window.__infernodriftTestApi.applySavePayloadForTest(
+      { progressionV2: { xp: 90000 + index, totalXp: 90000 + index, embers: 500 + index } },
+      { forceProgression: true, replaceProgression: true },
+    );
+    const progression = JSON.parse(window.render_game_to_text()).progression;
+    return { username, totalXp: progression.totalXp, embers: progression.embers };
+  });
+});
+specialBadgeStatsAreDisplayOnly.forEach((entry, index) => {
+  assert.equal(entry.totalXp, 90000 + index);
+  assert.equal(entry.embers, 500 + index);
+});
+const leaderboardRecoveryState = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetLocalProgressionForTest();
+  window.__infernodriftTestApi.setOnlineUserForTest({
+    id: "clark-live",
+    username: "Clark",
+  });
+  window.__infernodriftTestApi.applySavePayloadForTest(
+    { progressionV2: { xp: 22000, totalXp: 22000, embers: 875 } },
+    { forceProgression: true, replaceProgression: true },
+  );
+  window.__infernodriftTestApi.setLeaderboardRowsForTest(
+    [
+      {
+        userId: "clark-live",
+        username: "Clark",
+        source: "server",
+        account: true,
+        xp: 100000,
+        totalXp: 100000,
+      },
+    ],
+    null,
+  );
+  return JSON.parse(window.render_game_to_text()).progression;
+});
+assert.equal(leaderboardRecoveryState.totalXp, 100000);
+assert.equal(leaderboardRecoveryState.embers, 875);
 await page.locator('[data-tab="profile"]').click({ force: true });
 await page.waitForTimeout(150);
 onlineUiState = JSON.parse(

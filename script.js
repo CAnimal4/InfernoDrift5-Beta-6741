@@ -476,13 +476,6 @@ const SPECIAL_BADGE_ACCOUNT_KEYS = new Set([
 ]);
 const SPECIAL_BADGE_REPAIR_VERSION = "2026-05-23-badge-xp-repair-v3";
 const SPECIAL_BADGE_SUSPECT_XP = 90000;
-const SPECIAL_BADGE_PROGRESS_POLICIES = new Map([
-  ["clark", { repairXp: 22000, maxEmbers: 875 }],
-  ["moderator", { repairXp: 0, maxEmbers: 0, resetProgression: true }],
-  ["joshua", { repairXp: 0, maxEmbers: 0, resetProgression: true }],
-  ["tosh_the_sigma", { repairXp: 0, maxEmbers: 0, resetProgression: true }],
-  ["tosh the sigma", { repairXp: 0, maxEmbers: 0, resetProgression: true }],
-]);
 const FOUNDER_FRIEND_XP_REWARD = 1000;
 const CODEX_LEADERBOARD_USERNAME = "ChatGPT (Codex)";
 const CODEX_LEADERBOARD_ID = "system-chatgpt-codex";
@@ -3099,14 +3092,6 @@ function awardXP(source, amount, metadata = {}) {
   progression.xp = totalXp;
   progression.totalXp = totalXp;
   progression.level = getLevelFromXP(totalXp);
-  if (
-    hasSpecialBadgeRepairMarker(progression) &&
-    totalXp >= SPECIAL_BADGE_SUSPECT_XP &&
-    isSpecialBadgeAccountUsername(onlineState.user?.username || onlineState.username)
-  ) {
-    progression.specialBadgeProgressEarnedAfterRepair = true;
-    progression.specialBadgeProgressSource = "earned-after-repair";
-  }
   if (emberAmount > 0) progression.embers += emberAmount;
   if (metadata.cosmeticId) ownCosmetic(metadata.cosmeticId);
   const levelRewards = awardLevelRewards(oldLevel, progression.level);
@@ -4914,12 +4899,9 @@ function isSpecialBadgeAccountUsername(username = "") {
 }
 
 function getSpecialBadgeProgressPolicy(username = "") {
-  const key = normalizeLegacyProgressKey(username);
-  return (
-    SPECIAL_BADGE_PROGRESS_POLICIES.get(key) ||
-    SPECIAL_BADGE_PROGRESS_POLICIES.get(compactLegacyProgressKey(key)) ||
-    null
-  );
+  return isSpecialBadgeAccountUsername(username)
+    ? { badgesOnly: true, neverRepairProgress: true }
+    : null;
 }
 
 function hasSpecialBadgeRepairMarker(progression = {}) {
@@ -4948,74 +4930,33 @@ function hasEarnedSpecialProgressAfterRepair(progression = {}) {
   );
 }
 
+function removeSpecialBadgeRepairMarkers(progression = {}) {
+  if (!progression || typeof progression !== "object")
+    return { progression, changed: false };
+  if (
+    !hasSpecialBadgeRepairMarker(progression) &&
+    !hasEarnedSpecialProgressAfterRepair(progression)
+  ) {
+    return { progression, changed: false };
+  }
+  const clean = { ...progression };
+  delete clean.specialBadgeRepairVersion;
+  delete clean.specialBadgeProgressRepairedAt;
+  delete clean.specialBadgeProgressBaselineXp;
+  delete clean.specialBadgeProgressEarnedAfterRepair;
+  delete clean.specialBadgeProgressSource;
+  return { progression: clean, changed: true };
+}
+
 function sanitizeSpecialBadgeProgression(
   progress = {},
   username = onlineState.user?.username || onlineState.username,
 ) {
-  const policy = getSpecialBadgeProgressPolicy(username);
-  if (!policy || !progress || typeof progress !== "object") {
+  if (!progress || typeof progress !== "object")
     return { progression: progress, changed: false };
-  }
-  const normalized = normalizeProgressionV2(progress);
-  const hardEarnedEvidence = hasHardEarnedProgressEvidence({
-    progressionV2: normalized,
-    worldIndex: state.worldIndex,
-    levelIndex: state.levelIndex,
-    customization,
-    garage: garageState,
-  });
-  const repairXp = Math.max(0, Math.floor(Number(policy.repairXp) || 0));
-  const maxEmbers = Number.isFinite(Number(policy.maxEmbers))
-    ? Math.max(0, Math.floor(Number(policy.maxEmbers) || 0))
-    : null;
-  if (
-    policy.resetProgression &&
-    !hardEarnedEvidence &&
-    (normalized.totalXp > repairXp ||
-      (maxEmbers !== null && normalized.embers > maxEmbers))
-  ) {
-    const fresh = createProgressionV2();
-    return {
-      progression: addSpecialBadgeRepairMarker(
-        {
-          ...fresh,
-          dailyGiftSalt: normalized.dailyGiftSalt || fresh.dailyGiftSalt,
-        },
-        repairXp,
-      ),
-      changed: true,
-    };
-  }
-  if (normalized.totalXp < SPECIAL_BADGE_SUSPECT_XP) {
+  if (!isSpecialBadgeAccountUsername(username))
     return { progression: progress, changed: false };
-  }
-  if (hasEarnedSpecialProgressAfterRepair(normalized)) {
-    return { progression: progress, changed: false };
-  }
-  const repairedXp = policy.resetProgression ? 0 : repairXp;
-  const repairedLevel = getLevelFromXP(repairedXp);
-  return {
-    progression: addSpecialBadgeRepairMarker(
-      {
-        ...normalized,
-        xp: repairedXp,
-        totalXp: repairedXp,
-        level: repairedLevel,
-        embers:
-          maxEmbers === null
-            ? normalized.embers
-            : Math.min(normalized.embers, maxEmbers),
-        claimedLevelRewards: normalized.claimedLevelRewards.filter(
-          (level) => Math.max(0, Number(level) || 0) <= repairedLevel,
-        ),
-        recentRewards: normalized.recentRewards.filter(
-          (reward) => Math.max(0, Number(reward?.level) || 0) <= repairedLevel,
-        ),
-      },
-      repairedXp,
-    ),
-    changed: true,
-  };
+  return removeSpecialBadgeRepairMarkers(progress);
 }
 
 function hasHardEarnedProgressEvidence(payload = {}) {
@@ -5036,81 +4977,19 @@ function hasHardEarnedProgressEvidence(payload = {}) {
 }
 
 function stripUnearnedSpecialProgressPayload(payload = {}, username = "") {
-  const policy = getSpecialBadgeProgressPolicy(username);
   if (
     !payload ||
     typeof payload !== "object" ||
-    !isSpecialBadgeAccountUsername(username) ||
-    !policy
+    !isSpecialBadgeAccountUsername(username)
   ) {
     return payload;
   }
   const cleanPayload = structuredClone(payload);
-  const normalized = normalizeProgressionV2(cleanPayload.progressionV2 || {});
-  if (policy) {
-    const repairXp = Math.max(0, Math.floor(Number(policy.repairXp) || 0));
-    const maxEmbers = Number.isFinite(Number(policy.maxEmbers))
-      ? Math.max(0, Math.floor(Number(policy.maxEmbers) || 0))
-      : null;
-    const hardEarnedEvidence = hasHardEarnedProgressEvidence(payload);
-    if (hasEarnedSpecialProgressAfterRepair(normalized)) return payload;
-    if (
-      hasSpecialBadgeRepairMarker(normalized) &&
-      normalized.totalXp < SPECIAL_BADGE_SUSPECT_XP &&
-      (maxEmbers === null || normalized.embers <= maxEmbers)
-    ) {
-      return payload;
-    }
-    const shouldReset =
-      normalized.totalXp >= SPECIAL_BADGE_SUSPECT_XP ||
-      (policy.resetProgression && !hardEarnedEvidence) ||
-      (maxEmbers !== null && normalized.embers > maxEmbers);
-    if (!shouldReset) return payload;
-    if (policy.resetProgression) {
-      const fresh = createProgressionV2();
-      cleanPayload.progressionV2 = addSpecialBadgeRepairMarker(
-        {
-          ...fresh,
-          dailyGiftSalt:
-            cleanPayload.progressionV2?.dailyGiftSalt || fresh.dailyGiftSalt,
-        },
-        repairXp,
-      );
-      return cleanPayload;
-    }
-    const cappedXp = Math.min(normalized.totalXp, repairXp);
-    const cappedLevel = getLevelFromXP(cappedXp);
-    cleanPayload.progressionV2 = addSpecialBadgeRepairMarker(
-      {
-        ...normalized,
-        xp: cappedXp,
-        totalXp: cappedXp,
-        level: cappedLevel,
-        embers:
-          maxEmbers === null
-            ? normalized.embers
-            : Math.min(normalized.embers, maxEmbers),
-        claimedLevelRewards: normalized.claimedLevelRewards.filter(
-          (level) => Math.max(0, Number(level) || 0) <= cappedLevel,
-        ),
-        recentRewards: normalized.recentRewards.filter(
-          (reward) => Math.max(0, Number(reward?.level) || 0) <= cappedLevel,
-        ),
-      },
-      cappedXp,
-    );
-    return cleanPayload;
-  }
-  if (hasHardEarnedProgressEvidence(payload)) return payload;
-  const fresh = createProgressionV2();
-  cleanPayload.progressionV2 = addSpecialBadgeRepairMarker(
-    {
-      ...fresh,
-      dailyGiftSalt:
-        cleanPayload.progressionV2?.dailyGiftSalt || fresh.dailyGiftSalt,
-    },
-    0,
+  const cleaned = removeSpecialBadgeRepairMarkers(
+    cleanPayload.progressionV2 || {},
   );
+  if (!cleaned.changed) return payload;
+  cleanPayload.progressionV2 = cleaned.progression;
   return cleanPayload;
 }
 
@@ -5272,11 +5151,10 @@ function applyServerSave(
     );
     if (cleanedPayload !== nextPayload) {
       nextPayload = cleanedPayload;
-      shouldReplaceProgression = true;
       onlineState.freshAccountSaveSyncPending = true;
       onlineState.replaceNextProgressSync = true;
       onlineState.profileActionStatus =
-        "Removed automatic badge-account starter progress. Your badge stays; earned progress still syncs normally.";
+        "Removed an old badge-account repair marker. Your badge stays; earned progress still syncs normally.";
     }
   }
   if (nextPayload && cleanPollutedFresh && isPollutedFreshAccountPayload(nextPayload)) {
@@ -5709,9 +5587,7 @@ async function importBundledLegacyProgressForFirebaseAccount({
   }
   const bestPayload = chooseBestSavePayload(legacyPayload, localPayload);
   applyServerSave({ payload: bestPayload }, { force: true });
-  await firebaseOnline.syncProgress(bestPayload, {
-    replace: isSpecialBadgeAccountUsername(entry.username || username),
-  });
+  await firebaseOnline.syncProgress(bestPayload);
   onlineState.legacyImportStatus = "imported";
   onlineState.legacyImportXp = getSavePayloadTotalXp(bestPayload);
   onlineState.profileActionStatus = `Restored ${onlineState.legacyImportXp.toLocaleString()} XP from the old online backend into your current online account.`;
@@ -5913,11 +5789,7 @@ async function importLegacyProgressForFirebaseAccount(
     }
     const bestPayload = chooseBestSavePayload(legacyPayload, localPayload);
     applyServerSave({ payload: bestPayload }, { force: true });
-    await firebaseOnline.syncProgress(bestPayload, {
-      replace: isSpecialBadgeAccountUsername(
-        bundle.user?.username || authPayload?.username,
-      ),
-    });
+    await firebaseOnline.syncProgress(bestPayload);
     onlineState.legacyImportStatus = "imported";
     onlineState.legacyImportXp = getSavePayloadTotalXp(bestPayload);
     onlineState.profileActionStatus = `Imported ${onlineState.legacyImportXp.toLocaleString()} XP from the legacy online backend into your current online account.`;
@@ -7981,6 +7853,10 @@ function handleOnlineMessage(raw) {
         ? "server"
         : "local";
     onlineState.leaderboardSyncedAt = performance.now();
+    recoverAccountProgressFromLeaderboard(
+      onlineState.leaderboard,
+      onlineState.leaderboardPlayerRow,
+    );
   } else if (message.type === "friends.snapshot") {
     onlineState.friends = Array.isArray(message.friends) ? message.friends : [];
     onlineState.incomingFriendRequests = Array.isArray(message.incomingRequests)
@@ -9793,22 +9669,49 @@ function getLeaderboardXp(row) {
   );
 }
 
+function isCurrentAccountLeaderboardRow(row = {}) {
+  if (!row || isCodexLeaderboardRow(row) || isTestLikeLeaderboardRow(row))
+    return false;
+  const currentUserId = String(onlineState.user?.id || "");
+  if (currentUserId && String(row.userId || row.uid || "") === currentUserId)
+    return true;
+  const currentName = claimKeyClient(onlineState.user?.username || onlineState.username);
+  const rowName = claimKeyClient(row.username || row.name || "");
+  return Boolean(currentName && rowName && currentName === rowName);
+}
+
+function recoverAccountProgressFromLeaderboard(rows = [], playerRow = null) {
+  if (
+    onlineState.profileMode !== "account" ||
+    onlineState.guestTemporary ||
+    !onlineState.user
+  ) {
+    return false;
+  }
+  const bestXp = [playerRow, ...(Array.isArray(rows) ? rows : [])]
+    .filter(isCurrentAccountLeaderboardRow)
+    .reduce((max, row) => Math.max(max, getLeaderboardXp(row)), 0);
+  const currentXp = getProgressionTotalXp();
+  if (bestXp <= currentXp) return false;
+  state.progressionV2 = normalizeProgressionV2({
+    ...state.progressionV2,
+    xp: bestXp,
+    totalXp: bestXp,
+    level: getLevelFromXP(bestXp),
+    leaderboardRecoveryAt: new Date().toISOString(),
+    leaderboardRecoverySource: "account-leaderboard-row",
+  });
+  onlineState.profileActionStatus = `Recovered ${bestXp.toLocaleString()} XP from your account leaderboard row.`;
+  markAccountSaveDirty("leaderboard-xp-recovery");
+  onlineState.nextProgressSyncAt = 0;
+  savePersistentState();
+  renderProgressPanel();
+  refreshGamesUi();
+  return true;
+}
+
 function sanitizeSpecialBadgeLeaderboardRow(row = {}) {
-  if (!row || isCodexLeaderboardRow(row)) return row;
-  const policy = getSpecialBadgeProgressPolicy(row.username || row.name || "");
-  if (!policy) return row;
-  const xp = getLeaderboardXp(row);
-  if (xp < SPECIAL_BADGE_SUSPECT_XP) return row;
-  const repairedXp = Math.max(0, Math.floor(Number(policy.repairXp) || 0));
-  return {
-    ...row,
-    xp: repairedXp,
-    totalXp: repairedXp,
-    rating: repairedXp,
-    score: repairedXp,
-    source: row.source || "server",
-    repairNote: "special-badge-xp-cap",
-  };
+  return row;
 }
 
 function sanitizeSpecialBadgeLeaderboardRows(rows = []) {
@@ -24478,12 +24381,18 @@ window.__infernodriftTestApi = {
     onlineState.leaderboard = filterTestLikeLeaderboardRows(rows);
     onlineState.leaderboardPlayerRow =
       playerRow && !isTestLikeLeaderboardRow(playerRow) ? playerRow : null;
+    recoverAccountProgressFromLeaderboard(
+      onlineState.leaderboard,
+      onlineState.leaderboardPlayerRow,
+    );
     updateOnlineUi();
     return JSON.parse(window.render_game_to_text()).online.leaderboard;
   },
   setOnlineUserForTest: ({ id = "test-user", username = "SmokeRacer" } = {}) => {
     onlineState.user = { id, username };
     onlineState.username = username;
+    onlineState.profileMode = "account";
+    onlineState.guestTemporary = false;
     return JSON.parse(window.render_game_to_text()).online;
   },
   simulateRoomJoinForTest: (room = {}) => {
