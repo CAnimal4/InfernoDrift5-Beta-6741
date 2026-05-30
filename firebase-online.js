@@ -204,13 +204,16 @@ function getRewardLogXpAfter(rewardLog = [], timestampMs = 0) {
 
 function repairSavePayloadWithProfileMarker(payload = null, profile = {}) {
   if (!payload || typeof payload !== "object") return payload;
-  const hint = getProfileProgressRepairHint(profile);
   const progression = payload.progressionV2;
-  if (!hint || !progression || typeof progression !== "object") return payload;
-  const markerAt = Date.parse(String(hint.specialBadgeProgressRepairedAt || ""));
+  if (!progression || typeof progression !== "object") return payload;
+  const profileHint = getProfileProgressRepairHint(profile);
+  const progressHasMarker = hasObsoleteSpecialBadgeRepairMarker(progression);
+  const markerSource = progressHasMarker ? progression : profileHint;
+  if (!markerSource) return payload;
+  const markerAt = Date.parse(String(markerSource.specialBadgeProgressRepairedAt || ""));
   const baselineXp = Math.max(
     0,
-    Math.floor(Number(hint.specialBadgeProgressBaselineXp) || 0),
+    Math.floor(Number(markerSource.specialBadgeProgressBaselineXp) || 0),
   );
   const currentXp = getProgressionXpValue(progression);
   const postRepairXp = getRewardLogXpAfter(progression.rewardLog, markerAt);
@@ -230,7 +233,7 @@ function repairSavePayloadWithProfileMarker(payload = null, profile = {}) {
         repairedTotalXp: repairedXp,
         baselineXp,
         postRepairXp,
-        markerSource: "public-profile",
+        markerSource: progressHasMarker ? "progress-payload" : "public-profile",
         repairedAt: new Date().toISOString(),
       },
     },

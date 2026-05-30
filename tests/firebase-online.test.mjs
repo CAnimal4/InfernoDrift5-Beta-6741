@@ -511,6 +511,9 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(firebaseOnline, /function getProfileProgressRepairHint/);
   assert.match(firebaseOnline, /progressRepairHint: getProfileProgressRepairHint\(profile\)/);
   assert.match(firebaseOnline, /function repairSavePayloadWithProfileMarker/);
+  assert.match(firebaseOnline, /const progressHasMarker = hasObsoleteSpecialBadgeRepairMarker\(progression\);/);
+  assert.match(firebaseOnline, /const markerSource = progressHasMarker \? progression : profileHint;/);
+  assert.match(firebaseOnline, /markerSource: progressHasMarker \? "progress-payload" : "public-profile"/);
   assert.match(firebaseOnline, /repairSavePayloadWithProfileMarker\(\s*existingPayload,\s*existingProfile,\s*\)/);
   assert.match(firebaseOnline, /repairSavePayloadWithProfileMarker\(\s*payload,\s*internals\.userProfile \|\| \{\},\s*\)/);
   assert.match(
