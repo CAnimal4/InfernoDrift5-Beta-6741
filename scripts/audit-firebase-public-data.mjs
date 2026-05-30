@@ -97,6 +97,7 @@ function auditScores(scores) {
         isTestLikeName(row.username) || isSuspiciousClarkXp(row.username, scoreXp(row)),
     )
     .map((row) => ({
+      path: `leaderboards/all-modes/scores/${row.id}`,
       id: row.id,
       uid: row.uid || row.id,
       username: row.username || "",
@@ -115,6 +116,7 @@ function auditUsers(users) {
         isTestLikeName(row.username) || isSuspiciousClarkXp(row.username, profileXp(row)),
     )
     .map((row) => ({
+      path: `users/${row.id}`,
       id: row.id,
       username: row.username || row.displayName || "",
       xp: profileXp(row),
@@ -129,12 +131,27 @@ function auditUsers(users) {
 
 const scores = await listDocuments("leaderboards/all-modes/scores");
 const users = await listDocuments("users");
+const publicLeaderboardRowsToIgnore = auditScores(scores);
+const publicUserRowsToIgnore = auditUsers(users);
 const report = {
   projectId: PROJECT_ID,
   generatedAt: new Date().toISOString(),
-  publicLeaderboardRowsToIgnore: auditScores(scores),
-  publicUserRowsToIgnore: auditUsers(users),
+  summary: {
+    publicLeaderboardRowsIgnoredByClient: publicLeaderboardRowsToIgnore.length,
+    publicUserRowsIgnoredByClient: publicUserRowsToIgnore.length,
+    adminCleanupRequired:
+      publicLeaderboardRowsToIgnore.length > 0 || publicUserRowsToIgnore.length > 0,
+    cleanupRequires:
+      "Firebase owner/admin credentials; production rules block public client deletes.",
+  },
+  cleanupPlan: {
+    deleteLeaderboardScorePaths: publicLeaderboardRowsToIgnore.map((row) => row.path),
+    reviewOrDeletePublicUserPaths: publicUserRowsToIgnore.map((row) => row.path),
+    note:
+      "Client-side code ignores these rows. Physical cleanup should be done with admin credentials only.",
+  },
+  publicLeaderboardRowsToIgnore,
+  publicUserRowsToIgnore,
 };
 
 console.log(JSON.stringify(report, null, 2));
-
