@@ -374,6 +374,40 @@ const clarkUnmarkedProgress = await page.evaluate(() => {
 });
 assert.equal(clarkUnmarkedProgress.totalXp, 100000);
 assert.equal(clarkUnmarkedProgress.embers, 9999);
+const clarkPublicMarkerRepair = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetLocalProgressionForTest();
+  window.__infernodriftTestApi.setOnlineUserForTest({
+    id: "clark-public-marker",
+    username: "Clark",
+    progressRepairHint: {
+      specialBadgeRepairVersion: "2026-05-23-badge-xp-repair-v3",
+      specialBadgeProgressRepairedAt: "2026-05-23T00:00:00.000Z",
+      specialBadgeProgressBaselineXp: 22000,
+      specialBadgeProgressSource: "special-badge-xp-repair",
+      publicProfileTotalXp: 100450,
+    },
+  });
+  window.__infernodriftTestApi.applySavePayloadForTest(
+    {
+      progressionV2: {
+        xp: 100450,
+        totalXp: 100450,
+        embers: 1200,
+        rewardLog: [
+          { at: "2026-05-23T00:00:05.000Z", xp: 450, modeId: "race" },
+        ],
+      },
+    },
+    { forceProgression: true, replaceProgression: true },
+  );
+  return JSON.parse(window.render_game_to_text()).progression;
+});
+assert.equal(clarkPublicMarkerRepair.totalXp, 22450);
+assert.equal(clarkPublicMarkerRepair.embers, 1200);
+assert.equal(
+  clarkPublicMarkerRepair.accountProgressRepair.markerSource,
+  "public-profile",
+);
 const specialBadgeStatsAreDisplayOnly = await page.evaluate(() => {
   const usernames = ["MODERATOR", "Joshua", "Tosh_the_Sigma", "Billy", "JFine"];
   return usernames.map((username, index) => {

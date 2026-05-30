@@ -508,6 +508,8 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   );
   assert.match(firebaseOnline, /repair\.staleUsernameClaim = true;/);
   assert.match(firebaseOnline, /function chooseTrustedAccountSeedPayload/);
+  assert.match(firebaseOnline, /function getProfileProgressRepairHint/);
+  assert.match(firebaseOnline, /progressRepairHint: getProfileProgressRepairHint\(profile\)/);
   assert.match(
     firebaseOnline,
     /seedClientSave\s*\?\s*chooseTrustedAccountSeedPayload\(existingPayload, savePayload\)\s*:\s*chooseTrustedAccountSeedPayload\(existingPayload\)/s,

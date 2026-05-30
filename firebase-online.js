@@ -171,6 +171,18 @@ function getEffectiveFirebaseBadges(username = "", profile = {}) {
   ];
 }
 
+function getProfileProgressRepairHint(profile = {}) {
+  const progress = profile?.progress;
+  if (!hasObsoleteSpecialBadgeRepairMarker(progress)) return null;
+  return stripUndefinedForFirestore({
+    specialBadgeProgressSource: progress.specialBadgeProgressSource,
+    specialBadgeRepairVersion: progress.specialBadgeRepairVersion,
+    specialBadgeProgressRepairedAt: progress.specialBadgeProgressRepairedAt,
+    specialBadgeProgressBaselineXp: progress.specialBadgeProgressBaselineXp,
+    publicProfileTotalXp: getProgressionXpValue(progress),
+  });
+}
+
 function makeUserPayload(uid, profile = {}) {
   const rawUsername = normalizeFirebaseUsername(
     profile.username || profile.displayName || "Guest Racer",
@@ -193,6 +205,7 @@ function makeUserPayload(uid, profile = {}) {
     moderator: false,
     role: "player",
     backendMode: FIREBASE_BACKEND_MODE,
+    progressRepairHint: getProfileProgressRepairHint(profile),
   };
 }
 

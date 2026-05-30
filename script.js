@@ -4917,6 +4917,13 @@ function hasSpecialBadgeRepairMarker(progression = {}) {
   );
 }
 
+function getSpecialBadgeProgressRepairHint(username = "") {
+  if (!isSpecialBadgeAccountUsername(username)) return null;
+  const hint = onlineState.user?.progressRepairHint;
+  if (!hint || typeof hint !== "object") return null;
+  return hasSpecialBadgeRepairMarker(hint) ? hint : null;
+}
+
 function recordAccountProgressDiagnostic(entry = {}) {
   const diagnostic = {
     at: new Date().toISOString(),
@@ -4968,14 +4975,20 @@ function getRewardLogXpAfter(rewardLog = [], timestampMs = 0) {
 function repairSpecialBadgeContaminatedProgression(
   progress = {},
   username = "",
+  repairHint = getSpecialBadgeProgressRepairHint(username),
 ) {
-  if (!hasSpecialBadgeRepairMarker(progress)) {
+  const progressHasMarker = hasSpecialBadgeRepairMarker(progress);
+  const hintHasMarker = hasSpecialBadgeRepairMarker(repairHint);
+  if (!progressHasMarker && !hintHasMarker) {
     return removeSpecialBadgeRepairMarkers(progress);
   }
-  const markerAt = Date.parse(String(progress.specialBadgeProgressRepairedAt || ""));
+  const markerSource = progressHasMarker ? progress : repairHint;
+  const markerAt = Date.parse(
+    String(markerSource?.specialBadgeProgressRepairedAt || ""),
+  );
   const baselineXp = Math.max(
     0,
-    Math.floor(Number(progress.specialBadgeProgressBaselineXp) || 0),
+    Math.floor(Number(markerSource?.specialBadgeProgressBaselineXp) || 0),
   );
   const currentXp = Math.max(
     0,
@@ -4998,6 +5011,7 @@ function repairSpecialBadgeContaminatedProgression(
         repairedTotalXp: reconstructedXp,
         baselineXp,
         postRepairXp,
+        markerSource: progressHasMarker ? "progress-payload" : "public-profile",
         repairedAt: new Date().toISOString(),
       },
     };
@@ -5009,6 +5023,7 @@ function repairSpecialBadgeContaminatedProgression(
       baselineXp,
       postRepairXp,
       reason: "ignored old badge repair marker instead of trusting inflated XP",
+      markerSource: progressHasMarker ? "progress-payload" : "public-profile",
     });
     if (onlineState.profileMode === "account") {
       onlineState.profileActionStatus =
@@ -5037,7 +5052,11 @@ function sanitizeSpecialBadgeProgression(
     return { progression: progress, changed: false };
   if (!isSpecialBadgeAccountUsername(username))
     return { progression: progress, changed: false };
-  return repairSpecialBadgeContaminatedProgression(progress, username);
+  return repairSpecialBadgeContaminatedProgression(
+    progress,
+    username,
+    getSpecialBadgeProgressRepairHint(username),
+  );
 }
 
 function hasHardEarnedProgressEvidence(payload = {}) {
@@ -5350,6 +5369,8 @@ function applyPersistentSavePayload(
         nextProgression = cleaned.progression;
         replaceProgression = true;
         onlineState.replaceNextProgressSync = true;
+        onlineState.freshAccountSaveSyncPending = true;
+        markAccountSaveDirty("account-progress-repair");
       }
       if (
         forceProgression ||
@@ -11281,7 +11302,7 @@ function renderProgressPanel() {
       <div class="daily-sparks-grid">${sparks}</div>
     </section>
     <section class="progress-proof-grid">
-      <div class="progress-card"><span>Today’s Top Drivers</span><strong>${onlineState.leaderboard?.[0]?.username || "Local warmup"}</strong><span>${onlineState.leaderboard?.length ? "From online rankings" : "Online services load when available"}</span></div>
+      <div class="progress-card"><span>Today’s Top Drivers</span><strong>${getDisplayLeaderboardRows()[0]?.username || "Local warmup"}</strong><span>${onlineState.leaderboard?.length ? "From online rankings" : "Online services load when available"}</span></div>
       <div class="progress-card"><span>Your Best Score</span><strong>${bestScore.toLocaleString()}</strong><span>${bests[0] ? getModeDefinition(bests[0][0]).label : "Finish any mode to set one"}</span></div>
       <div class="progress-card"><span>Beat the Founder</span><strong>${FOUNDER_TARGET_SCORE.toLocaleString()}</strong><span>${bestScore >= FOUNDER_TARGET_SCORE ? "Founder target beaten" : "Score higher in any mode"}</span></div>
       <div class="progress-card"><span>Medals</span><strong>${medals.length}</strong><span>${medals.slice(-4).join(" / ") || "Earn your first medal"}</span></div>
@@ -24473,8 +24494,12 @@ window.__infernodriftTestApi = {
     updateOnlineUi();
     return JSON.parse(window.render_game_to_text()).online.leaderboard;
   },
-  setOnlineUserForTest: ({ id = "test-user", username = "SmokeRacer" } = {}) => {
-    onlineState.user = { id, username };
+  setOnlineUserForTest: ({
+    id = "test-user",
+    username = "SmokeRacer",
+    progressRepairHint = null,
+  } = {}) => {
+    onlineState.user = { id, username, progressRepairHint };
     onlineState.username = username;
     onlineState.profileMode = "account";
     onlineState.guestTemporary = false;
