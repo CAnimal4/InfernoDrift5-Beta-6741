@@ -120,4 +120,51 @@ const dirtySave = {
   await browser.close();
 }
 
+{
+  const { browser, page } = await openPageWithStorage({});
+  const result = await page.evaluate(() => {
+    window.__infernodriftTestApi.resetLocalProgressionForTest();
+    window.__infernodriftTestApi.setOnlineUserForTest({
+      id: "clark-leaderboard-dirty",
+      username: "Clark",
+    });
+    window.__infernodriftTestApi.setLeaderboardRowsForTest(
+      [
+        {
+          userId: "clark-leaderboard-dirty",
+          username: "Clark",
+          source: "server",
+          account: true,
+          xp: 100450,
+          totalXp: 100450,
+        },
+      ],
+      {
+        userId: "clark-leaderboard-dirty",
+        username: "Clark",
+        source: "server",
+        account: true,
+        xp: 100450,
+        totalXp: 100450,
+      },
+    );
+    const diagnostics = JSON.parse(window.render_game_to_text());
+    return {
+      progression: diagnostics.progression,
+      leaderboard: diagnostics.online.leaderboard,
+      playerRow: diagnostics.online.leaderboardState.playerRow,
+    };
+  });
+  assert.equal(result.progression.totalXp, 0);
+  assert.equal(result.leaderboard[0].username, "ChatGPT (Codex)");
+  assert.ok(result.leaderboard[0].xp < 90000);
+  assert.equal(
+    result.leaderboard.find((row) => row.username === "Clark")?.quarantined,
+    true,
+  );
+  assert.equal(result.playerRow.quarantined, true);
+  assert.equal(result.playerRow.totalXp, 0);
+  await browser.close();
+}
+
 console.log("account XP safety smoke passed");
