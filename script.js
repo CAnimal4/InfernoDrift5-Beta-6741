@@ -5558,7 +5558,11 @@ function loadPersistentState() {
         Boolean,
       );
     if (!raw) return false;
-    return applyPersistentSavePayload(JSON.parse(raw));
+    const applied = applyPersistentSavePayload(JSON.parse(raw));
+    if (applied && isBlockedTaintedAccountProgression(state.progressionV2)) {
+      savePersistentState();
+    }
+    return applied;
   } catch (error) {
     debugLog("menu", "load_failed", error?.message || error);
     return false;
