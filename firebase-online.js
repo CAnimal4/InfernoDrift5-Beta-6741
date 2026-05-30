@@ -238,6 +238,17 @@ function isBlockedTaintedRepairPayload(payload = null) {
   );
 }
 
+function hasTrustedRepairProgress(payload = null) {
+  const progression = payload?.progressionV2;
+  if (!progression || typeof progression !== "object") return false;
+  return (
+    !hasObsoleteSpecialBadgeRepairMarker(progression) &&
+    !isBlockedTaintedRepairPayload(payload) &&
+    getProgressionXpValue(progression) > 0 &&
+    getProgressionXpValue(progression) < SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD
+  );
+}
+
 function makeUserPayload(uid, profile = {}) {
   const rawUsername = normalizeFirebaseUsername(
     profile.username || profile.displayName || "Guest Racer",
@@ -1090,7 +1101,10 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
           savePayload,
           existingProfile,
         );
-        const bestPayload = seedClientSave
+        const shouldUseClientRepair =
+          isBlockedTaintedRepairPayload(cleanExistingPayload) &&
+          hasTrustedRepairProgress(cleanSavePayload);
+        const bestPayload = seedClientSave || shouldUseClientRepair
           ? chooseTrustedAccountSeedPayload(cleanExistingPayload, cleanSavePayload)
           : chooseTrustedAccountSeedPayload(cleanExistingPayload);
         const safeBestPayload = stripUndefinedForFirestore(bestPayload);

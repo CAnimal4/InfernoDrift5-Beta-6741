@@ -4989,11 +4989,12 @@ function repairSpecialBadgeContaminatedProgression(
     loadedXp < SPECIAL_BADGE_SUSPECT_XP
       ? loadedXp
       : 0;
+  const cleanLocalAccountXp = cleanLoadedXp ? 0 : getCleanAccountLocalProgressionXp();
   const shouldBlockTaintedXp =
     currentXp >= SPECIAL_BADGE_SUSPECT_XP &&
     (progressHasMarker || hintHasMarker);
   if (shouldBlockTaintedXp) {
-    const safeXp = cleanLoadedXp;
+    const safeXp = cleanLoadedXp || cleanLocalAccountXp;
     const safeProgression = {
       ...cleaned.progression,
       xp: safeXp,
@@ -5003,7 +5004,7 @@ function repairSpecialBadgeContaminatedProgression(
         source: "special-badge-tainted-xp-blocked",
         username,
         blockedTotalXp: currentXp,
-        preservedLocalTotalXp: cleanLoadedXp || undefined,
+        preservedLocalTotalXp: safeXp || undefined,
         markerSource: progressHasMarker ? "progress-payload" : "public-profile",
         requiresReview: true,
         repairedAt: new Date().toISOString(),
@@ -5014,7 +5015,7 @@ function repairSpecialBadgeContaminatedProgression(
       username,
       oldXp: currentXp,
       newXp: safeXp,
-      preservedLocalTotalXp: cleanLoadedXp || undefined,
+      preservedLocalTotalXp: safeXp || undefined,
       reason:
         "blocked obsolete badge repair XP from becoming active account progress",
       markerSource: progressHasMarker ? "progress-payload" : "public-profile",
@@ -5104,6 +5105,18 @@ function isBlockedTaintedAccountProgression(progression = {}) {
     getProgressionTotalXp(progression) === 0 &&
     Math.max(0, Number(progression?.accountProgressRepair?.blockedTotalXp) || 0) > 0
   );
+}
+
+function getCleanAccountLocalProgressionXp() {
+  const payload = readAccountSavePayload();
+  const progression = payload?.progressionV2;
+  if (!progression || typeof progression !== "object") return 0;
+  if (hasSpecialBadgeRepairMarker(progression)) return 0;
+  const xp = Math.max(
+    0,
+    Math.floor(Number(progression.totalXp ?? progression.xp) || 0),
+  );
+  return xp > 0 && xp < SPECIAL_BADGE_SUSPECT_XP ? xp : 0;
 }
 
 function hasProgressionPlayEvidence(progression = {}) {

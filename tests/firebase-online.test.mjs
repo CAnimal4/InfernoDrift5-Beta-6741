@@ -246,6 +246,23 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
   });
   assert.equal(onlyContaminated.progressionV2.totalXp, 0);
   assert.equal(onlyContaminated.progressionV2.xp, 0);
+
+  const blockedCloudWithCleanLocal = mergeFirebaseSavePayload(
+    {
+      saveMeta: { updatedAtMs: 5_000 },
+      progressionV2: {
+        totalXp: 0,
+        xp: 0,
+        accountProgressRepair: {
+          source: "special-badge-tainted-xp-blocked",
+          blockedTotalXp: 100450,
+        },
+      },
+    },
+    markerStrippedDevice,
+  );
+  assert.equal(blockedCloudWithCleanLocal.progressionV2.totalXp, 23175);
+  assert.equal(blockedCloudWithCleanLocal.progressionV2.xp, 23175);
 });
 
 test("Firebase chat and feedback filters block unsafe text", () => {
@@ -527,8 +544,9 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(firebaseOnline, /repairSavePayloadWithProfileMarker\(\s*payload,\s*internals\.userProfile \|\| \{\},\s*\)/);
   assert.match(
     firebaseOnline,
-    /seedClientSave\s*\?\s*chooseTrustedAccountSeedPayload\(cleanExistingPayload, cleanSavePayload\)\s*:\s*chooseTrustedAccountSeedPayload\(cleanExistingPayload\)/s,
+    /seedClientSave\s*\|\|\s*shouldUseClientRepair[\s\S]{0,120}\?\s*chooseTrustedAccountSeedPayload\(cleanExistingPayload, cleanSavePayload\)[\s\S]{0,120}:\s*chooseTrustedAccountSeedPayload\(cleanExistingPayload\)/s,
   );
+  assert.match(firebaseOnline, /function hasTrustedRepairProgress/);
   assert.doesNotMatch(
     firebaseOnline,
     /seedClientSave\s*\?\s*chooseBestSavePayload\(existingPayload, savePayload\)\s*:\s*chooseBestSavePayload\(existingPayload\)/s,
