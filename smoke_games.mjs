@@ -449,12 +449,20 @@ const leaderboardRecoveryState = await page.evaluate(() => {
         totalXp: 100000,
       },
     ],
-    null,
+    {
+      userId: "clark-live",
+      username: "Clark",
+      source: "server",
+      account: true,
+      xp: 100000,
+      totalXp: 100000,
+    },
   );
   const diagnostics = JSON.parse(window.render_game_to_text());
   return {
     progression: diagnostics.progression,
     leaderboard: diagnostics.online.leaderboard,
+    playerRow: diagnostics.online.leaderboardState.playerRow,
   };
 });
 assert.equal(leaderboardRecoveryState.progression.totalXp, 22000);
@@ -465,6 +473,8 @@ assert.equal(
   leaderboardRecoveryState.leaderboard.find((row) => row.username === "Clark")?.quarantined,
   true,
 );
+assert.equal(leaderboardRecoveryState.playerRow.quarantined, true);
+assert.equal(leaderboardRecoveryState.playerRow.totalXp, 0);
 await page.locator('[data-tab="profile"]').click({ force: true });
 await page.waitForTimeout(150);
 onlineUiState = JSON.parse(

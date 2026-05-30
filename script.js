@@ -7944,12 +7944,11 @@ function handleOnlineMessage(raw) {
     );
   } else if (message.type === "leaderboard.snapshot") {
     onlineState.leaderboard = Array.isArray(message.leaderboard)
-      ? filterTestLikeLeaderboardRows(message.leaderboard)
+      ? sanitizeOnlineLeaderboardRows(message.leaderboard)
       : [];
-    onlineState.leaderboardPlayerRow =
-      message.playerRow && !isTestLikeLeaderboardRow(message.playerRow)
-        ? message.playerRow
-        : null;
+    onlineState.leaderboardPlayerRow = sanitizeOnlineLeaderboardRow(
+      message.playerRow,
+    );
     onlineState.leaderboardSyncStatus = message.playerRow
       ? "server"
       : onlineState.leaderboard.length
@@ -9826,6 +9825,14 @@ function sanitizeSpecialBadgeLeaderboardRows(rows = []) {
   return (Array.isArray(rows) ? rows : []).map(sanitizeSpecialBadgeLeaderboardRow);
 }
 
+function sanitizeOnlineLeaderboardRows(rows = []) {
+  return filterTestLikeLeaderboardRows(sanitizeSpecialBadgeLeaderboardRows(rows));
+}
+
+function sanitizeOnlineLeaderboardRow(row = null) {
+  return sanitizeOnlineLeaderboardRows(row ? [row] : [])[0] || null;
+}
+
 function compareLeaderboard(a, b) {
   return getLeaderboardXp(b) - getLeaderboardXp(a);
 }
@@ -9952,9 +9959,7 @@ function getDisplayLeaderboardRows() {
     rows.push(playerRow);
   }
   return ensureCodexAlwaysFirst(
-    filterTestLikeLeaderboardRows(
-      dedupeLeaderboardRows(sanitizeSpecialBadgeLeaderboardRows(rows)),
-    ),
+    sanitizeOnlineLeaderboardRows(dedupeLeaderboardRows(rows)),
   ).sort(compareLeaderboard);
 }
 
@@ -24488,9 +24493,8 @@ window.__infernodriftTestApi = {
     };
   },
   setLeaderboardRowsForTest: (rows = [], playerRow = null) => {
-    onlineState.leaderboard = filterTestLikeLeaderboardRows(rows);
-    onlineState.leaderboardPlayerRow =
-      playerRow && !isTestLikeLeaderboardRow(playerRow) ? playerRow : null;
+    onlineState.leaderboard = sanitizeOnlineLeaderboardRows(rows);
+    onlineState.leaderboardPlayerRow = sanitizeOnlineLeaderboardRow(playerRow);
     updateOnlineUi();
     return JSON.parse(window.render_game_to_text()).online.leaderboard;
   },
