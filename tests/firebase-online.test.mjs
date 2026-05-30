@@ -507,7 +507,12 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
     /if \(existingUsername\.exists\(\) && !allowLegacyAutoCreate\)/,
   );
   assert.match(firebaseOnline, /repair\.staleUsernameClaim = true;/);
+  assert.match(firebaseOnline, /function chooseTrustedAccountSeedPayload/);
   assert.match(
+    firebaseOnline,
+    /seedClientSave\s*\?\s*chooseTrustedAccountSeedPayload\(existingPayload, savePayload\)\s*:\s*chooseTrustedAccountSeedPayload\(existingPayload\)/s,
+  );
+  assert.doesNotMatch(
     firebaseOnline,
     /seedClientSave\s*\?\s*chooseBestSavePayload\(existingPayload, savePayload\)\s*:\s*chooseBestSavePayload\(existingPayload\)/s,
   );
@@ -522,6 +527,11 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(
     firebaseOnline,
     /seedClientSave: Boolean\(allowLegacyAutoCreate\)/,
+  );
+  assert.match(firebaseOnline, /function chooseTrustedAccountSeedPayload/);
+  assert.doesNotMatch(
+    firebaseOnline,
+    /const bestPayload = seedClientSave[\s\S]{0,140}chooseBestSavePayload\(existingPayload, savePayload\)/,
   );
   assert.match(
     script,

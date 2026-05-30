@@ -212,6 +212,14 @@ function chooseBestSavePayload(...payloads) {
     .sort((a, b) => getSavePayloadXp(b) - getSavePayloadXp(a))[0];
 }
 
+function chooseTrustedAccountSeedPayload(existingPayload = null, savePayload = null) {
+  if (!existingPayload || typeof existingPayload !== "object") {
+    return savePayload && typeof savePayload === "object" ? savePayload : null;
+  }
+  if (!savePayload || typeof savePayload !== "object") return existingPayload;
+  return mergeFirebaseSavePayload(existingPayload, savePayload);
+}
+
 function uniqueArrayValues(...values) {
   return [
     ...new Set(
@@ -1005,8 +1013,8 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
           ? progressDoc.data()?.payload
           : null;
         const bestPayload = seedClientSave
-          ? chooseBestSavePayload(existingPayload, savePayload)
-          : chooseBestSavePayload(existingPayload);
+          ? chooseTrustedAccountSeedPayload(existingPayload, savePayload)
+          : chooseTrustedAccountSeedPayload(existingPayload);
         const safeBestPayload = stripUndefinedForFirestore(bestPayload);
         const baseProfile = {
           uid: user.uid,
