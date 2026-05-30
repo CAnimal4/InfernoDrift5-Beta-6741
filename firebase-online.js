@@ -183,6 +183,60 @@ function getProfileProgressRepairHint(profile = {}) {
   });
 }
 
+function removeObsoleteSpecialBadgeRepairMarkers(progression = {}) {
+  const clean = { ...(progression || {}) };
+  delete clean.specialBadgeRepairVersion;
+  delete clean.specialBadgeProgressRepairedAt;
+  delete clean.specialBadgeProgressBaselineXp;
+  delete clean.specialBadgeProgressEarnedAfterRepair;
+  delete clean.specialBadgeProgressSource;
+  return clean;
+}
+
+function getRewardLogXpAfter(rewardLog = [], timestampMs = 0) {
+  if (!Number.isFinite(timestampMs) || timestampMs <= 0) return 0;
+  return (Array.isArray(rewardLog) ? rewardLog : []).reduce((total, entry) => {
+    const at = Date.parse(String(entry?.at || ""));
+    if (!Number.isFinite(at) || at <= timestampMs) return total;
+    return total + Math.max(0, Math.floor(Number(entry?.xp) || 0));
+  }, 0);
+}
+
+function repairSavePayloadWithProfileMarker(payload = null, profile = {}) {
+  if (!payload || typeof payload !== "object") return payload;
+  const hint = getProfileProgressRepairHint(profile);
+  const progression = payload.progressionV2;
+  if (!hint || !progression || typeof progression !== "object") return payload;
+  const markerAt = Date.parse(String(hint.specialBadgeProgressRepairedAt || ""));
+  const baselineXp = Math.max(
+    0,
+    Math.floor(Number(hint.specialBadgeProgressBaselineXp) || 0),
+  );
+  const currentXp = getProgressionXpValue(progression);
+  const postRepairXp = getRewardLogXpAfter(progression.rewardLog, markerAt);
+  const repairedXp = baselineXp + postRepairXp;
+  if (!(baselineXp > 0 && repairedXp > 0 && repairedXp < currentXp)) {
+    return payload;
+  }
+  return {
+    ...payload,
+    progressionV2: {
+      ...removeObsoleteSpecialBadgeRepairMarkers(progression),
+      xp: repairedXp,
+      totalXp: repairedXp,
+      accountProgressRepair: {
+        source: "special-badge-contamination-v1",
+        previousTotalXp: currentXp,
+        repairedTotalXp: repairedXp,
+        baselineXp,
+        postRepairXp,
+        markerSource: "public-profile",
+        repairedAt: new Date().toISOString(),
+      },
+    },
+  };
+}
+
 function makeUserPayload(uid, profile = {}) {
   const rawUsername = normalizeFirebaseUsername(
     profile.username || profile.displayName || "Guest Racer",
@@ -1021,13 +1075,23 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
         const usernameDoc = await transaction.get(usernameRef);
         const userRef = firestore.doc(internals.db, "users", user.uid);
         const progressRef = firestore.doc(internals.db, "progress", user.uid);
+        const userDoc = await transaction.get(userRef);
         const progressDoc = await transaction.get(progressRef);
+        const existingProfile = userDoc.exists() ? userDoc.data() || {} : {};
         const existingPayload = progressDoc.exists()
           ? progressDoc.data()?.payload
           : null;
+        const cleanExistingPayload = repairSavePayloadWithProfileMarker(
+          existingPayload,
+          existingProfile,
+        );
+        const cleanSavePayload = repairSavePayloadWithProfileMarker(
+          savePayload,
+          existingProfile,
+        );
         const bestPayload = seedClientSave
-          ? chooseTrustedAccountSeedPayload(existingPayload, savePayload)
-          : chooseTrustedAccountSeedPayload(existingPayload);
+          ? chooseTrustedAccountSeedPayload(cleanExistingPayload, cleanSavePayload)
+          : chooseTrustedAccountSeedPayload(cleanExistingPayload);
         const safeBestPayload = stripUndefinedForFirestore(bestPayload);
         const baseProfile = {
           uid: user.uid,
@@ -1243,10 +1307,18 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     const existingPayload = existingProgress?.exists()
       ? existingProgress.data()?.payload
       : null;
+    const cleanExistingPayload = repairSavePayloadWithProfileMarker(
+      existingPayload,
+      internals.userProfile || {},
+    );
+    const cleanPayload = repairSavePayloadWithProfileMarker(
+      payload,
+      internals.userProfile || {},
+    );
     const mergedPayload = stripUndefinedForFirestore(
       replace
-        ? payload
-        : mergeFirebaseSavePayload(existingPayload, payload),
+        ? cleanPayload
+        : mergeFirebaseSavePayload(cleanExistingPayload, cleanPayload),
     );
     const xp = Math.max(
       0,
@@ -1789,45 +1861,39 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       validation.code,
     );
     let joinedRoom = null;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        await firestore.runTransaction(internals.db, async (transaction) => {
-          const snapshot = await transaction.get(ref);
-          if (!snapshot.exists()) throw new Error("room_not_found");
-          const data = snapshot.data() || {};
-          const players = Array.isArray(data.players) ? data.players : [];
-          const existing = players.find((player) => player.uid === state.uid);
-          const nextPlayers = existing
-            ? players
-            : [
-                ...players,
-                {
-                  uid: state.uid,
-                  username: state.username || "Player",
-                  badges: internals.userProfile?.badges || [],
-                  team: getLobbyPlayerTeam(players.length, data.teamSize),
-                },
-              ];
-          if (nextPlayers.length > FIREBASE_LOBBY_MAX_PLAYERS) {
-            throw new Error("room_full");
-          }
-          transaction.set(
-            ref,
-            {
-              players: nextPlayers,
-              updatedAt: firestore.serverTimestamp(),
-            },
-            { merge: true },
-          );
-          joinedRoom = mapLobbyDoc({
-            id: snapshot.id,
-            data: () => ({ ...data, players: nextPlayers }),
-          });
+        const snapshot = await firestore.getDoc(ref);
+        if (!snapshot.exists()) throw new Error("room_not_found");
+        const data = snapshot.data() || {};
+        const players = Array.isArray(data.players) ? data.players : [];
+        const existing = players.find((player) => player.uid === state.uid);
+        const nextPlayers = existing
+          ? players
+          : [
+              ...players,
+              {
+                uid: state.uid,
+                username: state.username || "Player",
+                badges: internals.userProfile?.badges || [],
+                team: getLobbyPlayerTeam(players.length, data.teamSize),
+              },
+            ];
+        if (nextPlayers.length > FIREBASE_LOBBY_MAX_PLAYERS) {
+          throw new Error("room_full");
+        }
+        await firestore.updateDoc(ref, {
+          players: nextPlayers,
+          updatedAt: firestore.serverTimestamp(),
+        });
+        joinedRoom = mapLobbyDoc({
+          id: snapshot.id,
+          data: () => ({ ...data, players: nextPlayers }),
         });
         break;
       } catch (error) {
-        if (attempt === 0 && isRetryableLobbyVersionError(error)) {
-          await waitMs(120);
+        if (attempt < 2 && isRetryableLobbyVersionError(error)) {
+          await waitMs(120 + attempt * 180);
           continue;
         }
         throw error;

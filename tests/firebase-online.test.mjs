@@ -510,9 +510,12 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(firebaseOnline, /function chooseTrustedAccountSeedPayload/);
   assert.match(firebaseOnline, /function getProfileProgressRepairHint/);
   assert.match(firebaseOnline, /progressRepairHint: getProfileProgressRepairHint\(profile\)/);
+  assert.match(firebaseOnline, /function repairSavePayloadWithProfileMarker/);
+  assert.match(firebaseOnline, /repairSavePayloadWithProfileMarker\(\s*existingPayload,\s*existingProfile,\s*\)/);
+  assert.match(firebaseOnline, /repairSavePayloadWithProfileMarker\(\s*payload,\s*internals\.userProfile \|\| \{\},\s*\)/);
   assert.match(
     firebaseOnline,
-    /seedClientSave\s*\?\s*chooseTrustedAccountSeedPayload\(existingPayload, savePayload\)\s*:\s*chooseTrustedAccountSeedPayload\(existingPayload\)/s,
+    /seedClientSave\s*\?\s*chooseTrustedAccountSeedPayload\(cleanExistingPayload, cleanSavePayload\)\s*:\s*chooseTrustedAccountSeedPayload\(cleanExistingPayload\)/s,
   );
   assert.doesNotMatch(
     firebaseOnline,
@@ -522,7 +525,7 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(firebaseOnline, /payload: safeBestPayload,/);
   assert.match(
     firebaseOnline,
-    /replace\s*\?\s*payload\s*:\s*mergeFirebaseSavePayload\(existingPayload, payload\)/,
+    /replace\s*\?\s*cleanPayload\s*:\s*mergeFirebaseSavePayload\(cleanExistingPayload, cleanPayload\)/,
   );
   assert.match(firebaseOnline, /stripUndefinedForFirestore\(\{\s*uid: state\.uid,/);
   assert.match(firebaseOnline, /stripUndefinedForFirestore\(\{\s*progress: mergedPayload\.progressionV2 \|\| \{\},/);
@@ -566,10 +569,17 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(script, /function updateModeDecorFx\(dt\)/);
   assert.match(script, /onlineRoomCode\?\.addEventListener\("keydown"/);
   assert.match(script, /joinRoomPending: false/);
+  const joinLobbySource = firebaseOnline.slice(
+    firebaseOnline.indexOf("async function joinLobby"),
+    firebaseOnline.indexOf("async function leaveLobby"),
+  );
+  assert.match(firebaseOnline, /async function joinLobby\(code\)[\s\S]*firestore\.getDoc\(ref\)[\s\S]*firestore\.updateDoc\(ref,/);
+  assert.doesNotMatch(joinLobbySource, /runTransaction/);
   assert.match(script, /const CODEX_LEADERBOARD_BASELINE_XP = 22153;/);
   assert.match(script, /codexLeaderboardXp = CODEX_LEADERBOARD_BASELINE_XP;/);
   assert.match(firebaseOnline, /syncProgress\(payload, \{ silent = false, replace = false \} = \{\}\)/);
-  assert.match(firebaseOnline, /replace\s*\?\s*payload\s*:\s*mergeFirebaseSavePayload/);
+  assert.match(firebaseOnline, /replace\s*\?\s*cleanPayload\s*:\s*mergeFirebaseSavePayload\(cleanExistingPayload, cleanPayload\)/);
+  assert.doesNotMatch(firebaseOnline, /replace\s*\?\s*payload\s*:\s*mergeFirebaseSavePayload/);
   const rules = fs.readFileSync(
     new URL("../firestore.rules", import.meta.url),
     "utf8",
