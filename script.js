@@ -7824,9 +7824,9 @@ function handleOnlineMessage(raw) {
       }, 0);
     }
     onlineState.queue = null;
-    onlineState.roomShared = Boolean(
-      onlineState.room?.sharedBy?.includes?.(onlineState.user?.id),
-    );
+    onlineState.roomShared =
+      onlineState.roomShared ||
+      Boolean(onlineState.room?.sharedBy?.includes?.(onlineState.user?.id));
     if (onlineState.roomShared) onlineState.roomSharePending = false;
     if (previousCode && onlineState.room?.code !== previousCode) {
       onlineState.roomShared = false;
@@ -8512,7 +8512,7 @@ function sendFirebaseLiveRoomFrame({ force = false, reason = "" } = {}) {
     reason,
     stale: stalePlayerIds.length,
   });
-  firebaseOnline
+  return firebaseOnline
     .updateLobbyLiveState(onlineState.room.code, {
       player: localSnapshot,
       state: liveState,
@@ -8967,6 +8967,26 @@ async function shareFirebaseLobby() {
         firebaseLobby: true,
       },
     });
+    pushOnlineChatMessage(
+      {
+        id: `local-room-share-${room.code}-${Date.now()}`,
+        from: onlineState.user?.username || onlineState.username || "Player",
+        userId: onlineState.user?.id || "",
+        badge: onlineState.user?.badge || "",
+        text: `Room code ${room.code}`,
+        quick: true,
+        channel: "lobby",
+        roomInvite: {
+          code: room.code,
+          mode: room.mode,
+          playlist: room.playlist,
+          teamSize: room.teamSize,
+          size: room.size,
+          firebaseLobby: true,
+        },
+      },
+      { notify: false },
+    );
     onlineState.roomShared = true;
     onlineState.roomSharePending = false;
     updateOnlineUi();

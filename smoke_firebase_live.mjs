@@ -347,7 +347,7 @@ try {
       x: 32,
       z: -18,
       heading: 0.75,
-      speed: 26,
+      speed: 0,
     });
     return window.__infernodriftTestApi.forceFirebaseLivePublishForTest();
   });
