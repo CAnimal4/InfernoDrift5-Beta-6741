@@ -53,6 +53,10 @@ carry inflated Embers too.
 - Unmarked cached special-badge XP in the contaminated range is blocked unless
   it has high-XP gameplay evidence. This prevents old local cache from making
   the player profile or ChatGPT (Codex) leaderboard row chase fake `100k+` XP.
+- Firebase account-profile repair hints also treat unmarked `90k+`
+  special-badge profile progress as suspicious when it lacks gameplay evidence.
+  That keeps a dirty public `users/{uid}.progress` row from re-seeding
+  `progress/{uid}` during sign-in or sync.
 - Public leaderboard rows are sanitized before display. Suspicious old
   special-badge leaderboard scores and test/smoke/runner/pilot rows are ignored
   client-side.

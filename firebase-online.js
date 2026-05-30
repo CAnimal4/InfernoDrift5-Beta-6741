@@ -172,15 +172,72 @@ function getEffectiveFirebaseBadges(username = "", profile = {}) {
   ];
 }
 
+function isSpecialBadgeFirebaseUsername(username = "") {
+  return (
+    getFirebaseBadges(username).length > 0 ||
+    isFirebaseCredentialUsername(username)
+  );
+}
+
+function hasObjectEntries(value = {}) {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      Object.keys(value).length,
+  );
+}
+
+function hasFirebaseDailySparksEvidence(dailySparks = {}) {
+  return (Array.isArray(dailySparks?.items) ? dailySparks.items : []).some(
+    (item) =>
+      Boolean(item?.claimed || item?.completed) ||
+      Math.max(0, Number(item?.progress) || 0) > 0,
+  );
+}
+
+function hasFirebaseGameplayRewardEvidence(rewardLog = []) {
+  const nonGameplaySources = new Set([
+    "daily-gift",
+    "founder-friend",
+    "level-reward",
+  ]);
+  return (Array.isArray(rewardLog) ? rewardLog : []).some((entry) => {
+    const source = String(entry?.modeId || entry?.source || entry?.label || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_]+/g, "-");
+    return source && !nonGameplaySources.has(source);
+  });
+}
+
+function hasFirebaseHighXpGameplayEvidence(progression = {}) {
+  return Boolean(
+    hasObjectEntries(progression?.medals) ||
+      hasObjectEntries(progression?.personalBests) ||
+      hasObjectEntries(progression?.ghostSamples) ||
+      hasFirebaseGameplayRewardEvidence(progression?.rewardLog) ||
+      progression?.tutorialComplete === true ||
+      hasFirebaseDailySparksEvidence(progression?.dailySparks),
+  );
+}
+
 function getProfileProgressRepairHint(profile = {}) {
   const progress = profile?.progress;
-  if (!hasObsoleteSpecialBadgeRepairMarker(progress)) return null;
+  const username = profile?.username || profile?.displayName || state.username;
+  const hasMarker = hasObsoleteSpecialBadgeRepairMarker(progress);
+  const looksLikeUnmarkedBadgeContamination =
+    isSpecialBadgeFirebaseUsername(username) &&
+    getProgressionXpValue(progress) >= SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD &&
+    !hasFirebaseHighXpGameplayEvidence(progress);
+  if (!hasMarker && !looksLikeUnmarkedBadgeContamination) return null;
   return stripUndefinedForFirestore({
     specialBadgeProgressSource: progress.specialBadgeProgressSource,
     specialBadgeRepairVersion: progress.specialBadgeRepairVersion,
     specialBadgeProgressRepairedAt: progress.specialBadgeProgressRepairedAt,
     specialBadgeProgressBaselineXp: progress.specialBadgeProgressBaselineXp,
     publicProfileTotalXp: getProgressionXpValue(progress),
+    publicProfileRepairSource: hasMarker ? "marker" : "unmarked-cache",
   });
 }
 
@@ -194,18 +251,33 @@ function removeObsoleteSpecialBadgeRepairMarkers(progression = {}) {
   return clean;
 }
 
-function repairSavePayloadWithProfileMarker(payload = null, profile = {}) {
+export function repairSavePayloadWithProfileMarker(payload = null, profile = {}) {
   if (!payload || typeof payload !== "object") return payload;
   const progression = payload.progressionV2;
   if (!progression || typeof progression !== "object") return payload;
   const profileHint = getProfileProgressRepairHint(profile);
   const progressHasMarker = hasObsoleteSpecialBadgeRepairMarker(progression);
-  if (!progressHasMarker && !profileHint) {
+  const username = profile?.username || profile?.displayName || state.username;
+  const rawXp = getProgressionXpValue(progression);
+  const payloadLooksLikeUnmarkedBadgeContamination =
+    isSpecialBadgeFirebaseUsername(username) &&
+    rawXp >= SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD &&
+    !hasFirebaseHighXpGameplayEvidence(progression);
+  if (!progressHasMarker && !profileHint && !payloadLooksLikeUnmarkedBadgeContamination) {
     return payload;
   }
   const cleanProgression = removeObsoleteSpecialBadgeRepairMarkers(progression);
-  const rawXp = getProgressionXpValue(progression);
-  if (rawXp >= SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD) {
+  const markerSource = progressHasMarker
+    ? "progress-payload"
+    : profileHint
+      ? "public-profile"
+      : "unmarked-cache";
+  const shouldBlockHighXp =
+    rawXp >= SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD &&
+    (progressHasMarker ||
+      profileHint?.publicProfileRepairSource === "marker" ||
+      payloadLooksLikeUnmarkedBadgeContamination);
+  if (shouldBlockHighXp) {
     return {
       ...payload,
       progressionV2: {
@@ -215,7 +287,7 @@ function repairSavePayloadWithProfileMarker(payload = null, profile = {}) {
         accountProgressRepair: {
           source: "special-badge-tainted-xp-blocked",
           blockedTotalXp: rawXp,
-          markerSource: progressHasMarker ? "progress-payload" : "public-profile",
+          markerSource,
           requiresReview: true,
         },
       },

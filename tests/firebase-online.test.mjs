@@ -26,6 +26,7 @@ import {
 import {
   chooseLatestSavePayload,
   mergeFirebaseSavePayload,
+  repairSavePayloadWithProfileMarker,
 } from "../firebase-online.js";
 
 test("Firebase username validation enforces launch-safe names", () => {
@@ -205,6 +206,57 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
   assert.equal(mergedStale.customization.wheelId, "reactor");
   assert.equal(mergedStale.garage.activeLoadoutId, "loadout-b");
   assert.equal(mergedStale.progressionV2.embers, 200);
+
+  const unmarkedProfileOnlyContamination = repairSavePayloadWithProfileMarker(
+    {
+      saveMeta: { updatedAtMs: 7_000 },
+      progressionV2: {
+        totalXp: 100450,
+        xp: 100450,
+        embers: 976,
+      },
+    },
+    {
+      username: "Clark",
+      progress: {
+        totalXp: 100450,
+        xp: 100450,
+        embers: 976,
+      },
+    },
+  );
+  assert.equal(unmarkedProfileOnlyContamination.progressionV2.totalXp, 0);
+  assert.equal(unmarkedProfileOnlyContamination.progressionV2.xp, 0);
+  assert.equal(
+    unmarkedProfileOnlyContamination.progressionV2.accountProgressRepair?.source,
+    "special-badge-tainted-xp-blocked",
+  );
+  assert.equal(
+    unmarkedProfileOnlyContamination.progressionV2.accountProgressRepair?.markerSource,
+    "public-profile",
+  );
+
+  const hardEarnedHighXp = repairSavePayloadWithProfileMarker(
+    {
+      saveMeta: { updatedAtMs: 8_000 },
+      progressionV2: {
+        totalXp: 100450,
+        xp: 100450,
+        embers: 976,
+        personalBests: { race: { score: 12500 } },
+      },
+    },
+    {
+      username: "Clark",
+      progress: {
+        totalXp: 100450,
+        xp: 100450,
+        embers: 976,
+      },
+    },
+  );
+  assert.equal(hardEarnedHighXp.progressionV2.totalXp, 100450);
+  assert.equal(hardEarnedHighXp.progressionV2.accountProgressRepair, undefined);
 
   const contaminatedServer = {
     saveMeta: { updatedAtMs: 5_000 },
