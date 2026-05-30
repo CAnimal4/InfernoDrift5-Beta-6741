@@ -1283,9 +1283,14 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       .catch(() => undefined);
     await loadUserProfile(user.uid);
     state.authStatus = "signed-in";
-    const progress = await getProgress();
+    let progress = await getProgress();
     if (progress?.payload) {
-      await syncProgress(progress.payload, { silent: true });
+      const syncedPayload = await syncProgress(progress.payload, { silent: true });
+      if (syncedPayload && typeof syncedPayload === "object") {
+        progress = { ...progress, payload: syncedPayload };
+      } else {
+        progress = await getProgress();
+      }
     }
     subscribeAccountState();
     return {
@@ -1432,7 +1437,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       }
     }
     if (!silent) emit("save.synced", { payload: mergedPayload });
-    return true;
+    return mergedPayload;
   }
 
   async function refreshLeaderboard({ mode = FIREBASE_LEADERBOARD_MODE } = {}) {
