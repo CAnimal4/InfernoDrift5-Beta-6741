@@ -4,6 +4,7 @@ const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "infernodrift4-online";
 const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 const PAGE_SIZE = 100;
 const EXECUTE = process.argv.includes("--execute");
+const SUMMARY_ONLY = process.argv.includes("--summary");
 const CONFIRM_VALUE = "delete-public-test-data";
 
 const TEST_NAME_PATTERN =
@@ -74,6 +75,10 @@ function normalizedName(value = "") {
     .replace(/\s+/g, " ");
 }
 
+function usernameClaimKey(value = "") {
+  return normalizedName(value).replace(/\s+/g, "_");
+}
+
 function isTestLikeName(value = "") {
   const compact = normalizedName(value).replace(/[^a-z0-9_-]/g, "");
   return TEST_NAME_PATTERN.test(compact) || KNOWN_TEST_NAMES.has(compact);
@@ -113,12 +118,27 @@ function makeCleanupPlan({ scores = [], users = [] } = {}) {
 
   users.forEach((row) => {
     if (isTestLikeName(row.username || row.displayName)) {
+      const username = row.username || row.displayName || "";
       deletePaths.push({
         path: `users/${row.id}`,
-        username: row.username || row.displayName || "",
+        username,
         xp: getXp(row),
         reason: "delete test-like public user profile",
       });
+      deletePaths.push({
+        path: `progress/${row.id}`,
+        username,
+        xp: getXp(row),
+        reason: "delete test-like private progress document",
+      });
+      if (usernameClaimKey(username)) {
+        deletePaths.push({
+          path: `usernames/${usernameClaimKey(username)}`,
+          username,
+          xp: 0,
+          reason: "delete test-like username claim",
+        });
+      }
       return;
     }
     if (isSuspiciousClark(row)) {
@@ -128,6 +148,13 @@ function makeCleanupPlan({ scores = [], users = [] } = {}) {
         xp: getXp(row),
         reason:
           "real account public profile is contaminated; do not delete automatically",
+      });
+      reviewPaths.push({
+        path: `progress/${row.id}`,
+        username: row.username || row.displayName || "",
+        xp: getXp(row),
+        reason:
+          "private account progress may also be contaminated; admin-only review required",
       });
     }
   });
@@ -188,4 +215,22 @@ if (EXECUTE) {
   output.summary.failedCount = output.results.filter((entry) => !entry.ok).length;
 }
 
-console.log(JSON.stringify(output, null, 2));
+if (SUMMARY_ONLY) {
+  console.log(
+    JSON.stringify(
+      {
+        projectId: output.projectId,
+        generatedAt: output.generatedAt,
+        execute: output.execute,
+        summary: output.summary,
+        sampleDeletePaths: output.deletePaths.slice(0, 12),
+        reviewPaths: output.reviewPaths,
+        results: output.results,
+      },
+      null,
+      2,
+    ),
+  );
+} else {
+  console.log(JSON.stringify(output, null, 2));
+}
