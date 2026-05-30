@@ -226,10 +226,14 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
     },
   };
   const mergedRepair = mergeFirebaseSavePayload(contaminatedServer, markerStrippedDevice);
-  assert.equal(mergedRepair.progressionV2.totalXp, 100450);
-  assert.equal(mergedRepair.progressionV2.xp, 100450);
+  assert.equal(mergedRepair.progressionV2.totalXp, 23175);
+  assert.equal(mergedRepair.progressionV2.xp, 23175);
   assert.equal(mergedRepair.progressionV2.specialBadgeProgressSource, undefined);
   assert.equal(mergedRepair.progressionV2.specialBadgeProgressBaselineXp, undefined);
+  assert.notEqual(
+    mergedRepair.progressionV2.accountProgressRepair?.source,
+    "special-badge-contamination-v1",
+  );
 });
 
 test("Firebase chat and feedback filters block unsafe text", () => {
@@ -549,6 +553,7 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.doesNotMatch(script, /repairNote: "special-badge-xp-cap"/);
   assert.match(script, /function sanitizeSpecialBadgeProgression\(/);
   assert.doesNotMatch(script, /source:\s*"special-badge-contamination-v1"/);
+  assert.match(script, /special-badge-contamination-quarantine-v2/);
   assert.doesNotMatch(script, /repairXp:\s*22000/i);
   assert.doesNotMatch(script, /maxEmbers:\s*875/i);
   assert.doesNotMatch(script, /\["billy",\s*\{\s*repairXp:/i);

@@ -331,6 +331,7 @@ const pollutedCodexLeaderboard = await page.evaluate(() =>
 assert.equal(pollutedCodexLeaderboard[0].username, "ChatGPT (Codex)");
 assert.equal(pollutedCodexLeaderboard[0].xp, 22153);
 const clarkSpecialProgress = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.setOnlineUserForTest({
     id: "clark-test",
     username: "Clark",
@@ -355,11 +356,15 @@ const clarkSpecialProgress = await page.evaluate(() => {
   );
   return JSON.parse(window.render_game_to_text()).progression;
 });
-assert.equal(clarkSpecialProgress.totalXp, 100000);
+assert.equal(clarkSpecialProgress.totalXp, 22325);
 assert.equal(clarkSpecialProgress.embers, 9999);
 assert.equal(clarkSpecialProgress.specialBadgeRepairVersion, undefined);
 assert.equal(clarkSpecialProgress.specialBadgeProgressBaselineXp, undefined);
-assert.equal(clarkSpecialProgress.accountProgressRepair?.previousTotalXp, undefined);
+assert.equal(clarkSpecialProgress.accountProgressRepair?.previousTotalXp, 100000);
+assert.equal(
+  clarkSpecialProgress.accountProgressRepair?.source,
+  "special-badge-contamination-quarantine-v2",
+);
 const clarkUnmarkedProgress = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.setOnlineUserForTest({
@@ -402,11 +407,11 @@ const clarkPublicMarkerRepair = await page.evaluate(() => {
   );
   return JSON.parse(window.render_game_to_text()).progression;
 });
-assert.equal(clarkPublicMarkerRepair.totalXp, 100450);
+assert.equal(clarkPublicMarkerRepair.totalXp, 22450);
 assert.equal(clarkPublicMarkerRepair.embers, 1200);
 assert.equal(
   clarkPublicMarkerRepair.accountProgressRepair?.markerSource,
-  undefined,
+  "public-profile",
 );
 const specialBadgeStatsAreDisplayOnly = await page.evaluate(() => {
   const usernames = ["MODERATOR", "Joshua", "Tosh_the_Sigma", "Billy", "JFine"];

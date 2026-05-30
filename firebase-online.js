@@ -37,6 +37,7 @@ const FIREBASE_LIVE_MODES = new Set([
   "time-trial",
 ]);
 const FIREBASE_LIVE_PLAYER_LIMIT = 8;
+const SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD = 90_000;
 const FIREBASE_TEST_ACCOUNT_NAME_BLOCKLIST = new Set([
   "ajhdfiumhziwuehrmz",
   "akfjicoajsodifjmoi",
@@ -202,19 +203,66 @@ function getRewardLogXpAfter(rewardLog = [], timestampMs = 0) {
   }, 0);
 }
 
+function getSpecialBadgeContaminatedProgressionRepair(
+  progression = {},
+  markerSource = progression,
+) {
+  const markerAt = Date.parse(String(markerSource?.specialBadgeProgressRepairedAt || ""));
+  const baselineXp = Math.max(
+    0,
+    Math.floor(Number(markerSource?.specialBadgeProgressBaselineXp) || 0),
+  );
+  const currentXp = getProgressionXpValue(progression);
+  const postRepairXp = getRewardLogXpAfter(progression.rewardLog, markerAt);
+  const candidateXp = baselineXp + postRepairXp;
+  if (
+    baselineXp > 0 &&
+    candidateXp > 0 &&
+    candidateXp < currentXp &&
+    currentXp >= SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD
+  ) {
+    return { currentXp, baselineXp, postRepairXp, candidateXp };
+  }
+  return null;
+}
+
 function repairSavePayloadWithProfileMarker(payload = null, profile = {}) {
   if (!payload || typeof payload !== "object") return payload;
   const progression = payload.progressionV2;
   if (!progression || typeof progression !== "object") return payload;
   const profileHint = getProfileProgressRepairHint(profile);
   const progressHasMarker = hasObsoleteSpecialBadgeRepairMarker(progression);
-  if (!progressHasMarker && !profileHint) {
+  const markerSource = progressHasMarker ? progression : profileHint;
+  if (!markerSource) {
     return payload;
+  }
+  const cleanProgression = removeObsoleteSpecialBadgeRepairMarkers(progression);
+  const repair = getSpecialBadgeContaminatedProgressionRepair(
+    progression,
+    markerSource,
+  );
+  if (!repair) {
+    return {
+      ...payload,
+      progressionV2: cleanProgression,
+    };
   }
   return {
     ...payload,
     progressionV2: {
-      ...removeObsoleteSpecialBadgeRepairMarkers(progression),
+      ...cleanProgression,
+      xp: repair.candidateXp,
+      totalXp: repair.candidateXp,
+      accountProgressRepair: {
+        source: "special-badge-contamination-quarantine-v2",
+        previousTotalXp: repair.currentXp,
+        candidateTotalXp: repair.candidateXp,
+        baselineXp: repair.baselineXp,
+        postRepairXp: repair.postRepairXp,
+        markerSource: progressHasMarker ? "progress-payload" : "public-profile",
+        requiresReview: true,
+        repairedAt: new Date().toISOString(),
+      },
     },
   };
 }
@@ -356,6 +404,44 @@ function getProgressionXpValue(progression = {}) {
 }
 
 function getMergedFirebaseProgressionXp(existing = {}, incoming = {}) {
+  const existingMarkerRepair = hasObsoleteSpecialBadgeRepairMarker(existing)
+    ? getSpecialBadgeContaminatedProgressionRepair(existing, existing)
+    : null;
+  const incomingMarkerRepair = hasObsoleteSpecialBadgeRepairMarker(incoming)
+    ? getSpecialBadgeContaminatedProgressionRepair(incoming, incoming)
+    : null;
+  if (existingMarkerRepair || incomingMarkerRepair) {
+    return Math.max(
+      existingMarkerRepair
+        ? existingMarkerRepair.candidateXp
+        : getProgressionXpValue(existing),
+      incomingMarkerRepair
+        ? incomingMarkerRepair.candidateXp
+        : getProgressionXpValue(incoming),
+    );
+  }
+  if (
+    incoming?.accountProgressRepair?.source ===
+      "special-badge-contamination-quarantine-v2"
+  ) {
+    return Math.max(
+      hasObsoleteSpecialBadgeRepairMarker(existing)
+        ? 0
+        : getProgressionXpValue(existing),
+      getProgressionXpValue(incoming),
+    );
+  }
+  if (
+    existing?.accountProgressRepair?.source ===
+      "special-badge-contamination-quarantine-v2"
+  ) {
+    return Math.max(
+      getProgressionXpValue(existing),
+      hasObsoleteSpecialBadgeRepairMarker(incoming)
+        ? 0
+        : getProgressionXpValue(incoming),
+    );
+  }
   return Math.max(
     getSavePayloadXp({ progressionV2: existing }),
     getSavePayloadXp({ progressionV2: incoming }),

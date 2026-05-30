@@ -4972,6 +4972,34 @@ function getRewardLogXpAfter(rewardLog = [], timestampMs = 0) {
   }, 0);
 }
 
+function getSpecialBadgeContaminatedProgressionRepair(
+  progress = {},
+  markerSource = progress,
+) {
+  const markerAt = Date.parse(
+    String(markerSource?.specialBadgeProgressRepairedAt || ""),
+  );
+  const baselineXp = Math.max(
+    0,
+    Math.floor(Number(markerSource?.specialBadgeProgressBaselineXp) || 0),
+  );
+  const currentXp = Math.max(
+    0,
+    Math.floor(Number(progress.totalXp ?? progress.xp) || 0),
+  );
+  const postRepairXp = getRewardLogXpAfter(progress.rewardLog, markerAt);
+  const candidateXp = baselineXp + postRepairXp;
+  if (
+    baselineXp > 0 &&
+    candidateXp > 0 &&
+    candidateXp < currentXp &&
+    currentXp >= SPECIAL_BADGE_SUSPECT_XP
+  ) {
+    return { currentXp, baselineXp, postRepairXp, candidateXp };
+  }
+  return null;
+}
+
 function repairSpecialBadgeContaminatedProgression(
   progress = {},
   username = "",
@@ -4982,12 +5010,68 @@ function repairSpecialBadgeContaminatedProgression(
   if (!progressHasMarker && !hintHasMarker) {
     return removeSpecialBadgeRepairMarkers(progress);
   }
-  const currentXp = Math.max(
-    0,
-    Math.floor(Number(progress.totalXp ?? progress.xp) || 0),
+  const markerSource = progressHasMarker ? progress : repairHint;
+  const repair = getSpecialBadgeContaminatedProgressionRepair(
+    progress,
+    markerSource,
   );
   const cleaned = removeSpecialBadgeRepairMarkers(progress);
+  if (repair) {
+    const loadedProgress = state.progressionV2 || {};
+    const loadedXp = Math.max(
+      0,
+      Math.floor(Number(loadedProgress.totalXp ?? loadedProgress.xp) || 0),
+    );
+    const cleanLoadedXp =
+      !hasSpecialBadgeRepairMarker(loadedProgress) &&
+      loadedXp > repair.candidateXp &&
+      loadedXp < SPECIAL_BADGE_SUSPECT_XP
+        ? loadedXp
+        : 0;
+    const nextXp = cleanLoadedXp || repair.candidateXp;
+    const repairedProgression = {
+      ...cleaned.progression,
+      xp: nextXp,
+      totalXp: nextXp,
+      level: getLevelFromXP(nextXp),
+      accountProgressRepair: {
+        source: "special-badge-contamination-quarantine-v2",
+        username,
+        previousTotalXp: repair.currentXp,
+        candidateTotalXp: repair.candidateXp,
+        preservedLocalTotalXp: cleanLoadedXp || undefined,
+        baselineXp: repair.baselineXp,
+        postRepairXp: repair.postRepairXp,
+        markerSource: progressHasMarker ? "progress-payload" : "public-profile",
+        requiresReview: true,
+        repairedAt: new Date().toISOString(),
+      },
+    };
+    recordAccountProgressDiagnostic({
+      source: "special-badge-contamination-quarantine-v2",
+      username,
+      oldXp: repair.currentXp,
+      newXp: nextXp,
+      baselineXp: repair.baselineXp,
+      postRepairXp: repair.postRepairXp,
+      reason:
+        "quarantined obsolete badge repair XP instead of trusting a suspicious cloud value",
+      markerSource: progressHasMarker ? "progress-payload" : "public-profile",
+    });
+    if (onlineState.profileMode === "account") {
+      onlineState.profileActionStatus =
+        "Found an old account XP sync bug. Suspicious cloud XP was quarantined for review.";
+    }
+    return {
+      progression: repairedProgression,
+      changed: true,
+    };
+  }
   if (cleaned.changed || hintHasMarker) {
+    const currentXp = Math.max(
+      0,
+      Math.floor(Number(progress.totalXp ?? progress.xp) || 0),
+    );
     recordAccountProgressDiagnostic({
       source: "special-badge-marker-strip",
       username,
