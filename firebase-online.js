@@ -37,6 +37,7 @@ const FIREBASE_LIVE_MODES = new Set([
   "time-trial",
 ]);
 const FIREBASE_LIVE_PLAYER_LIMIT = 8;
+const SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD = 90_000;
 const FIREBASE_TEST_ACCOUNT_NAME_BLOCKLIST = new Set([
   "ajhdfiumhziwuehrmz",
   "akfjicoajsodifjmoi",
@@ -203,10 +204,38 @@ function repairSavePayloadWithProfileMarker(payload = null, profile = {}) {
     return payload;
   }
   const cleanProgression = removeObsoleteSpecialBadgeRepairMarkers(progression);
+  const rawXp = getProgressionXpValue(progression);
+  if (rawXp >= SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD) {
+    return {
+      ...payload,
+      progressionV2: {
+        ...cleanProgression,
+        xp: 0,
+        totalXp: 0,
+        accountProgressRepair: {
+          source: "special-badge-tainted-xp-blocked",
+          blockedTotalXp: rawXp,
+          markerSource: progressHasMarker ? "progress-payload" : "public-profile",
+          requiresReview: true,
+        },
+      },
+    };
+  }
   return {
     ...payload,
     progressionV2: cleanProgression,
   };
+}
+
+function isBlockedTaintedRepairPayload(payload = null) {
+  const progression = payload?.progressionV2;
+  return Boolean(
+    progression?.accountProgressRepair?.source ===
+      "special-badge-tainted-xp-blocked" &&
+      getProgressionXpValue(progression) === 0 &&
+      Math.max(0, Number(progression?.accountProgressRepair?.blockedTotalXp) || 0) >
+        0,
+  );
 }
 
 function makeUserPayload(uid, profile = {}) {
@@ -345,11 +374,21 @@ function getProgressionXpValue(progression = {}) {
   );
 }
 
+function getTrustedFirebaseProgressionXp(progression = {}) {
+  const xp = getProgressionXpValue(progression);
+  return hasObsoleteSpecialBadgeRepairMarker(progression) &&
+    xp >= SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD
+    ? null
+    : xp;
+}
+
 function getMergedFirebaseProgressionXp(existing = {}, incoming = {}) {
-  return Math.max(
-    getSavePayloadXp({ progressionV2: existing }),
-    getSavePayloadXp({ progressionV2: incoming }),
-  );
+  const trustedValues = [
+    getTrustedFirebaseProgressionXp(existing),
+    getTrustedFirebaseProgressionXp(incoming),
+  ].filter((value) => Number.isFinite(value));
+  if (trustedValues.length) return Math.max(...trustedValues);
+  return 0;
 }
 
 export function mergeFirebaseProgression(existing = {}, incoming = {}) {
@@ -1282,8 +1321,15 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       payload,
       internals.userProfile || {},
     );
+    if (
+      isBlockedTaintedRepairPayload(cleanPayload) &&
+      (!cleanExistingPayload || isBlockedTaintedRepairPayload(cleanExistingPayload))
+    ) {
+      state.leaderboardStatus = "repair-needed";
+      return cleanPayload;
+    }
     const mergedPayload = stripUndefinedForFirestore(
-      replace
+      replace && !isBlockedTaintedRepairPayload(cleanPayload)
         ? cleanPayload
         : mergeFirebaseSavePayload(cleanExistingPayload, cleanPayload),
     );

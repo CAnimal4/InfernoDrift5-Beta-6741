@@ -356,11 +356,12 @@ const clarkSpecialProgress = await page.evaluate(() => {
   );
   return JSON.parse(window.render_game_to_text()).progression;
 });
-assert.equal(clarkSpecialProgress.totalXp, 100000);
+assert.equal(clarkSpecialProgress.totalXp, 0);
 assert.equal(clarkSpecialProgress.embers, 9999);
 assert.equal(clarkSpecialProgress.specialBadgeRepairVersion, undefined);
 assert.equal(clarkSpecialProgress.specialBadgeProgressBaselineXp, undefined);
-assert.equal(clarkSpecialProgress.accountProgressRepair?.source, undefined);
+assert.equal(clarkSpecialProgress.accountProgressRepair?.source, "special-badge-tainted-xp-blocked");
+assert.equal(clarkSpecialProgress.accountProgressRepair?.blockedTotalXp, 100000);
 const clarkUnmarkedProgress = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.setOnlineUserForTest({
@@ -403,9 +404,16 @@ const clarkPublicMarkerRepair = await page.evaluate(() => {
   );
   return JSON.parse(window.render_game_to_text()).progression;
 });
-assert.equal(clarkPublicMarkerRepair.totalXp, 100450);
+assert.equal(clarkPublicMarkerRepair.totalXp, 0);
 assert.equal(clarkPublicMarkerRepair.embers, 1200);
-assert.equal(clarkPublicMarkerRepair.accountProgressRepair?.markerSource, undefined);
+assert.equal(
+  clarkPublicMarkerRepair.accountProgressRepair?.source,
+  "special-badge-tainted-xp-blocked",
+);
+assert.equal(
+  clarkPublicMarkerRepair.accountProgressRepair?.markerSource,
+  "public-profile",
+);
 const clarkCleanLocalBeatsContamination = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.setOnlineUserForTest({
@@ -429,10 +437,10 @@ const clarkCleanLocalBeatsContamination = await page.evaluate(() => {
   );
   return JSON.parse(window.render_game_to_text()).progression;
 });
-assert.equal(clarkCleanLocalBeatsContamination.totalXp, 100450);
+assert.equal(clarkCleanLocalBeatsContamination.totalXp, 28000);
 assert.equal(
   clarkCleanLocalBeatsContamination.accountProgressRepair?.preservedLocalTotalXp,
-  undefined,
+  28000,
 );
 const specialBadgeStatsAreDisplayOnly = await page.evaluate(() => {
   const usernames = ["MODERATOR", "Joshua", "Tosh_the_Sigma", "Billy", "JFine"];

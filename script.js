@@ -4974,11 +4974,63 @@ function repairSpecialBadgeContaminatedProgression(
     return removeSpecialBadgeRepairMarkers(progress);
   }
   const cleaned = removeSpecialBadgeRepairMarkers(progress);
+  const currentXp = Math.max(
+    0,
+    Math.floor(Number(progress.totalXp ?? progress.xp) || 0),
+  );
+  const loadedProgress = state.progressionV2 || {};
+  const loadedXp = Math.max(
+    0,
+    Math.floor(Number(loadedProgress.totalXp ?? loadedProgress.xp) || 0),
+  );
+  const cleanLoadedXp =
+    !hasSpecialBadgeRepairMarker(loadedProgress) &&
+    loadedXp > 0 &&
+    loadedXp < SPECIAL_BADGE_SUSPECT_XP
+      ? loadedXp
+      : 0;
+  const shouldBlockTaintedXp =
+    currentXp >= SPECIAL_BADGE_SUSPECT_XP &&
+    (progressHasMarker || hintHasMarker);
+  if (shouldBlockTaintedXp) {
+    const safeXp = cleanLoadedXp;
+    const safeProgression = {
+      ...cleaned.progression,
+      xp: safeXp,
+      totalXp: safeXp,
+      level: getLevelFromXP(safeXp),
+      accountProgressRepair: {
+        source: "special-badge-tainted-xp-blocked",
+        username,
+        blockedTotalXp: currentXp,
+        preservedLocalTotalXp: cleanLoadedXp || undefined,
+        markerSource: progressHasMarker ? "progress-payload" : "public-profile",
+        requiresReview: true,
+        repairedAt: new Date().toISOString(),
+      },
+    };
+    recordAccountProgressDiagnostic({
+      source: "special-badge-tainted-xp-blocked",
+      username,
+      oldXp: currentXp,
+      newXp: safeXp,
+      preservedLocalTotalXp: cleanLoadedXp || undefined,
+      reason:
+        "blocked obsolete badge repair XP from becoming active account progress",
+      markerSource: progressHasMarker ? "progress-payload" : "public-profile",
+    });
+    if (onlineState.profileMode === "account") {
+      onlineState.profileActionStatus =
+        cleanLoadedXp > 0
+          ? "Blocked an old account XP sync bug and kept your clean local progress."
+          : "Blocked an old account XP sync bug. This account needs admin progress review.";
+    }
+    return {
+      progression: safeProgression,
+      changed: true,
+    };
+  }
   if (cleaned.changed || hintHasMarker) {
-    const currentXp = Math.max(
-      0,
-      Math.floor(Number(progress.totalXp ?? progress.xp) || 0),
-    );
     recordAccountProgressDiagnostic({
       source: "special-badge-marker-strip",
       username,
@@ -5045,6 +5097,15 @@ function stripUnearnedSpecialProgressPayload(payload = {}, username = "") {
   return cleanPayload;
 }
 
+function isBlockedTaintedAccountProgression(progression = {}) {
+  return (
+    progression?.accountProgressRepair?.source ===
+      "special-badge-tainted-xp-blocked" &&
+    getProgressionTotalXp(progression) === 0 &&
+    Math.max(0, Number(progression?.accountProgressRepair?.blockedTotalXp) || 0) > 0
+  );
+}
+
 function hasProgressionPlayEvidence(progression = {}) {
   const normalized = normalizeProgressionV2(progression);
   const defaultRewards = new Set(createProgressionV2().unlockedRewards);
@@ -5092,6 +5153,13 @@ function syncProgressionToBackend() {
       return false;
     }
     const now = performance.now();
+    if (isBlockedTaintedAccountProgression(state.progressionV2)) {
+      onlineState.leaderboardSyncStatus = "repair-needed";
+      onlineState.profileActionStatus =
+        "Account progress needs admin review before it can sync safely.";
+      updateOnlineUi();
+      return false;
+    }
     onlineState.lastProgressSyncAt = now;
     onlineState.nextProgressSyncAt = now + ONLINE_PROGRESS_SYNC_INTERVAL_MS;
     onlineState.leaderboardSyncStatus = "syncing";

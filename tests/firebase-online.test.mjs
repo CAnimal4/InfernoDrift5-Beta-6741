@@ -226,14 +226,26 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
     },
   };
   const mergedRepair = mergeFirebaseSavePayload(contaminatedServer, markerStrippedDevice);
-  assert.equal(mergedRepair.progressionV2.totalXp, 100450);
-  assert.equal(mergedRepair.progressionV2.xp, 100450);
+  assert.equal(mergedRepair.progressionV2.totalXp, 23175);
+  assert.equal(mergedRepair.progressionV2.xp, 23175);
   assert.equal(mergedRepair.progressionV2.specialBadgeProgressSource, undefined);
   assert.equal(mergedRepair.progressionV2.specialBadgeProgressBaselineXp, undefined);
   assert.notEqual(
     mergedRepair.progressionV2.accountProgressRepair?.source,
     "special-badge-contamination-v1",
   );
+
+  const onlyContaminated = mergeFirebaseSavePayload(contaminatedServer, {
+    saveMeta: { updatedAtMs: 6_000 },
+    progressionV2: {
+      totalXp: 100450,
+      xp: 100450,
+      specialBadgeProgressSource: "special-badge-xp-repair",
+      specialBadgeProgressBaselineXp: 22000,
+    },
+  });
+  assert.equal(onlyContaminated.progressionV2.totalXp, 0);
+  assert.equal(onlyContaminated.progressionV2.xp, 0);
 });
 
 test("Firebase chat and feedback filters block unsafe text", () => {
@@ -525,8 +537,10 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(firebaseOnline, /payload: safeBestPayload,/);
   assert.match(
     firebaseOnline,
-    /replace\s*\?\s*cleanPayload\s*:\s*mergeFirebaseSavePayload\(cleanExistingPayload, cleanPayload\)/,
+    /replace\s*&&\s*!isBlockedTaintedRepairPayload\(cleanPayload\)[\s\S]{0,120}\?\s*cleanPayload[\s\S]{0,120}:\s*mergeFirebaseSavePayload\(cleanExistingPayload, cleanPayload\)/,
   );
+  assert.match(firebaseOnline, /function isBlockedTaintedRepairPayload/);
+  assert.match(firebaseOnline, /state\.leaderboardStatus = "repair-needed"/);
   assert.match(firebaseOnline, /stripUndefinedForFirestore\(\{\s*uid: state\.uid,/);
   assert.match(firebaseOnline, /stripUndefinedForFirestore\(\{\s*progress: mergedPayload\.progressionV2 \|\| \{\},/);
   assert.match(
@@ -553,6 +567,7 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.doesNotMatch(script, /repairNote: "special-badge-xp-cap"/);
   assert.match(script, /function sanitizeSpecialBadgeProgression\(/);
   assert.doesNotMatch(script, /source:\s*"special-badge-contamination-v1"/);
+  assert.match(script, /special-badge-tainted-xp-blocked/);
   assert.doesNotMatch(script, /special-badge-contamination-quarantine-v2/);
   assert.doesNotMatch(script, /repairXp:\s*22000/i);
   assert.doesNotMatch(script, /maxEmbers:\s*875/i);
@@ -579,7 +594,7 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(script, /const CODEX_LEADERBOARD_BASELINE_XP = 22153;/);
   assert.match(script, /codexLeaderboardXp = CODEX_LEADERBOARD_BASELINE_XP;/);
   assert.match(firebaseOnline, /syncProgress\(payload, \{ silent = false, replace = false \} = \{\}\)/);
-  assert.match(firebaseOnline, /replace\s*\?\s*cleanPayload\s*:\s*mergeFirebaseSavePayload\(cleanExistingPayload, cleanPayload\)/);
+  assert.match(firebaseOnline, /replace\s*&&\s*!isBlockedTaintedRepairPayload\(cleanPayload\)/);
   assert.doesNotMatch(firebaseOnline, /replace\s*\?\s*payload\s*:\s*mergeFirebaseSavePayload/);
   const rules = fs.readFileSync(
     new URL("../firestore.rules", import.meta.url),

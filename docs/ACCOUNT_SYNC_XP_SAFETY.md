@@ -33,8 +33,10 @@ across sessions and devices.
 - Special-badge status itself must never grant, cap, or reset XP, Embers,
   cosmetics, garage state, inventory, or claimed rewards.
 - Signed-in account merges keep the highest XP already present in the account
-  payloads. Obsolete badge-repair markers are removed as metadata, never used as
-  a reason to cap, reset, or rewrite a real account's progress downward.
+  payloads unless that XP is still tagged with an obsolete badge-repair marker
+  and is in the known contaminated range. Marked contaminated XP is blocked from
+  becoming active profile state; if a clean local/account value is already
+  loaded, that clean value is preserved instead.
 - Public leaderboard rows are sanitized before display. Suspicious old
   special-badge leaderboard scores and test/smoke/runner/pilot rows are ignored
   client-side.
