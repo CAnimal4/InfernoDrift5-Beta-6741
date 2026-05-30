@@ -469,6 +469,8 @@ function getSchoolGateStatus(date = new Date()) {
 const SEEDED_LEADERBOARD_ROWS = [];
 const SPECIAL_BADGE_ACCOUNT_KEYS = new Set([
   "clark",
+  "billy",
+  "jfine",
   "moderator",
   "joshua",
   "tosh_the_sigma",
@@ -476,6 +478,7 @@ const SPECIAL_BADGE_ACCOUNT_KEYS = new Set([
 ]);
 const SPECIAL_BADGE_REPAIR_VERSION = "2026-05-23-badge-xp-repair-v3";
 const SPECIAL_BADGE_SUSPECT_XP = 90000;
+const SPECIAL_BADGE_REPAIR_SOURCE = "special-badge-xp-repair";
 const FOUNDER_FRIEND_XP_REWARD = 1000;
 const CODEX_LEADERBOARD_USERNAME = "ChatGPT (Codex)";
 const CODEX_LEADERBOARD_ID = "system-chatgpt-codex";
@@ -2378,6 +2381,7 @@ const onlineState = {
   freshAccountRepairApplied: false,
   profileSnapshot: null,
   profileActionStatus: "",
+  accountProgressDiagnostics: [],
   profileDeleteStatus: "",
   onlineRestrictedUntil: "",
   friends: [],
@@ -4907,20 +4911,24 @@ function getSpecialBadgeProgressPolicy(username = "") {
 function hasSpecialBadgeRepairMarker(progression = {}) {
   return (
     progression?.specialBadgeRepairVersion === SPECIAL_BADGE_REPAIR_VERSION ||
-    Boolean(progression?.specialBadgeProgressRepairedAt)
+    progression?.specialBadgeProgressSource === SPECIAL_BADGE_REPAIR_SOURCE ||
+    Boolean(progression?.specialBadgeProgressRepairedAt) ||
+    Number.isFinite(Number(progression?.specialBadgeProgressBaselineXp))
   );
 }
 
-function addSpecialBadgeRepairMarker(progression = {}, repairedXp = 0) {
-  return {
-    ...progression,
-    specialBadgeRepairVersion: SPECIAL_BADGE_REPAIR_VERSION,
-    specialBadgeProgressRepairedAt: new Date().toISOString(),
-    specialBadgeProgressBaselineXp: Math.max(
-      0,
-      Math.floor(Number(repairedXp) || 0),
-    ),
+function recordAccountProgressDiagnostic(entry = {}) {
+  const diagnostic = {
+    at: new Date().toISOString(),
+    ...entry,
   };
+  onlineState.accountProgressDiagnostics = [
+    diagnostic,
+    ...(Array.isArray(onlineState.accountProgressDiagnostics)
+      ? onlineState.accountProgressDiagnostics
+      : []),
+  ].slice(0, 8);
+  return diagnostic;
 }
 
 function hasEarnedSpecialProgressAfterRepair(progression = {}) {
@@ -4948,6 +4956,79 @@ function removeSpecialBadgeRepairMarkers(progression = {}) {
   return { progression: clean, changed: true };
 }
 
+function getRewardLogXpAfter(rewardLog = [], timestampMs = 0) {
+  if (!Number.isFinite(timestampMs) || timestampMs <= 0) return 0;
+  return (Array.isArray(rewardLog) ? rewardLog : []).reduce((total, entry) => {
+    const at = Date.parse(String(entry?.at || ""));
+    if (!Number.isFinite(at) || at <= timestampMs) return total;
+    return total + Math.max(0, Math.floor(Number(entry?.xp) || 0));
+  }, 0);
+}
+
+function repairSpecialBadgeContaminatedProgression(
+  progress = {},
+  username = "",
+) {
+  if (!hasSpecialBadgeRepairMarker(progress)) {
+    return removeSpecialBadgeRepairMarkers(progress);
+  }
+  const markerAt = Date.parse(String(progress.specialBadgeProgressRepairedAt || ""));
+  const baselineXp = Math.max(
+    0,
+    Math.floor(Number(progress.specialBadgeProgressBaselineXp) || 0),
+  );
+  const currentXp = Math.max(
+    0,
+    Math.floor(Number(progress.totalXp ?? progress.xp) || 0),
+  );
+  const postRepairXp = getRewardLogXpAfter(progress.rewardLog, markerAt);
+  const reconstructedXp = baselineXp + postRepairXp;
+  const cleaned = removeSpecialBadgeRepairMarkers(progress);
+  let next = cleaned.progression;
+  if (baselineXp > 0 && reconstructedXp > 0 && reconstructedXp < currentXp) {
+    next = {
+      ...next,
+      xp: reconstructedXp,
+      totalXp: reconstructedXp,
+      level: getLevelFromXP(reconstructedXp),
+      accountProgressRepair: {
+        source: "special-badge-contamination-v1",
+        username,
+        previousTotalXp: currentXp,
+        repairedTotalXp: reconstructedXp,
+        baselineXp,
+        postRepairXp,
+        repairedAt: new Date().toISOString(),
+      },
+    };
+    recordAccountProgressDiagnostic({
+      source: "special-badge-contamination-v1",
+      username,
+      oldXp: currentXp,
+      newXp: reconstructedXp,
+      baselineXp,
+      postRepairXp,
+      reason: "ignored old badge repair marker instead of trusting inflated XP",
+    });
+    if (onlineState.profileMode === "account") {
+      onlineState.profileActionStatus =
+        "Repaired an old account badge-progress sync bug without using leaderboard XP.";
+    }
+  } else if (cleaned.changed) {
+    recordAccountProgressDiagnostic({
+      source: "special-badge-marker-strip",
+      username,
+      oldXp: currentXp,
+      newXp: currentXp,
+      reason: "removed obsolete badge repair marker without changing XP",
+    });
+  }
+  return {
+    progression: next,
+    changed: cleaned.changed || next !== progress,
+  };
+}
+
 function sanitizeSpecialBadgeProgression(
   progress = {},
   username = onlineState.user?.username || onlineState.username,
@@ -4956,7 +5037,7 @@ function sanitizeSpecialBadgeProgression(
     return { progression: progress, changed: false };
   if (!isSpecialBadgeAccountUsername(username))
     return { progression: progress, changed: false };
-  return removeSpecialBadgeRepairMarkers(progress);
+  return repairSpecialBadgeContaminatedProgression(progress, username);
 }
 
 function hasHardEarnedProgressEvidence(payload = {}) {
@@ -4985,8 +5066,9 @@ function stripUnearnedSpecialProgressPayload(payload = {}, username = "") {
     return payload;
   }
   const cleanPayload = structuredClone(payload);
-  const cleaned = removeSpecialBadgeRepairMarkers(
+  const cleaned = repairSpecialBadgeContaminatedProgression(
     cleanPayload.progressionV2 || {},
+    username,
   );
   if (!cleaned.changed) return payload;
   cleanPayload.progressionV2 = cleaned.progression;
@@ -7853,10 +7935,6 @@ function handleOnlineMessage(raw) {
         ? "server"
         : "local";
     onlineState.leaderboardSyncedAt = performance.now();
-    recoverAccountProgressFromLeaderboard(
-      onlineState.leaderboard,
-      onlineState.leaderboardPlayerRow,
-    );
   } else if (message.type === "friends.snapshot") {
     onlineState.friends = Array.isArray(message.friends) ? message.friends : [];
     onlineState.incomingFriendRequests = Array.isArray(message.incomingRequests)
@@ -9680,38 +9758,27 @@ function isCurrentAccountLeaderboardRow(row = {}) {
   return Boolean(currentName && rowName && currentName === rowName);
 }
 
-function recoverAccountProgressFromLeaderboard(rows = [], playerRow = null) {
-  if (
-    onlineState.profileMode !== "account" ||
-    onlineState.guestTemporary ||
-    !onlineState.user
-  ) {
-    return false;
-  }
-  const bestXp = [playerRow, ...(Array.isArray(rows) ? rows : [])]
-    .filter(isCurrentAccountLeaderboardRow)
-    .reduce((max, row) => Math.max(max, getLeaderboardXp(row)), 0);
-  const currentXp = getProgressionTotalXp();
-  if (bestXp <= currentXp) return false;
-  state.progressionV2 = normalizeProgressionV2({
-    ...state.progressionV2,
-    xp: bestXp,
-    totalXp: bestXp,
-    level: getLevelFromXP(bestXp),
-    leaderboardRecoveryAt: new Date().toISOString(),
-    leaderboardRecoverySource: "account-leaderboard-row",
-  });
-  onlineState.profileActionStatus = `Recovered ${bestXp.toLocaleString()} XP from your account leaderboard row.`;
-  markAccountSaveDirty("leaderboard-xp-recovery");
-  onlineState.nextProgressSyncAt = 0;
-  savePersistentState();
-  renderProgressPanel();
-  refreshGamesUi();
-  return true;
-}
-
 function sanitizeSpecialBadgeLeaderboardRow(row = {}) {
-  return row;
+  if (!row || typeof row !== "object") return row;
+  if (!isSpecialBadgeAccountUsername(row.username || row.name || "")) return row;
+  const xp = getLeaderboardXp(row);
+  if (xp < SPECIAL_BADGE_SUSPECT_XP) return row;
+  recordAccountProgressDiagnostic({
+    source: "special-badge-leaderboard-quarantine",
+    username: row.username || row.name || "",
+    oldXp: xp,
+    newXp: 0,
+    reason: "ignored suspicious old badge leaderboard score",
+  });
+  return {
+    ...row,
+    xp: 0,
+    totalXp: 0,
+    score: 0,
+    rating: 0,
+    quarantined: true,
+    repairNote: "special-badge-leaderboard-quarantined",
+  };
 }
 
 function sanitizeSpecialBadgeLeaderboardRows(rows = []) {
@@ -24058,6 +24125,7 @@ window.render_game_to_text = () => {
         dailyGiftNotice && !dailyGiftNotice.hidden,
       ),
       rewardLog: state.progressionV2.rewardLog.slice(-6),
+      accountProgressRepair: state.progressionV2.accountProgressRepair || null,
     },
     online: {
       backendMode: onlineState.backendMode,
@@ -24105,6 +24173,7 @@ window.render_game_to_text = () => {
         ),
         snapshot: onlineState.profileSnapshot,
         actionStatus: onlineState.profileActionStatus,
+        progressDiagnostics: onlineState.accountProgressDiagnostics,
         deleteStatus: onlineState.profileDeleteStatus,
         saveSyncedAt: onlineState.saveSyncedAt,
         lastProgressSyncAt: onlineState.lastProgressSyncAt,
@@ -24381,10 +24450,6 @@ window.__infernodriftTestApi = {
     onlineState.leaderboard = filterTestLikeLeaderboardRows(rows);
     onlineState.leaderboardPlayerRow =
       playerRow && !isTestLikeLeaderboardRow(playerRow) ? playerRow : null;
-    recoverAccountProgressFromLeaderboard(
-      onlineState.leaderboard,
-      onlineState.leaderboardPlayerRow,
-    );
     updateOnlineUi();
     return JSON.parse(window.render_game_to_text()).online.leaderboard;
   },

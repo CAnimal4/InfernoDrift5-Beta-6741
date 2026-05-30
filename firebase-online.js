@@ -283,15 +283,42 @@ function mergeFirebaseDailySparks(existing = {}, incoming = {}) {
   };
 }
 
+function hasObsoleteSpecialBadgeRepairMarker(progression = {}) {
+  return Boolean(
+    progression?.specialBadgeProgressSource === "special-badge-xp-repair" ||
+      progression?.specialBadgeProgressRepairedAt ||
+      Number.isFinite(Number(progression?.specialBadgeProgressBaselineXp)),
+  );
+}
+
+function getProgressionXpValue(progression = {}) {
+  return Math.max(
+    0,
+    Math.floor(Number(progression?.totalXp ?? progression?.xp) || 0),
+  );
+}
+
+function getMergedFirebaseProgressionXp(existing = {}, incoming = {}) {
+  const incomingRepair = incoming?.accountProgressRepair;
+  if (
+    hasObsoleteSpecialBadgeRepairMarker(existing) &&
+    !hasObsoleteSpecialBadgeRepairMarker(incoming) &&
+    incomingRepair?.source === "special-badge-contamination-v1"
+  ) {
+    return getProgressionXpValue(incoming);
+  }
+  return Math.max(
+    getSavePayloadXp({ progressionV2: existing }),
+    getSavePayloadXp({ progressionV2: incoming }),
+  );
+}
+
 export function mergeFirebaseProgression(existing = {}, incoming = {}) {
   const latestProgression = chooseLatestSavePayload(
     { progressionV2: existing },
     { progressionV2: incoming },
   ).progressionV2 || incoming || existing;
-  const xp = Math.max(
-    getSavePayloadXp({ progressionV2: existing }),
-    getSavePayloadXp({ progressionV2: incoming }),
-  );
+  const xp = getMergedFirebaseProgressionXp(existing, incoming);
   const dailyGift =
     existing.dailyGift?.seed && existing.dailyGift.seed === incoming.dailyGift?.seed
       ? {
@@ -304,7 +331,7 @@ export function mergeFirebaseProgression(existing = {}, incoming = {}) {
               .at(-1) || "",
         }
       : latestProgression.dailyGift;
-  return {
+  const merged = {
     ...existing,
     ...incoming,
     xp,
@@ -349,6 +376,14 @@ export function mergeFirebaseProgression(existing = {}, incoming = {}) {
     updatedAtClient: latestProgression.updatedAtClient,
     updatedAtMs: latestProgression.updatedAtMs,
   };
+  if (incoming?.accountProgressRepair?.source === "special-badge-contamination-v1") {
+    delete merged.specialBadgeRepairVersion;
+    delete merged.specialBadgeProgressRepairedAt;
+    delete merged.specialBadgeProgressBaselineXp;
+    delete merged.specialBadgeProgressEarnedAfterRepair;
+    delete merged.specialBadgeProgressSource;
+  }
+  return merged;
 }
 
 export function mergeFirebaseSavePayload(

@@ -344,16 +344,36 @@ const clarkSpecialProgress = await page.evaluate(() => {
         specialBadgeRepairVersion: "old-bad-cap",
         specialBadgeProgressRepairedAt: "2026-05-23T00:00:00.000Z",
         specialBadgeProgressBaselineXp: 22000,
+        specialBadgeProgressSource: "special-badge-xp-repair",
+        rewardLog: [
+          { at: "2026-05-23T00:00:05.000Z", xp: 325, modeId: "daily-gift" },
+          { at: "2026-05-22T23:59:59.000Z", xp: 9000, modeId: "race" },
+        ],
       },
     },
     { forceProgression: true, replaceProgression: true },
   );
   return JSON.parse(window.render_game_to_text()).progression;
 });
-assert.equal(clarkSpecialProgress.totalXp, 100000);
+assert.equal(clarkSpecialProgress.totalXp, 22325);
 assert.equal(clarkSpecialProgress.embers, 9999);
 assert.equal(clarkSpecialProgress.specialBadgeRepairVersion, undefined);
 assert.equal(clarkSpecialProgress.specialBadgeProgressBaselineXp, undefined);
+assert.equal(clarkSpecialProgress.accountProgressRepair.previousTotalXp, 100000);
+const clarkUnmarkedProgress = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetLocalProgressionForTest();
+  window.__infernodriftTestApi.setOnlineUserForTest({
+    id: "clark-clean",
+    username: "Clark",
+  });
+  window.__infernodriftTestApi.applySavePayloadForTest(
+    { progressionV2: { xp: 100000, totalXp: 100000, embers: 9999 } },
+    { forceProgression: true, replaceProgression: true },
+  );
+  return JSON.parse(window.render_game_to_text()).progression;
+});
+assert.equal(clarkUnmarkedProgress.totalXp, 100000);
+assert.equal(clarkUnmarkedProgress.embers, 9999);
 const specialBadgeStatsAreDisplayOnly = await page.evaluate(() => {
   const usernames = ["MODERATOR", "Joshua", "Tosh_the_Sigma", "Billy", "JFine"];
   return usernames.map((username, index) => {
@@ -397,10 +417,20 @@ const leaderboardRecoveryState = await page.evaluate(() => {
     ],
     null,
   );
-  return JSON.parse(window.render_game_to_text()).progression;
+  const diagnostics = JSON.parse(window.render_game_to_text());
+  return {
+    progression: diagnostics.progression,
+    leaderboard: diagnostics.online.leaderboard,
+  };
 });
-assert.equal(leaderboardRecoveryState.totalXp, 100000);
-assert.equal(leaderboardRecoveryState.embers, 875);
+assert.equal(leaderboardRecoveryState.progression.totalXp, 22000);
+assert.equal(leaderboardRecoveryState.progression.embers, 875);
+assert.equal(leaderboardRecoveryState.leaderboard[0].username, "ChatGPT (Codex)");
+assert.ok(leaderboardRecoveryState.leaderboard[0].xp < 90000);
+assert.equal(
+  leaderboardRecoveryState.leaderboard.find((row) => row.username === "Clark")?.quarantined,
+  true,
+);
 await page.locator('[data-tab="profile"]').click({ force: true });
 await page.waitForTimeout(150);
 onlineUiState = JSON.parse(

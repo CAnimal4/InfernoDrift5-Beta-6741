@@ -205,6 +205,36 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
   assert.equal(mergedStale.customization.wheelId, "reactor");
   assert.equal(mergedStale.garage.activeLoadoutId, "loadout-b");
   assert.equal(mergedStale.progressionV2.embers, 200);
+
+  const contaminatedServer = {
+    saveMeta: { updatedAtMs: 5_000 },
+    progressionV2: {
+      totalXp: 100450,
+      xp: 100450,
+      embers: 976,
+      specialBadgeProgressSource: "special-badge-xp-repair",
+      specialBadgeProgressRepairedAt: "2026-05-29T14:27:34.733Z",
+      specialBadgeProgressBaselineXp: 22000,
+    },
+  };
+  const repairedDevice = {
+    saveMeta: { updatedAtMs: 6_000 },
+    progressionV2: {
+      totalXp: 23175,
+      xp: 23175,
+      embers: 976,
+      accountProgressRepair: {
+        source: "special-badge-contamination-v1",
+        previousTotalXp: 100450,
+        repairedTotalXp: 23175,
+      },
+    },
+  };
+  const mergedRepair = mergeFirebaseSavePayload(contaminatedServer, repairedDevice);
+  assert.equal(mergedRepair.progressionV2.totalXp, 23175);
+  assert.equal(mergedRepair.progressionV2.xp, 23175);
+  assert.equal(mergedRepair.progressionV2.specialBadgeProgressSource, undefined);
+  assert.equal(mergedRepair.progressionV2.specialBadgeProgressBaselineXp, undefined);
 });
 
 test("Firebase chat and feedback filters block unsafe text", () => {
@@ -504,8 +534,10 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(script, /cleanUnearnedSpecialProgress: Boolean\(message\.user\?\.account\)/);
   assert.match(script, /replaceNextProgressSync = true/);
   assert.match(script, /function sanitizeSpecialBadgeLeaderboardRow\(row = \{\}\)/);
+  assert.match(script, /special-badge-leaderboard-quarantined/);
   assert.doesNotMatch(script, /repairNote: "special-badge-xp-cap"/);
   assert.match(script, /function sanitizeSpecialBadgeProgression\(/);
+  assert.match(script, /special-badge-contamination-v1/);
   assert.doesNotMatch(script, /repairXp:\s*22000/i);
   assert.doesNotMatch(script, /maxEmbers:\s*875/i);
   assert.doesNotMatch(script, /\["billy",\s*\{\s*repairXp:/i);
@@ -513,7 +545,8 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(script, /function hasEarnedSpecialProgressAfterRepair\(/);
   assert.doesNotMatch(script, /specialBadgeProgressEarnedAfterRepair = true/);
   assert.match(script, /function removeSpecialBadgeRepairMarkers\(/);
-  assert.match(script, /function recoverAccountProgressFromLeaderboard\(/);
+  assert.doesNotMatch(script, /function recoverAccountProgressFromLeaderboard\(/);
+  assert.doesNotMatch(script, /leaderboard-xp-recovery/);
   assert.match(script, /accountSaveDirty: false/);
   assert.match(script, /function markAccountSaveDirty\(reason = "local-change"\)/);
   assert.match(script, /markAccountSaveDirty\("garage-equip"\)/);
