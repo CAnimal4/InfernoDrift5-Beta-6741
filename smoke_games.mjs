@@ -441,6 +441,10 @@ assert.equal(
 );
 const clarkAuthEventPublicUnmarkedRepair = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
+  window.__infernodriftTestApi.configureOnlineForTest({
+    backendMode: "firebase",
+    username: "Clark",
+  });
   return window.__infernodriftTestApi.simulateOnlineMessageForTest({
     type: "auth.ok",
     user: {
@@ -476,6 +480,25 @@ assert.equal(
 assert.equal(
   clarkAuthEventPublicUnmarkedRepair.accountProgressRepair?.markerSource,
   "public-profile",
+);
+const clarkBlockedRepairDoesNotSync = await page.evaluate(() => {
+  const syncResult = window.__infernodriftTestApi.forceOnlineProgressSync();
+  const diagnostics = JSON.parse(window.render_game_to_text());
+  return {
+    syncResult,
+    progression: diagnostics.progression,
+    profile: diagnostics.online.profile,
+  };
+});
+assert.equal(clarkBlockedRepairDoesNotSync.syncResult, false);
+assert.equal(clarkBlockedRepairDoesNotSync.progression.totalXp, 0);
+assert.match(
+  clarkBlockedRepairDoesNotSync.profile.actionStatus,
+  /admin review/i,
+);
+assert.equal(
+  clarkBlockedRepairDoesNotSync.profile.progressDiagnostics[0]?.source,
+  "special-badge-tainted-xp-blocked",
 );
 const clarkCleanLocalBeatsContamination = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();

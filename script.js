@@ -4988,6 +4988,12 @@ function repairSpecialBadgeContaminatedProgression(
   username = "",
   repairHint = getSpecialBadgeProgressRepairHint(username),
 ) {
+  if (
+    progress?.accountProgressRepair?.source ===
+    "special-badge-tainted-xp-blocked"
+  ) {
+    return { progression: progress, changed: false };
+  }
   const progressHasMarker = hasSpecialBadgeRepairMarker(progress);
   const hintHasMarker = hasSpecialBadgeRepairMarker(repairHint);
   const hintHasUnmarkedProfileRepair =
@@ -6303,6 +6309,9 @@ function renderOnlineDiagnostics() {
       `Chat ${onlineState.firebase.chatStatus}${onlineState.firebase.chatListenerActive ? " listener-on" : ""}`,
       `Leaderboard ${onlineState.firebase.leaderboardStatus}`,
       `Diagnostics ${onlineState.firebase.diagnosticsStatus}`,
+      onlineState.accountProgressDiagnostics?.[0]
+        ? `Progress diagnostic ${onlineState.accountProgressDiagnostics[0].source || "unknown"} ${onlineState.accountProgressDiagnostics[0].oldXp ?? "?"}->${onlineState.accountProgressDiagnostics[0].newXp ?? "?"}`
+        : `Progress diagnostic none`,
       `Legacy import ${onlineState.legacyImportStatus}${onlineState.legacyImportXp ? ` (${onlineState.legacyImportXp} XP)` : ""}${onlineState.legacyImportSource ? ` via ${onlineState.legacyImportSource}` : ""}${onlineState.legacySessionToken ? " old-session-detected" : ""}`,
       `Realtime DB not used`,
       `Last error ${onlineState.firebase.lastError || onlineState.lastError || "none"}`,
@@ -10207,8 +10216,11 @@ function updateProfileUi() {
   if (profileLevel) profileLevel.textContent = String(getProgressionLevel());
   if (profileXp) profileXp.textContent = totalXp.toLocaleString();
   if (profileSaveState) {
-    profileSaveState.textContent =
-      onlineState.profileMode === "account"
+    profileSaveState.textContent = isBlockedTaintedAccountProgression(
+      state.progressionV2,
+    )
+      ? "Needs review"
+      : onlineState.profileMode === "account"
         ? onlineState.saveSyncedAt
           ? "Synced"
           : "Ready"
