@@ -27,17 +27,14 @@ across sessions and devices.
 
 - Special badge accounts are badge metadata only. Badge status must not grant,
   cap, reset, or otherwise change XP, Embers, cosmetics, garage, or inventory.
-- Firebase save writers quarantine obsolete special-badge marker XP before
-  choosing a seed payload or merging a progress sync.
+- Firebase save writers strip obsolete special-badge repair markers before
+  choosing a seed payload or merging a progress sync, but they do not lower the
+  account's XP or Embers while doing it.
 - Special-badge status itself must never grant, cap, or reset XP, Embers,
   cosmetics, garage state, inventory, or claimed rewards.
-- Signed-in account merges keep the highest trusted XP already present in the
-  account payloads. XP from an obsolete badge-repair marker is not trusted just
-  because it is numerically higher.
-- If the only available value is a suspicious marked value, the client falls
-  back to the marker's repair candidate and records
-  `accountProgressRepair.source = "special-badge-contamination-quarantine-v2"`
-  with `requiresReview: true` instead of silently accepting `100k+`.
+- Signed-in account merges keep the highest XP already present in the account
+  payloads. Obsolete badge-repair markers are removed as metadata, never used as
+  a reason to cap, reset, or rewrite a real account's progress downward.
 - Public leaderboard rows are sanitized before display. Suspicious old
   special-badge leaderboard scores and test/smoke/runner/pilot rows are ignored
   client-side.

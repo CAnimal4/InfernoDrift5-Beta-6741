@@ -1,6 +1,7 @@
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "infernodrift4-online";
 const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 const PAGE_SIZE = 100;
+const SUMMARY_ONLY = process.argv.includes("--summary");
 
 const TEST_NAME_PATTERN =
   /^(test|teest|smoke|fresh|runner|pilot|test-removed)[a-z0-9_-]*/i;
@@ -133,12 +134,32 @@ const scores = await listDocuments("leaderboards/all-modes/scores");
 const users = await listDocuments("users");
 const publicLeaderboardRowsToIgnore = auditScores(scores);
 const publicUserRowsToIgnore = auditUsers(users);
+const contaminatedLeaderboardRows = publicLeaderboardRowsToIgnore.filter(
+  (row) => row.reason === "special-badge-contaminated-score",
+);
+const contaminatedPublicProfiles = publicUserRowsToIgnore.filter(
+  (row) => row.reason === "special-badge-contaminated-profile",
+);
+const testLikeLeaderboardRows = publicLeaderboardRowsToIgnore.filter(
+  (row) => row.reason === "test-like-score-row",
+);
+const testLikePublicProfiles = publicUserRowsToIgnore.filter(
+  (row) => row.reason === "test-like-public-user",
+);
 const report = {
   projectId: PROJECT_ID,
   generatedAt: new Date().toISOString(),
   summary: {
     publicLeaderboardRowsIgnoredByClient: publicLeaderboardRowsToIgnore.length,
     publicUserRowsIgnoredByClient: publicUserRowsToIgnore.length,
+    contaminatedLeaderboardRows: contaminatedLeaderboardRows.length,
+    contaminatedPublicProfiles: contaminatedPublicProfiles.length,
+    testLikeLeaderboardRows: testLikeLeaderboardRows.length,
+    testLikePublicProfiles: testLikePublicProfiles.length,
+    displayLeakRisk:
+      contaminatedLeaderboardRows.length || contaminatedPublicProfiles.length
+        ? "guarded_by_client_but_requires_admin_cleanup"
+        : "none_detected",
     adminCleanupRequired:
       publicLeaderboardRowsToIgnore.length > 0 || publicUserRowsToIgnore.length > 0,
     cleanupRequires:
@@ -154,4 +175,32 @@ const report = {
   publicUserRowsToIgnore,
 };
 
-console.log(JSON.stringify(report, null, 2));
+if (SUMMARY_ONLY) {
+  console.log(
+    JSON.stringify(
+      {
+        projectId: report.projectId,
+        generatedAt: report.generatedAt,
+        summary: report.summary,
+        sampleCleanupPaths: {
+          contaminatedLeaderboardRows: contaminatedLeaderboardRows
+            .slice(0, 5)
+            .map((row) => row.path),
+          contaminatedPublicProfiles: contaminatedPublicProfiles
+            .slice(0, 5)
+            .map((row) => row.path),
+          testLikeLeaderboardRows: testLikeLeaderboardRows
+            .slice(0, 5)
+            .map((row) => row.path),
+          testLikePublicProfiles: testLikePublicProfiles
+            .slice(0, 5)
+            .map((row) => row.path),
+        },
+      },
+      null,
+      2,
+    ),
+  );
+} else {
+  console.log(JSON.stringify(report, null, 2));
+}
