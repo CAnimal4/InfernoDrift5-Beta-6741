@@ -374,8 +374,33 @@ const clarkUnmarkedProgress = await page.evaluate(() => {
   );
   return JSON.parse(window.render_game_to_text()).progression;
 });
-assert.equal(clarkUnmarkedProgress.totalXp, 100000);
+assert.equal(clarkUnmarkedProgress.totalXp, 0);
 assert.equal(clarkUnmarkedProgress.embers, 9999);
+assert.equal(
+  clarkUnmarkedProgress.accountProgressRepair?.markerSource,
+  "unmarked-cache",
+);
+const clarkUnmarkedWithEvidence = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetLocalProgressionForTest();
+  window.__infernodriftTestApi.setOnlineUserForTest({
+    id: "clark-clean-evidence",
+    username: "Clark",
+  });
+  window.__infernodriftTestApi.applySavePayloadForTest(
+    {
+      progressionV2: {
+        xp: 100000,
+        totalXp: 100000,
+        embers: 9999,
+        personalBests: { race: { score: 42000 } },
+      },
+    },
+    { forceProgression: true, replaceProgression: true },
+  );
+  return JSON.parse(window.render_game_to_text()).progression;
+});
+assert.equal(clarkUnmarkedWithEvidence.totalXp, 100000);
+assert.equal(clarkUnmarkedWithEvidence.accountProgressRepair?.source, undefined);
 const clarkPublicMarkerRepair = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.setOnlineUserForTest({
@@ -442,6 +467,29 @@ assert.equal(
   clarkCleanLocalBeatsContamination.accountProgressRepair?.preservedLocalTotalXp,
   28000,
 );
+const codexDoesNotChaseUnmarkedCachedSpecialXp = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetLocalProgressionForTest();
+  window.__infernodriftTestApi.setOnlineUserForTest({
+    id: "clark-cached-100k",
+    username: "Clark",
+  });
+  window.__infernodriftTestApi.applySavePayloadForTest(
+    { progressionV2: { xp: 100000, totalXp: 100000, embers: 777 } },
+    { forceProgression: true, replaceProgression: true },
+  );
+  window.__infernodriftTestApi.setLeaderboardRowsForTest([], null);
+  const diagnostics = JSON.parse(window.render_game_to_text());
+  return {
+    progression: diagnostics.progression,
+    leaderboard: diagnostics.online.leaderboard,
+  };
+});
+assert.equal(codexDoesNotChaseUnmarkedCachedSpecialXp.progression.totalXp, 0);
+assert.equal(
+  codexDoesNotChaseUnmarkedCachedSpecialXp.progression.accountProgressRepair?.markerSource,
+  "unmarked-cache",
+);
+assert.ok(codexDoesNotChaseUnmarkedCachedSpecialXp.leaderboard[0].xp < 90000);
 const specialBadgeStatsAreDisplayOnly = await page.evaluate(() => {
   const usernames = ["MODERATOR", "Joshua", "Tosh_the_Sigma", "Billy", "JFine"];
   return usernames.map((username, index) => {
@@ -451,7 +499,7 @@ const specialBadgeStatsAreDisplayOnly = await page.evaluate(() => {
       username,
     });
     window.__infernodriftTestApi.applySavePayloadForTest(
-      { progressionV2: { xp: 90000 + index, totalXp: 90000 + index, embers: 500 + index } },
+      { progressionV2: { xp: 80000 + index, totalXp: 80000 + index, embers: 500 + index } },
       { forceProgression: true, replaceProgression: true },
     );
     const progression = JSON.parse(window.render_game_to_text()).progression;
@@ -459,7 +507,7 @@ const specialBadgeStatsAreDisplayOnly = await page.evaluate(() => {
   });
 });
 specialBadgeStatsAreDisplayOnly.forEach((entry, index) => {
-  assert.equal(entry.totalXp, 90000 + index);
+  assert.equal(entry.totalXp, 80000 + index);
   assert.equal(entry.embers, 500 + index);
 });
 const leaderboardRecoveryState = await page.evaluate(() => {

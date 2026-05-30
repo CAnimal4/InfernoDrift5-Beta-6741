@@ -4894,6 +4894,18 @@ function hasGameplayRewardLogEvidence(rewardLog = []) {
   });
 }
 
+function hasHighXpGameplayEvidence(progression = {}) {
+  const normalized = normalizeProgressionV2(progression);
+  return Boolean(
+    hasObjectEntries(normalized.medals) ||
+      hasObjectEntries(normalized.personalBests) ||
+      hasObjectEntries(normalized.ghostSamples) ||
+      hasGameplayRewardLogEvidence(normalized.rewardLog) ||
+      normalized.tutorialComplete ||
+      hasDailySparksEvidence(normalized.dailySparks),
+  );
+}
+
 function isSpecialBadgeAccountUsername(username = "") {
   const key = normalizeLegacyProgressKey(username);
   return (
@@ -4970,9 +4982,6 @@ function repairSpecialBadgeContaminatedProgression(
 ) {
   const progressHasMarker = hasSpecialBadgeRepairMarker(progress);
   const hintHasMarker = hasSpecialBadgeRepairMarker(repairHint);
-  if (!progressHasMarker && !hintHasMarker) {
-    return removeSpecialBadgeRepairMarkers(progress);
-  }
   const cleaned = removeSpecialBadgeRepairMarkers(progress);
   const currentXp = Math.max(
     0,
@@ -4992,9 +5001,14 @@ function repairSpecialBadgeContaminatedProgression(
   const cleanLocalAccountXp = cleanLoadedXp ? 0 : getCleanAccountLocalProgressionXp();
   const shouldBlockTaintedXp =
     currentXp >= SPECIAL_BADGE_SUSPECT_XP &&
-    (progressHasMarker || hintHasMarker);
+    (progressHasMarker || hintHasMarker || !hasHighXpGameplayEvidence(progress));
   if (shouldBlockTaintedXp) {
     const safeXp = cleanLoadedXp || cleanLocalAccountXp;
+    const markerSource = progressHasMarker
+      ? "progress-payload"
+      : hintHasMarker
+        ? "public-profile"
+        : "unmarked-cache";
     const safeProgression = {
       ...cleaned.progression,
       xp: safeXp,
@@ -5005,7 +5019,7 @@ function repairSpecialBadgeContaminatedProgression(
         username,
         blockedTotalXp: currentXp,
         preservedLocalTotalXp: safeXp || undefined,
-        markerSource: progressHasMarker ? "progress-payload" : "public-profile",
+        markerSource,
         requiresReview: true,
         repairedAt: new Date().toISOString(),
       },
@@ -5018,7 +5032,7 @@ function repairSpecialBadgeContaminatedProgression(
       preservedLocalTotalXp: safeXp || undefined,
       reason:
         "blocked obsolete badge repair XP from becoming active account progress",
-      markerSource: progressHasMarker ? "progress-payload" : "public-profile",
+      markerSource,
     });
     if (onlineState.profileMode === "account") {
       onlineState.profileActionStatus =
@@ -5030,6 +5044,9 @@ function repairSpecialBadgeContaminatedProgression(
       progression: safeProgression,
       changed: true,
     };
+  }
+  if (!progressHasMarker && !hintHasMarker) {
+    return removeSpecialBadgeRepairMarkers(progress);
   }
   if (cleaned.changed || hintHasMarker) {
     recordAccountProgressDiagnostic({
@@ -5164,6 +5181,13 @@ function syncProgressionToBackend() {
       !onlineState.user
     ) {
       return false;
+    }
+    const activeRepair = sanitizeSpecialBadgeProgression(
+      state.progressionV2,
+      onlineState.user?.username || onlineState.username,
+    );
+    if (activeRepair.changed) {
+      state.progressionV2 = activeRepair.progression;
     }
     const now = performance.now();
     if (isBlockedTaintedAccountProgression(state.progressionV2)) {
