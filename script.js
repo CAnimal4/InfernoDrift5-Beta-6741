@@ -4933,7 +4933,15 @@ function getSpecialBadgeProgressRepairHint(username = "") {
   if (!isSpecialBadgeAccountUsername(username)) return null;
   const hint = onlineState.user?.progressRepairHint;
   if (!hint || typeof hint !== "object") return null;
-  return hasSpecialBadgeRepairMarker(hint) ? hint : null;
+  if (hasSpecialBadgeRepairMarker(hint)) return hint;
+  const hintedXp = Math.max(
+    0,
+    Math.floor(Number(hint.publicProfileTotalXp) || 0),
+  );
+  return hint.publicProfileRepairSource === "unmarked-cache" &&
+    hintedXp >= SPECIAL_BADGE_SUSPECT_XP
+    ? hint
+    : null;
 }
 
 function recordAccountProgressDiagnostic(entry = {}) {
@@ -4982,6 +4990,10 @@ function repairSpecialBadgeContaminatedProgression(
 ) {
   const progressHasMarker = hasSpecialBadgeRepairMarker(progress);
   const hintHasMarker = hasSpecialBadgeRepairMarker(repairHint);
+  const hintHasUnmarkedProfileRepair =
+    repairHint?.publicProfileRepairSource === "unmarked-cache" &&
+    Math.max(0, Number(repairHint?.publicProfileTotalXp) || 0) >=
+      SPECIAL_BADGE_SUSPECT_XP;
   const cleaned = removeSpecialBadgeRepairMarkers(progress);
   const currentXp = Math.max(
     0,
@@ -5001,13 +5013,18 @@ function repairSpecialBadgeContaminatedProgression(
   const cleanLocalAccountXp = cleanLoadedXp ? 0 : getCleanAccountLocalProgressionXp();
   const shouldBlockTaintedXp =
     currentXp >= SPECIAL_BADGE_SUSPECT_XP &&
-    (progressHasMarker || hintHasMarker || !hasHighXpGameplayEvidence(progress));
+    (progressHasMarker ||
+      hintHasMarker ||
+      hintHasUnmarkedProfileRepair ||
+      !hasHighXpGameplayEvidence(progress));
   if (shouldBlockTaintedXp) {
     const safeXp = cleanLoadedXp || cleanLocalAccountXp;
     const markerSource = progressHasMarker
       ? "progress-payload"
       : hintHasMarker
         ? "public-profile"
+        : hintHasUnmarkedProfileRepair
+          ? "public-profile"
         : "unmarked-cache";
     const safeProgression = {
       ...cleaned.progression,
@@ -5045,10 +5062,10 @@ function repairSpecialBadgeContaminatedProgression(
       changed: true,
     };
   }
-  if (!progressHasMarker && !hintHasMarker) {
+  if (!progressHasMarker && !hintHasMarker && !hintHasUnmarkedProfileRepair) {
     return removeSpecialBadgeRepairMarkers(progress);
   }
-  if (cleaned.changed || hintHasMarker) {
+  if (cleaned.changed || hintHasMarker || hintHasUnmarkedProfileRepair) {
     recordAccountProgressDiagnostic({
       source: "special-badge-marker-strip",
       username,
@@ -24782,6 +24799,11 @@ window.__infernodriftTestApi = {
     );
     updateOnlineUi();
     return JSON.parse(window.render_game_to_text()).online.chat;
+  },
+  simulateOnlineMessageForTest: (message = {}) => {
+    handleOnlineMessage(JSON.stringify(message));
+    updateOnlineUi();
+    return JSON.parse(window.render_game_to_text());
   },
   getDailySparksState: () => structuredClone(state.progressionV2.dailySparks),
   claimDailySpark: (id) => claimDailySpark(id),

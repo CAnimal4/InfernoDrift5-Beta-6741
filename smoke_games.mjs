@@ -439,6 +439,44 @@ assert.equal(
   clarkPublicMarkerRepair.accountProgressRepair?.markerSource,
   "public-profile",
 );
+const clarkAuthEventPublicUnmarkedRepair = await page.evaluate(() => {
+  window.__infernodriftTestApi.resetLocalProgressionForTest();
+  return window.__infernodriftTestApi.simulateOnlineMessageForTest({
+    type: "auth.ok",
+    user: {
+      id: "clark-auth-unmarked",
+      username: "Clark",
+      account: true,
+      backendMode: "firebase",
+      progressRepairHint: {
+        publicProfileTotalXp: 100450,
+        publicProfileRepairSource: "unmarked-cache",
+      },
+    },
+    sessionToken: "clark-auth-unmarked",
+    save: {
+      payload: {
+        progressionV2: {
+          xp: 100450,
+          totalXp: 100450,
+          embers: 1200,
+        },
+      },
+    },
+    preferAccountLocal: false,
+    cleanPollutedFresh: false,
+  }).progression;
+});
+assert.equal(clarkAuthEventPublicUnmarkedRepair.totalXp, 0);
+assert.equal(clarkAuthEventPublicUnmarkedRepair.embers, 1200);
+assert.equal(
+  clarkAuthEventPublicUnmarkedRepair.accountProgressRepair?.source,
+  "special-badge-tainted-xp-blocked",
+);
+assert.equal(
+  clarkAuthEventPublicUnmarkedRepair.accountProgressRepair?.markerSource,
+  "public-profile",
+);
 const clarkCleanLocalBeatsContamination = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.setOnlineUserForTest({
