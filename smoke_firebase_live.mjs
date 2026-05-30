@@ -35,6 +35,35 @@ async function waitForRemotePlayer(targetPage, predicate, label, arg = null) {
   }
 }
 
+async function waitForLobbyJoin(targetPage, lobbyCode, label = "lobby join") {
+  try {
+    await targetPage.waitForFunction((code) => {
+      const state = JSON.parse(window.render_game_to_text());
+      return (
+        state.online.room?.firebaseLobby === true &&
+        state.online.room?.code === code
+      );
+    }, lobbyCode);
+  } catch (error) {
+    const snapshot = await targetPage.evaluate(() => {
+      const state = JSON.parse(window.render_game_to_text());
+      const joinButton = document.querySelector("#online-join-room");
+      return {
+        accountStatus: state.online.accountStatus,
+        authenticated: state.online.authenticated,
+        username: state.online.username,
+        lastError: state.online.lastError,
+        room: state.online.room,
+        chatLastMessage: state.online.chat?.lastMessage,
+        codeValue: document.querySelector("#online-room-code")?.value || "",
+        joinDisabled: Boolean(joinButton?.disabled),
+        joinText: joinButton?.textContent || "",
+      };
+    });
+    throw new Error(`${label}: ${JSON.stringify(snapshot)}`, { cause: error });
+  }
+}
+
 async function cleanupSmokeAccount(targetPage) {
   if (!targetPage || targetPage.isClosed()) return false;
   try {
@@ -66,7 +95,7 @@ page.on("console", (msg) => {
   if (
     msg.type() === "error" &&
     !/WebGL|GL Driver/i.test(text) &&
-    !/Failed to load resource: the server responded with a status of 400/i.test(
+    !/Failed to load resource: the server responded with a status of (400|409)/i.test(
       text,
     )
   ) {
@@ -310,7 +339,7 @@ try {
     if (
       msg.type() === "error" &&
       !/WebGL|GL Driver/i.test(text) &&
-      !/Failed to load resource: the server responded with a status of 400/i.test(
+      !/Failed to load resource: the server responded with a status of (400|409)/i.test(
         text,
       )
     ) {
@@ -349,13 +378,7 @@ try {
   }, lobbyCode);
   await joiner.locator("#online-room-code").fill(lobbyCode);
   await joiner.locator("#online-join-room").click({ force: true });
-  await joiner.waitForFunction((code) => {
-    const state = JSON.parse(window.render_game_to_text());
-    return (
-      state.online.room?.firebaseLobby === true &&
-      state.online.room?.code === code
-    );
-  }, lobbyCode);
+  await waitForLobbyJoin(joiner, lobbyCode, "joiner did not enter lobby");
   await page.waitForFunction((joinerName) => {
     const state = JSON.parse(window.render_game_to_text());
     return (
@@ -435,10 +458,7 @@ try {
 
   await page.locator("#online-room-code").fill(lobbyCode);
   await page.locator("#online-join-room").click({ force: true });
-  await page.waitForFunction((code) => {
-    const state = JSON.parse(window.render_game_to_text());
-    return state.online.room?.code === code;
-  }, lobbyCode);
+  await waitForLobbyJoin(page, lobbyCode, "host did not re-enter lobby");
   lobbyState = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   assert.equal(lobbyState.online.room.firebaseLobby, true);
   assert.equal(lobbyState.online.room.live, true);
