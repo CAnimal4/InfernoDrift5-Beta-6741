@@ -4982,65 +4982,24 @@ function repairSpecialBadgeContaminatedProgression(
   if (!progressHasMarker && !hintHasMarker) {
     return removeSpecialBadgeRepairMarkers(progress);
   }
-  const markerSource = progressHasMarker ? progress : repairHint;
-  const markerAt = Date.parse(
-    String(markerSource?.specialBadgeProgressRepairedAt || ""),
-  );
-  const baselineXp = Math.max(
-    0,
-    Math.floor(Number(markerSource?.specialBadgeProgressBaselineXp) || 0),
-  );
   const currentXp = Math.max(
     0,
     Math.floor(Number(progress.totalXp ?? progress.xp) || 0),
   );
-  const postRepairXp = getRewardLogXpAfter(progress.rewardLog, markerAt);
-  const reconstructedXp = baselineXp + postRepairXp;
   const cleaned = removeSpecialBadgeRepairMarkers(progress);
-  let next = cleaned.progression;
-  if (baselineXp > 0 && reconstructedXp > 0 && reconstructedXp < currentXp) {
-    next = {
-      ...next,
-      xp: reconstructedXp,
-      totalXp: reconstructedXp,
-      level: getLevelFromXP(reconstructedXp),
-      accountProgressRepair: {
-        source: "special-badge-contamination-v1",
-        username,
-        previousTotalXp: currentXp,
-        repairedTotalXp: reconstructedXp,
-        baselineXp,
-        postRepairXp,
-        markerSource: progressHasMarker ? "progress-payload" : "public-profile",
-        repairedAt: new Date().toISOString(),
-      },
-    };
-    recordAccountProgressDiagnostic({
-      source: "special-badge-contamination-v1",
-      username,
-      oldXp: currentXp,
-      newXp: reconstructedXp,
-      baselineXp,
-      postRepairXp,
-      reason: "ignored old badge repair marker instead of trusting inflated XP",
-      markerSource: progressHasMarker ? "progress-payload" : "public-profile",
-    });
-    if (onlineState.profileMode === "account") {
-      onlineState.profileActionStatus =
-        "Repaired an old account badge-progress sync bug without using leaderboard XP.";
-    }
-  } else if (cleaned.changed) {
+  if (cleaned.changed || hintHasMarker) {
     recordAccountProgressDiagnostic({
       source: "special-badge-marker-strip",
       username,
       oldXp: currentXp,
       newXp: currentXp,
-      reason: "removed obsolete badge repair marker without changing XP",
+      reason: "removed or ignored obsolete badge repair marker without changing XP",
+      markerSource: progressHasMarker ? "progress-payload" : "public-profile",
     });
   }
   return {
-    progression: next,
-    changed: cleaned.changed || next !== progress,
+    progression: cleaned.progression,
+    changed: cleaned.changed,
   };
 }
 

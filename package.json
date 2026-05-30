@@ -17,6 +17,7 @@
     "format": "prettier --check .",
     "icons": "node scripts/generate-icons.mjs",
     "audit:firebase-public": "node scripts/audit-firebase-public-data.mjs",
+    "cleanup:firebase-public": "node scripts/cleanup-firebase-public-data.mjs",
     "test": "node --test tests/*.test.mjs && node --import tsx --test tests/*.test.ts",
     "smoke": "node scripts/run-with-server.mjs smoke_games.mjs",
     "smoke:firebase": "node scripts/run-with-server.mjs smoke_firebase_offline.mjs",

@@ -217,22 +217,17 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
       specialBadgeProgressBaselineXp: 22000,
     },
   };
-  const repairedDevice = {
+  const markerStrippedDevice = {
     saveMeta: { updatedAtMs: 6_000 },
     progressionV2: {
       totalXp: 23175,
       xp: 23175,
       embers: 976,
-      accountProgressRepair: {
-        source: "special-badge-contamination-v1",
-        previousTotalXp: 100450,
-        repairedTotalXp: 23175,
-      },
     },
   };
-  const mergedRepair = mergeFirebaseSavePayload(contaminatedServer, repairedDevice);
-  assert.equal(mergedRepair.progressionV2.totalXp, 23175);
-  assert.equal(mergedRepair.progressionV2.xp, 23175);
+  const mergedRepair = mergeFirebaseSavePayload(contaminatedServer, markerStrippedDevice);
+  assert.equal(mergedRepair.progressionV2.totalXp, 100450);
+  assert.equal(mergedRepair.progressionV2.xp, 100450);
   assert.equal(mergedRepair.progressionV2.specialBadgeProgressSource, undefined);
   assert.equal(mergedRepair.progressionV2.specialBadgeProgressBaselineXp, undefined);
 });
@@ -512,8 +507,6 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(firebaseOnline, /progressRepairHint: getProfileProgressRepairHint\(profile\)/);
   assert.match(firebaseOnline, /function repairSavePayloadWithProfileMarker/);
   assert.match(firebaseOnline, /const progressHasMarker = hasObsoleteSpecialBadgeRepairMarker\(progression\);/);
-  assert.match(firebaseOnline, /const markerSource = progressHasMarker \? progression : profileHint;/);
-  assert.match(firebaseOnline, /markerSource: progressHasMarker \? "progress-payload" : "public-profile"/);
   assert.match(firebaseOnline, /repairSavePayloadWithProfileMarker\(\s*existingPayload,\s*existingProfile,\s*\)/);
   assert.match(firebaseOnline, /repairSavePayloadWithProfileMarker\(\s*payload,\s*internals\.userProfile \|\| \{\},\s*\)/);
   assert.match(
@@ -555,7 +548,7 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(script, /special-badge-leaderboard-quarantined/);
   assert.doesNotMatch(script, /repairNote: "special-badge-xp-cap"/);
   assert.match(script, /function sanitizeSpecialBadgeProgression\(/);
-  assert.match(script, /special-badge-contamination-v1/);
+  assert.doesNotMatch(script, /source:\s*"special-badge-contamination-v1"/);
   assert.doesNotMatch(script, /repairXp:\s*22000/i);
   assert.doesNotMatch(script, /maxEmbers:\s*875/i);
   assert.doesNotMatch(script, /\["billy",\s*\{\s*repairXp:/i);

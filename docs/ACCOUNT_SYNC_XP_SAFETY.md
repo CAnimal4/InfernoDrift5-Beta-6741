@@ -20,22 +20,19 @@ place:
 - `leaderboards/all-modes/scores/{uid}`
 - local account save or cross-tab sync payload
 
-If any writer re-saved a contaminated payload before the UI repaired it, the bad
-XP could keep spreading across sessions and devices.
+If any writer re-saved a contaminated payload, the bad XP could keep spreading
+across sessions and devices.
 
 ## Current Invariants
 
 - Special badge accounts are badge metadata only. Badge status must not grant,
   cap, reset, or otherwise change XP, Embers, cosmetics, garage, or inventory.
-- Firebase save writers repair obsolete special-badge markers before choosing a
-  seed payload or merging a progress sync.
-- Repair can use either a private progress marker or a public profile progress
-  marker. The public marker is important when the private payload was already
-  re-saved without its marker.
-- When a payload is repaired, the replacement progression carries
-  `accountProgressRepair.source = "special-badge-contamination-v1"` so merge
-  code may safely accept the lower repaired XP instead of the contaminated
-  higher XP.
+- Firebase save writers strip or ignore obsolete special-badge markers before
+  choosing a seed payload or merging a progress sync.
+- Special-badge marker cleanup must never lower XP, Embers, cosmetics, garage
+  state, inventory, or claimed rewards. It is metadata cleanup only.
+- Signed-in account merges keep the highest trusted XP already present in the
+  account payloads. Old badge metadata cannot trigger a cap or reset.
 - Public leaderboard rows are sanitized before display. Suspicious old
   special-badge leaderboard scores and test/smoke/runner/pilot rows are ignored
   client-side.
@@ -44,11 +41,24 @@ XP could keep spreading across sessions and devices.
 
 ## Admin Data Cleanup
 
-The client can repair owner-writable private progress on sign-in and hide dirty
-public rows, but it cannot delete or edit other users' Firestore documents under
-the current production rules. Physical cleanup of stale public profile,
+The client can strip obsolete owner-writable private markers on sign-in and hide
+dirty public rows, but it cannot delete or edit other users' Firestore documents
+under the current production rules. Physical cleanup of stale public profile,
 leaderboard, and test account rows requires Firebase owner/admin credentials or
 an explicit one-time admin cleanup path.
 
 Use `npm run audit:firebase-public` to list currently visible public rows that
 the client is ignoring.
+
+Use `npm run cleanup:firebase-public` for a dry-run cleanup plan. To actually
+delete the public test-like rows and contaminated leaderboard score rows, first
+run `firebase login` with project owner/admin access, then run:
+
+```bash
+FIREBASE_CLEANUP_CONFIRM=delete-public-test-data npm run cleanup:firebase-public -- --execute
+```
+
+The cleanup script intentionally does not delete real special-badge user
+profiles such as Clark's profile. Those rows are reported under `reviewPaths`
+because the correct action is an explicit manual admin review with a known-good
+XP value; the client will not guess or cap real-account progress.
