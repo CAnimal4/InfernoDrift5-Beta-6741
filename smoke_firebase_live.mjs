@@ -35,6 +35,31 @@ async function waitForRemotePlayer(targetPage, predicate, label, arg = null) {
   }
 }
 
+async function cleanupSmokeAccount(targetPage) {
+  if (!targetPage || targetPage.isClosed()) return false;
+  try {
+    const startedAt = await targetPage.evaluate(() => {
+      const state = JSON.parse(window.render_game_to_text());
+      return Number(state.online.profile?.saveSyncedAt || 0);
+    });
+    const started = await targetPage.evaluate(() =>
+      window.__infernodriftTestApi.cleanupSmokeAccountProgressForTest(),
+    );
+    if (!started) return false;
+    await targetPage.waitForFunction((previous) => {
+      const state = JSON.parse(window.render_game_to_text());
+      return (
+        Number(state.online.profile?.saveSyncedAt || 0) > Number(previous || 0) &&
+        Number(state.progression?.totalXp || 0) === 0
+      );
+    }, startedAt);
+    return true;
+  } catch (error) {
+    console.warn("Smoke account cleanup failed", error?.message || error);
+    return false;
+  }
+}
+
 const consoleErrors = [];
 page.on("console", (msg) => {
   const text = msg.text();
@@ -48,6 +73,9 @@ page.on("console", (msg) => {
     consoleErrors.push(text);
   }
 });
+
+let joinerContext = null;
+let joiner = null;
 
 try {
   await page.addInitScript(() => {
@@ -271,10 +299,10 @@ try {
     );
   });
 
-  const joinerContext = await browser.newContext({
+  joinerContext = await browser.newContext({
     viewport: { width: 1280, height: 820 },
   });
-  const joiner = await joinerContext.newPage();
+  joiner = await joinerContext.newPage();
   joiner.setDefaultTimeout(30_000);
   const joinerConsoleErrors = [];
   joiner.on("console", (msg) => {
@@ -400,7 +428,10 @@ try {
   });
 
   assert.deepEqual(joinerConsoleErrors, []);
+  await cleanupSmokeAccount(joiner);
   await joinerContext.close();
+  joiner = null;
+  joinerContext = null;
 
   await page.locator("#online-room-code").fill(lobbyCode);
   await page.locator("#online-join-room").click({ force: true });
@@ -447,5 +478,8 @@ try {
     ),
   );
 } finally {
+  await cleanupSmokeAccount(joiner);
+  await joinerContext?.close().catch(() => undefined);
+  await cleanupSmokeAccount(page);
   await browser.close();
 }

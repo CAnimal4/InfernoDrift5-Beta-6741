@@ -24959,6 +24959,16 @@ window.__infernodriftTestApi = {
     refreshGamesUi();
     return structuredClone(state.progressionV2);
   },
+  cleanupSmokeAccountProgressForTest: () => {
+    state.progressionV2 = createProgressionV2();
+    onlineState.replaceNextProgressSync = true;
+    markAccountSaveDirty("smoke-cleanup");
+    savePersistentState();
+    renderDailyGiftNotice();
+    renderProgressPanel();
+    refreshGamesUi();
+    return forceOnlineProgressSync({ force: true });
+  },
   normalizeProgressionForTest: (progression = {}) =>
     structuredClone(normalizeProgressionV2(progression)),
   buildFreshAccountSaveForTest: () => structuredClone(buildFreshAccountSavePayload()),
