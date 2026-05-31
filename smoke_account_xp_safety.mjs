@@ -587,4 +587,70 @@ const dirtySave = {
   await browser.close();
 }
 
+{
+  const { browser, page } = await openPageWithStorage({});
+  const result = await page.evaluate(() => {
+    window.__infernodriftTestApi.resetLocalProgressionForTest();
+    window.__infernodriftTestApi.applySavePayloadForTest(
+      {
+        saveMeta: { updatedAtMs: 1000, progressionUpdatedAtMs: 1000 },
+        progressionV2: {
+          xp: 4000,
+          totalXp: 4000,
+          embers: 500,
+        },
+      },
+      { forceProgression: true },
+    );
+    const staleShell = window.__infernodriftTestApi.buildFreshAccountSaveForTest();
+    staleShell.saveMeta = {
+      updatedAtMs: Date.now() + 5000,
+      progressionUpdatedAtMs: 500,
+    };
+    staleShell.progressionV2 = {
+      ...staleShell.progressionV2,
+      xp: 4500,
+      totalXp: 4500,
+      embers: 0,
+    };
+    window.__infernodriftTestApi.applySavePayloadForTest(staleShell, {
+      forceProgression: true,
+    });
+    const afterStale = JSON.parse(window.render_game_to_text()).progression;
+    const freshEconomy = window.__infernodriftTestApi.buildFreshAccountSaveForTest();
+    freshEconomy.saveMeta = {
+      updatedAtMs: Date.now() + 7000,
+      progressionUpdatedAtMs: 2000,
+    };
+    freshEconomy.progressionV2 = {
+      ...freshEconomy.progressionV2,
+      xp: 5000,
+      totalXp: 5000,
+      embers: 650,
+    };
+    window.__infernodriftTestApi.applySavePayloadForTest(freshEconomy, {
+      forceProgression: true,
+    });
+    const afterFresh = JSON.parse(window.render_game_to_text()).progression;
+    const plainSave = window.__infernodriftTestApi.buildPersistentSaveForTest();
+    return {
+      afterStale: {
+        xp: afterStale.totalXp,
+        embers: afterStale.embers,
+      },
+      afterFresh: {
+        xp: afterFresh.totalXp,
+        embers: afterFresh.embers,
+      },
+      saveMeta: plainSave.saveMeta,
+    };
+  });
+  assert.equal(result.afterStale.xp, 4500);
+  assert.equal(result.afterStale.embers, 500);
+  assert.equal(result.afterFresh.xp, 5000);
+  assert.equal(result.afterFresh.embers, 650);
+  assert.equal(result.saveMeta.progressionUpdatedAtMs, 2000);
+  await browser.close();
+}
+
 console.log("account XP safety smoke passed");

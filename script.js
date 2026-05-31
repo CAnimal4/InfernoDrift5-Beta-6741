@@ -2381,6 +2381,7 @@ const onlineState = {
   applyingAccountSync: false,
   lastAccountSyncPayloadAt: 0,
   accountSyncChannel: null,
+  accountProgressionUpdatedAtMs: 0,
   accountCustomizationUpdatedAtMs: 0,
   accountGarageUpdatedAtMs: 0,
   freshAccountSaveSyncPending: false,
@@ -4611,7 +4612,16 @@ function savePersistentState() {
 }
 
 function markAccountSaveDirty(reason = "local-change") {
-  if (String(reason || "").startsWith("garage-")) {
+  const normalizedReason = String(reason || "");
+  if (
+    normalizedReason !== "local-save" &&
+    !["garage-equip", "garage-class", "garage-loadout"].includes(
+      normalizedReason,
+    )
+  ) {
+    onlineState.accountProgressionUpdatedAtMs = Date.now();
+  }
+  if (normalizedReason.startsWith("garage-")) {
     const now = Date.now();
     onlineState.accountCustomizationUpdatedAtMs = now;
     onlineState.accountGarageUpdatedAtMs = now;
@@ -4793,10 +4803,15 @@ function buildPersistentSavePayload() {
   const savedAt = new Date().toISOString();
   const savedAtMs = Date.now();
   state.progressionV2.updatedAtClient = savedAt;
+  state.progressionV2.updatedAtMs =
+    onlineState.accountProgressionUpdatedAtMs ||
+    Number(state.progressionV2.updatedAtMs) ||
+    0;
   return {
     saveMeta: {
       updatedAtClient: savedAt,
       updatedAtMs: savedAtMs,
+      progressionUpdatedAtMs: onlineState.accountProgressionUpdatedAtMs || 0,
       customizationUpdatedAtMs:
         onlineState.accountCustomizationUpdatedAtMs || 0,
       garageUpdatedAtMs: onlineState.accountGarageUpdatedAtMs || 0,
@@ -5522,6 +5537,10 @@ function applyPersistentSavePayload(
       Number(data.saveMeta?.customizationUpdatedAtMs) || 0;
     const incomingGarageUpdatedAtMs =
       Number(data.saveMeta?.garageUpdatedAtMs) || 0;
+    const incomingProgressionUpdatedAtMs =
+      Number(data.saveMeta?.progressionUpdatedAtMs) ||
+      Number(data.progressionV2?.updatedAtMs) ||
+      0;
     const currentCustomizationUpdatedAtMs =
       onlineState.accountCustomizationUpdatedAtMs || 0;
     const currentGarageUpdatedAtMs = onlineState.accountGarageUpdatedAtMs || 0;
@@ -5542,7 +5561,15 @@ function applyPersistentSavePayload(
         onlineState.accountGarageUpdatedAtMs || 0,
         Number(data.saveMeta.garageUpdatedAtMs) || 0,
       );
+      onlineState.accountProgressionUpdatedAtMs = Math.max(
+        onlineState.accountProgressionUpdatedAtMs || 0,
+        Number(data.saveMeta.progressionUpdatedAtMs) || 0,
+      );
     }
+    onlineState.accountProgressionUpdatedAtMs = Math.max(
+      onlineState.accountProgressionUpdatedAtMs || 0,
+      incomingProgressionUpdatedAtMs,
+    );
     if (data.settings && typeof data.settings === "object") {
       if (typeof data.settings.difficulty === "string")
         settings.difficulty = data.settings.difficulty;
@@ -5607,8 +5634,14 @@ function applyPersistentSavePayload(
     }
     if (data.progressionV2 && typeof data.progressionV2 === "object") {
       let nextProgression = replaceProgression
-        ? normalizeProgressionV2(data.progressionV2)
-        : mergeProgressionV2(state.progressionV2, data.progressionV2);
+        ? normalizeProgressionV2({
+            ...data.progressionV2,
+            updatedAtMs: incomingProgressionUpdatedAtMs,
+          })
+        : mergeProgressionV2(state.progressionV2, {
+            ...data.progressionV2,
+            updatedAtMs: incomingProgressionUpdatedAtMs,
+          });
       const cleaned = sanitizeSpecialBadgeProgression(
         nextProgression,
         onlineState.user?.username || onlineState.username,
