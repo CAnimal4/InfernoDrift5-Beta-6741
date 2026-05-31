@@ -217,6 +217,17 @@ Pages builds reject `100k+` special-badge contamination, keep ChatGPT (Codex)
 from chasing the dirty row, and expose `accountProgressTrust` as repair-needed
 for blocked private save simulations.
 
+The Firebase live smoke also exercises real account creation, progress sync,
+cross-browser sign-in, garage state sync, leaderboard recovery, lobby join, live
+state sync, and diagnostics. Smoke/test accounts are classified by names such as
+`Smoke...` and `Join...`; they do not publish durable leaderboard rows, and the
+smoke cleanup path resets their progress and rewrites the owner-writable public
+profile to a neutral archived QA profile. A before/after production audit on
+2026-05-31 stayed stable at `testLikeLeaderboardRows: 122` and
+`testLikePublicProfiles: 186` after another `npm run smoke:firebase-live`,
+which confirms new live smoke runs are no longer adding visible public
+leaderboard/profile noise.
+
 After the repair, run the reviewed verification command with the same known-good
 values. It reads `progress/{uid}`, `users/{uid}`, and the public leaderboard row
 with admin credentials and fails if any copy still has the wrong XP, wrong
