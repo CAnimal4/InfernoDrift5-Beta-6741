@@ -1,8 +1,8 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260530-xp-cache-guard-v2";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260531-firebase-cap-guard-v3";
 
-const CLIENT_BUILD_ID = "20260530-xp-cache-guard-v2";
+const CLIENT_BUILD_ID = "20260531-firebase-cap-guard-v3";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
