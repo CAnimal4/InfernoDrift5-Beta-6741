@@ -609,8 +609,9 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   );
   assert.match(
     script,
-    /message\.user\?\.backendMode !== BACKEND_MODE_FIREBASE[\s\S]*!isFirebaseBackendMode\(\)[\s\S]*Boolean\(message\.user\?\.account\)/,
+    /safeMessage\.user\?\.backendMode !== BACKEND_MODE_FIREBASE[\s\S]*!isFirebaseBackendMode\(\)[\s\S]*Boolean\(safeMessage\.user\?\.account\)/,
   );
+  assert.match(script, /function sanitizeOnlineProfileSnapshotMessage\(message = {}\)/);
   assert.match(firebaseOnline, /async function ensureFirebaseAccountDocs\(/);
   assert.match(firebaseOnline, /function stripUndefinedForFirestore\(value\)/);
   assert.match(

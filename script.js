@@ -4953,9 +4953,12 @@ function hasSpecialBadgeRepairMarker(progression = {}) {
   );
 }
 
-function getSpecialBadgeProgressRepairHint(username = "") {
+function getSpecialBadgeProgressRepairHint(
+  username = "",
+  user = onlineState.user,
+) {
   if (!isSpecialBadgeAccountUsername(username)) return null;
-  const hint = onlineState.user?.progressRepairHint;
+  const hint = user?.progressRepairHint;
   if (!hint || typeof hint !== "object") return null;
   if (hasSpecialBadgeRepairMarker(hint)) return hint;
   const hintedXp = Math.max(
@@ -5144,6 +5147,29 @@ function stripUnearnedSpecialProgressPayload(payload = {}, username = "") {
   if (!cleaned.changed) return payload;
   cleanPayload.progressionV2 = cleaned.progression;
   return cleanPayload;
+}
+
+function sanitizeOnlineProfileSnapshotMessage(message = {}) {
+  if (!message || typeof message !== "object") return message;
+  const user = message.user || onlineState.user || {};
+  const username = user.username || onlineState.username;
+  const payload = message.save?.payload;
+  if (!payload || typeof payload !== "object") return message;
+  const cleanPayload = structuredClone(payload);
+  const cleaned = repairSpecialBadgeContaminatedProgression(
+    cleanPayload.progressionV2 || {},
+    username,
+    getSpecialBadgeProgressRepairHint(username, user),
+  );
+  if (!cleaned.changed) return message;
+  cleanPayload.progressionV2 = cleaned.progression;
+  return {
+    ...message,
+    save: {
+      ...message.save,
+      payload: cleanPayload,
+    },
+  };
 }
 
 function isBlockedTaintedAccountProgression(progression = {}) {
@@ -7868,16 +7894,17 @@ function handleOnlineMessage(raw) {
       if (overlay.classList.contains("show")) startRun(true);
     }
   } else if (message.type === "profile.snapshot") {
-    onlineState.profileSnapshot = message;
-    if (message.user) onlineState.user = message.user;
-    applyServerSave(message.save, {
-      force: Boolean(message.save),
+    const safeMessage = sanitizeOnlineProfileSnapshotMessage(message);
+    onlineState.profileSnapshot = safeMessage;
+    if (safeMessage.user) onlineState.user = safeMessage.user;
+    applyServerSave(safeMessage.save, {
+      force: Boolean(safeMessage.save),
       preferAccountLocal:
-        message.preferAccountLocal !== false &&
-        message.user?.backendMode !== BACKEND_MODE_FIREBASE &&
+        safeMessage.preferAccountLocal !== false &&
+        safeMessage.user?.backendMode !== BACKEND_MODE_FIREBASE &&
         !isFirebaseBackendMode() &&
-        Boolean(message.user?.account),
-      cleanPollutedFresh: Boolean(message.cleanPollutedFresh),
+        Boolean(safeMessage.user?.account),
+      cleanPollutedFresh: Boolean(safeMessage.cleanPollutedFresh),
     });
     updateProfileUi();
   } else if (message.type === "save.synced") {

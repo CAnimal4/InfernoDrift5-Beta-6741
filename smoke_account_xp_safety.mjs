@@ -218,6 +218,15 @@ const dirtySave = {
     result.progression.accountProgressRepair?.blockedTotalXp,
     100450,
   );
+  assert.equal(
+    result.profile.snapshot?.save?.payload?.progressionV2?.totalXp,
+    0,
+  );
+  assert.equal(
+    result.profile.snapshot?.save?.payload?.progressionV2?.accountProgressRepair
+      ?.source,
+    "special-badge-tainted-xp-blocked",
+  );
   assert.match(result.profile.actionStatus, /admin review/i);
   await browser.close();
 }
