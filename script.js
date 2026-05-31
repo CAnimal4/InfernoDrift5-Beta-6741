@@ -5154,22 +5154,45 @@ function sanitizeOnlineProfileSnapshotMessage(message = {}) {
   const user = message.user || onlineState.user || {};
   const username = user.username || onlineState.username;
   const payload = message.save?.payload;
-  if (!payload || typeof payload !== "object") return message;
-  const cleanPayload = structuredClone(payload);
-  const cleaned = repairSpecialBadgeContaminatedProgression(
-    cleanPayload.progressionV2 || {},
-    username,
-    getSpecialBadgeProgressRepairHint(username, user),
-  );
-  if (!cleaned.changed) return message;
-  cleanPayload.progressionV2 = cleaned.progression;
-  return {
-    ...message,
-    save: {
-      ...message.save,
-      payload: cleanPayload,
-    },
-  };
+  let safeMessage = message;
+  if (payload && typeof payload === "object") {
+    const cleanPayload = structuredClone(payload);
+    const cleaned = repairSpecialBadgeContaminatedProgression(
+      cleanPayload.progressionV2 || {},
+      username,
+      getSpecialBadgeProgressRepairHint(username, user),
+    );
+    if (cleaned.changed) {
+      cleanPayload.progressionV2 = cleaned.progression;
+      safeMessage = {
+        ...safeMessage,
+        save: {
+          ...safeMessage.save,
+          payload: cleanPayload,
+        },
+      };
+    }
+  }
+  if (
+    safeMessage.user?.progressRepairHint &&
+    typeof safeMessage.user.progressRepairHint === "object"
+  ) {
+    const { publicProfileTotalXp, ...safeHint } =
+      safeMessage.user.progressRepairHint;
+    safeMessage = {
+      ...safeMessage,
+      user: {
+        ...safeMessage.user,
+        progressRepairHint: {
+          ...safeHint,
+          publicProfileTotalXpRedacted: Number.isFinite(
+            Number(publicProfileTotalXp),
+          ),
+        },
+      },
+    };
+  }
+  return safeMessage;
 }
 
 function isBlockedTaintedAccountProgression(progression = {}) {

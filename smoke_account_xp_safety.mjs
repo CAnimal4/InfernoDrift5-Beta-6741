@@ -227,6 +227,15 @@ const dirtySave = {
       ?.source,
     "special-badge-tainted-xp-blocked",
   );
+  assert.equal(
+    result.profile.snapshot?.user?.progressRepairHint?.publicProfileTotalXp,
+    undefined,
+  );
+  assert.equal(
+    result.profile.snapshot?.user?.progressRepairHint
+      ?.publicProfileTotalXpRedacted,
+    true,
+  );
   assert.match(result.profile.actionStatus, /admin review/i);
   await browser.close();
 }
@@ -275,6 +284,42 @@ const dirtySave = {
   );
   assert.equal(result.playerRow.quarantined, true);
   assert.equal(result.playerRow.totalXp, 0);
+  await browser.close();
+}
+
+{
+  const { browser, page } = await openPageWithStorage({});
+  const result = await page.evaluate(() => {
+    window.__infernodriftTestApi.resetLocalProgressionForTest();
+    window.__infernodriftTestApi.setLeaderboardRowsForTest([
+      {
+        userId: "system-chatgpt-codex",
+        username: "ChatGPT (Codex)",
+        source: "server",
+        isSystemPlayer: true,
+        xp: 100450,
+        totalXp: 100450,
+      },
+      {
+        userId: "real-driver",
+        username: "RealDriver",
+        source: "server",
+        account: true,
+        xp: 23175,
+        totalXp: 23175,
+      },
+    ]);
+    const diagnostics = JSON.parse(window.render_game_to_text());
+    return {
+      leaderboard: diagnostics.online.leaderboard,
+    };
+  });
+  const codex = result.leaderboard.find(
+    (row) => row.username === "ChatGPT (Codex)",
+  );
+  assert.ok(codex, "Codex row is present");
+  assert.ok(codex.xp < 90000, "dirty server Codex XP is ignored");
+  assert.equal(result.leaderboard[0].username, "ChatGPT (Codex)");
   await browser.close();
 }
 
