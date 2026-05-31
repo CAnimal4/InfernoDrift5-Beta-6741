@@ -8,6 +8,7 @@ const baseUrl =
 const SAVE_STORAGE_KEY = "infernoDrift4.save.v1";
 const ONLINE_STORAGE_KEY = "infernoDrift4.online.v1";
 const ACCOUNT_SAVE_STORAGE_PREFIX = "infernoDrift4.accountSave.v1:";
+const EXPECTED_CLIENT_BUILD_ID = "20260530-xp-cache-guard-v2";
 
 async function openPageWithStorage(seedStorage) {
   const browser = await chromium.launch({ headless: true });
@@ -58,6 +59,7 @@ const dirtySave = {
       stored: JSON.parse(localStorage.getItem(SAVE_STORAGE_KEY) || "{}"),
     };
   }, SAVE_STORAGE_KEY);
+  assert.equal(result.progression.clientBuildId, EXPECTED_CLIENT_BUILD_ID);
   assert.equal(result.progression.totalXp, 0);
   assert.equal(result.leaderboard[0]?.username, "ChatGPT (Codex)");
   assert.ok(result.leaderboard[0]?.xp < 90000);

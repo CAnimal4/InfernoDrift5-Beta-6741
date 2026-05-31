@@ -1,6 +1,8 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260526-safety-sync-v1";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260530-xp-cache-guard-v2";
+
+const CLIENT_BUILD_ID = "20260530-xp-cache-guard-v2";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -24366,6 +24368,7 @@ window.render_game_to_text = () => {
           adaptiveHunters: state.campaignRisk,
         },
     progression: {
+      clientBuildId: CLIENT_BUILD_ID,
       saveKey: "infernoDrift4.localSave",
       worldIndex: state.worldIndex,
       levelIndex: state.levelIndex,
