@@ -68,6 +68,13 @@ carry inflated Embers too.
   because a guessed zero repair would be just as destructive as the old guessed
   `22000 XP` cap. Raw account XP changes for contaminated real accounts require
   the explicit reviewed repair flow below.
+- The runtime diagnostic payload exposes
+  `render_game_to_text().progression.accountProgressTrust`. For a blocked
+  private save this must show `trusted: false`, `cloudSyncAllowed: false`,
+  `repairNeeded: true`, and the quarantined `blockedTotalXp`/`blockedEmbers`.
+  That diagnostic is the quickest way to tell the difference between a normal
+  account load and a bad private save that the client intentionally refuses to
+  trust or re-sync.
 - Public leaderboard rows are sanitized before display. Suspicious old
   special-badge leaderboard scores and test/smoke/runner/pilot rows are ignored
   client-side.
@@ -104,7 +111,9 @@ password or account failure.
 Use `SMOKE_URL=<url> npm run smoke:account-xp:target` to run the XP safety smoke
 against a deployed or otherwise already-running build. That smoke seeds dirty
 Clark/local/Firebase-style data in the browser and fails if the rendered profile
-or leaderboard lets `100k+` special-badge XP or Codex contamination through.
+or leaderboard lets `100k+` special-badge XP or Codex contamination through. It
+also asserts the `accountProgressTrust` diagnostic so a future private-save
+regression cannot pass by merely hiding the number from the visible profile.
 
 Use `npm run cleanup:firebase-public` for a dry-run cleanup plan. To actually
 delete the public test-like rows and contaminated leaderboard score rows, first
@@ -150,9 +159,9 @@ deliberately awkward: those values should only be used if they were separately
 verified as the real account state, not because they appeared in an obsolete
 repair marker or baseline.
 
-On 2026-05-31, the public audit could read production again and showed the raw
-Firebase state was still physically dirty even though the client guards were
-active:
+On 2026-05-31, an earlier public audit could read production again and showed
+the raw Firebase state was still physically dirty even though the client guards
+were active:
 
 - `leaderboards/all-modes/scores/C86jDYuYNWZs5f9g7X1r94DO2cq2.score = 100450`
   for `Clark`, unreviewed.
@@ -170,6 +179,27 @@ active:
   `personalBestCount: 8`, `medalCount: 9`, and an obsolete repair marker. This
   evidence explains why the row needs review, but it is intentionally not an
   automatic repair value.
+
+Later on 2026-05-31, after the client-side public-row cleanup guard shipped,
+`npm run audit:firebase-public -- --summary` reported:
+
+```json
+{
+  "contaminatedLeaderboardRows": 0,
+  "contaminatedPublicProfiles": 0,
+  "highUnreviewedLeaderboardRows": 0,
+  "highUnreviewedPublicProfiles": 0,
+  "displayLeakRisk": "none_detected"
+}
+```
+
+That proves the currently visible public leaderboard/profile surfaces are clean
+from this contamination class. It does **not** prove private
+`progress/{uid}` is physically repaired, because production rules correctly
+block public reads of private progress documents. If an owner account still has
+a dirty private save, the correct behavior is for the client to show
+`accountProgressTrust.trusted === false` and avoid cloud writeback until a
+known-good reviewed repair is applied.
 
 After the repair, run the reviewed verification command with the same known-good
 values. It reads `progress/{uid}`, `users/{uid}`, and the public leaderboard row
