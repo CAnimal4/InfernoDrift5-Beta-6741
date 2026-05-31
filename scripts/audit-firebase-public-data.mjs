@@ -222,6 +222,70 @@ function profileXp(row) {
   return Math.max(0, ...publicProfileXpFields(row).map((field) => field.xp));
 }
 
+function arrayValue(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function sumRewardXp(...rewardLists) {
+  const seen = new Set();
+  return rewardLists.flatMap(arrayValue).reduce((total, reward) => {
+    const key = JSON.stringify({
+      at: reward?.at || "",
+      type: reward?.type || reward?.modeId || reward?.source || "",
+      label: reward?.label || "",
+      xp: numericXp(reward?.xp),
+    });
+    if (seen.has(key)) return total;
+    seen.add(key);
+    return total + numericXp(reward?.xp);
+  }, 0);
+}
+
+function gameplayEvidenceSummary(row = {}) {
+  const progress = row.progress || {};
+  const stats = row.stats || {};
+  const payloadProgress = row.payload?.progressionV2 || {};
+  const rewardXp = sumRewardXp(
+    progress.rewardLog,
+    progress.recentRewards,
+    stats.rewardLog,
+    stats.recentRewards,
+    payloadProgress.rewardLog,
+    payloadProgress.recentRewards,
+  );
+  const personalBestCount = new Set([
+    ...Object.keys(progress.personalBests || {}),
+    ...Object.keys(stats.personalBests || {}),
+    ...Object.keys(payloadProgress.personalBests || {}),
+  ]).size;
+  const medalCount = new Set([
+    ...Object.keys(progress.medals || {}),
+    ...Object.keys(stats.medals || {}),
+    ...Object.keys(payloadProgress.medals || {}),
+  ]).size;
+  const baselineXp =
+    progress.specialBadgeProgressBaselineXp ??
+    stats.specialBadgeProgressBaselineXp ??
+    payloadProgress.specialBadgeProgressBaselineXp ??
+    null;
+  return {
+    rewardXp,
+    personalBestCount,
+    medalCount,
+    baselineXp,
+    hasObsoleteRepairMarker: Boolean(
+      progress.specialBadgeRepairVersion ||
+        progress.specialBadgeProgressSource ||
+        stats.specialBadgeRepairVersion ||
+        stats.specialBadgeProgressSource ||
+        payloadProgress.specialBadgeRepairVersion ||
+        payloadProgress.specialBadgeProgressSource,
+    ),
+    note:
+      "Evidence only, not an automatic repair value. Reviewed repair must be chosen by an owner/admin.",
+  };
+}
+
 function auditScores(scores) {
   return scores
     .map((row) => {
@@ -270,6 +334,7 @@ function auditUsers(users) {
           row.progress?.specialBadgeProgressBaselineXp ??
           row.stats?.specialBadgeProgressBaselineXp ??
           null,
+        evidence: gameplayEvidenceSummary(row),
         ownerSelfCleanPossible: true,
         requiresOwnerSignInOrAdmin: dirtyFields.length > 0,
         progressPath: `progress/${row.id}`,
@@ -377,6 +442,7 @@ if (SUMMARY_ONLY) {
             id: row.id,
             username: row.username,
             xp: row.xp,
+            evidence: row.evidence,
             dirtyFields: row.dirtyFields,
             ownerSelfCleanPossible: row.ownerSelfCleanPossible,
             requiresOwnerSignInOrAdmin: row.requiresOwnerSignInOrAdmin,

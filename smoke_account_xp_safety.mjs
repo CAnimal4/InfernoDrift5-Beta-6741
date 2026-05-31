@@ -8,7 +8,7 @@ const baseUrl =
 const SAVE_STORAGE_KEY = "infernoDrift4.save.v1";
 const ONLINE_STORAGE_KEY = "infernoDrift4.online.v1";
 const ACCOUNT_SAVE_STORAGE_PREFIX = "infernoDrift4.accountSave.v1:";
-const EXPECTED_CLIENT_BUILD_ID = "20260531-firebase-cap-guard-v3";
+const EXPECTED_CLIENT_BUILD_ID = "20260531-no-zero-repair-v4";
 
 async function openPageWithStorage(seedStorage) {
   const browser = await chromium.launch({ headless: true });

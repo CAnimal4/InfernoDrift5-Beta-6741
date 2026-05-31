@@ -708,7 +708,9 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(firebaseOnline, /function isBlockedTaintedRepairPayload/);
   assert.match(firebaseOnline, /state\.leaderboardStatus = "repair-needed"/);
   assert.match(firebaseOnline, /function writeProgressPayload\(payload, \{ silent = false \} = \{\}\)/);
-  assert.match(firebaseOnline, /return writeProgressPayload\(cleanPayload, \{ silent \}\);/);
+  assert.match(firebaseOnline, /emit\("save\.repair-needed", \{ payload: cleanPayload \}\)/);
+  assert.match(firebaseOnline, /return cleanPayload;/);
+  assert.doesNotMatch(firebaseOnline, /return writeProgressPayload\(cleanPayload, \{ silent \}\);/);
   assert.match(firebaseOnline, /stripUndefinedForFirestore\(\{\s*uid: state\.uid,/);
   assert.match(firebaseOnline, /stripUndefinedForFirestore\(\{\s*progress: safePayload\.progressionV2 \|\| \{\},/);
   assert.match(
@@ -751,6 +753,9 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(script, /function removeSpecialBadgeRepairMarkers\(/);
   assert.doesNotMatch(script, /function recoverAccountProgressFromLeaderboard\(/);
   assert.doesNotMatch(script, /leaderboard-xp-recovery/);
+  assert.match(script, /Blocked a contaminated account progress value\. Admin review is required before any cloud XP repair is written\./);
+  assert.doesNotMatch(script, /blocked-tainted-progress-repair/);
+  assert.doesNotMatch(script, /setTimeout\(\(\) => forceOnlineProgressSync\(\{ force: true \}\), 0\)/);
   assert.match(script, /accountSaveDirty: false/);
   assert.match(script, /function markAccountSaveDirty\(reason = "local-change"\)/);
   assert.match(script, /markAccountSaveDirty\("garage-equip"\)/);
@@ -818,6 +823,12 @@ test("Firebase cleanup supports targeted owner-auth reviewed repair", () => {
   assert.match(cleanupScript, /Owner auth UID mismatch/);
   assert.match(cleanupScript, /skipped_for_targeted_reviewed_account/);
   assert.match(cleanupScript, /FIREBASE_REPAIR_OWNER_PASSWORD/);
+  const auditScript = fs.readFileSync(
+    new URL("../scripts/audit-firebase-public-data.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(auditScript, /function gameplayEvidenceSummary\(row = \{\}\)/);
+  assert.match(auditScript, /Evidence only, not an automatic repair value/);
 });
 
 test("Firebase progress sync merges server and device economy state", () => {

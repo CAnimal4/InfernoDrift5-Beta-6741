@@ -1534,7 +1534,8 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       (!cleanExistingPayload || isBlockedTaintedRepairPayload(cleanExistingPayload))
     ) {
       state.leaderboardStatus = "repair-needed";
-      return writeProgressPayload(cleanPayload, { silent });
+      if (!silent) emit("save.repair-needed", { payload: cleanPayload });
+      return cleanPayload;
     }
     const mergedPayload = stripUndefinedForFirestore(
       replace && !isBlockedTaintedRepairPayload(cleanPayload)

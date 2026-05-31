@@ -1,8 +1,8 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260531-firebase-cap-guard-v3";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260531-no-zero-repair-v4";
 
-const CLIENT_BUILD_ID = "20260531-firebase-cap-guard-v3";
+const CLIENT_BUILD_ID = "20260531-no-zero-repair-v4";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -5306,19 +5306,14 @@ function syncProgressionToBackend() {
     const blockedTaintedProgress = isBlockedTaintedAccountProgression(
       state.progressionV2,
     );
-    const firebaseServiceStatus = firebaseOnline.getStatus();
-    const canWriteFirebaseAccountProgress =
-      firebaseServiceStatus.authStatus === "signed-in";
-    if (
-      blockedTaintedProgress &&
-      (!canWriteFirebaseAccountProgress ||
-        (!onlineState.freshAccountSaveSyncPending &&
-          !onlineState.replaceNextProgressSync &&
-          !onlineState.accountSaveDirty))
-    ) {
+    if (blockedTaintedProgress) {
+      onlineState.freshAccountSaveSyncPending = false;
+      onlineState.replaceNextProgressSync = false;
+      onlineState.accountSaveDirty = false;
+      onlineState.accountSaveDirtyReason = "";
       onlineState.leaderboardSyncStatus = "repair-needed";
       onlineState.profileActionStatus =
-        "Account progress needs admin review before it can sync safely.";
+        "Blocked a contaminated account progress value. Admin review is required before any cloud XP repair is written.";
       updateOnlineUi();
       return false;
     }
@@ -5329,9 +5324,7 @@ function syncProgressionToBackend() {
       ...getCurrentPlayerXpLeaderboardRow(),
       source: "pending",
     };
-    const replace = Boolean(
-      onlineState.replaceNextProgressSync || blockedTaintedProgress,
-    );
+    const replace = Boolean(onlineState.replaceNextProgressSync);
     onlineState.replaceNextProgressSync = false;
     firebaseOnline
       .syncProgress(buildPersistentSavePayload(), { replace })
@@ -5340,11 +5333,6 @@ function syncProgressionToBackend() {
         onlineState.accountSaveDirty = false;
         onlineState.accountSaveDirtyReason = "";
         onlineState.freshAccountSaveSyncPending = false;
-        if (blockedTaintedProgress) {
-          onlineState.leaderboardSyncStatus = "repair-needed";
-          onlineState.profileActionStatus =
-            "Blocked and quarantined an old XP sync bug. Admin review is still needed before restoring higher progress.";
-        }
         requestOnlineLeaderboard({ force: true });
         syncFirebaseServiceStatus();
         updateOnlineUi();
@@ -5472,19 +5460,20 @@ function applyServerSave(
     state.progressionV2,
   );
   if (blockedTaintedApplied) {
-    onlineState.freshAccountSaveSyncPending = true;
-    onlineState.replaceNextProgressSync = true;
-    onlineState.accountSaveDirty = true;
-    onlineState.accountSaveDirtyReason = "blocked-tainted-progress-repair";
+    onlineState.freshAccountSaveSyncPending = false;
+    onlineState.replaceNextProgressSync = false;
+    onlineState.accountSaveDirty = false;
+    onlineState.accountSaveDirtyReason = "";
+    onlineState.leaderboardSyncStatus = "repair-needed";
+    onlineState.profileActionStatus =
+      "Blocked a contaminated account progress value. Admin review is required before any cloud XP repair is written.";
   }
   renderDailyGiftNotice();
   renderProgressPanel();
   refreshGamesUi();
   onlineState.saveSyncedAt = Date.now();
-  if (!blockedTaintedApplied) {
-    onlineState.accountSaveDirty = false;
-    onlineState.accountSaveDirtyReason = "";
-  }
+  onlineState.accountSaveDirty = false;
+  onlineState.accountSaveDirtyReason = "";
   savePersistentState();
   return true;
 }
@@ -8017,12 +8006,7 @@ function handleOnlineMessage(raw) {
       `Online as ${onlineState.user?.username || onlineState.username}`,
     );
     onlineState.nextProgressSyncAt =
-      isBlockedTaintedAccountProgression(state.progressionV2)
-        ? 0
-        : performance.now() + ONLINE_PROGRESS_SYNC_INTERVAL_MS;
-    if (isBlockedTaintedAccountProgression(state.progressionV2)) {
-      setTimeout(() => forceOnlineProgressSync({ force: true }), 0);
-    }
+      performance.now() + ONLINE_PROGRESS_SYNC_INTERVAL_MS;
     requestOnlineLeaderboard({ force: true });
     requestOnlineProfile();
     if (onlineState.pendingStartAfterAuth) {
