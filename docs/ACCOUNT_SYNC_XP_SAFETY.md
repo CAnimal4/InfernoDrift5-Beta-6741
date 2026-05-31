@@ -180,8 +180,8 @@ were active:
   evidence explains why the row needs review, but it is intentionally not an
   automatic repair value.
 
-Later on 2026-05-31, after the client-side public-row cleanup guard shipped,
-`npm run audit:firebase-public -- --summary` reported:
+Later on 2026-05-31, after the client-side public-row cleanup guard shipped, one
+public audit briefly reported no contaminated public rows:
 
 ```json
 {
@@ -193,11 +193,33 @@ Later on 2026-05-31, after the client-side public-row cleanup guard shipped,
 }
 ```
 
-That proves the currently visible public leaderboard/profile surfaces are clean
-from this contamination class. It does **not** prove private
-`progress/{uid}` is physically repaired, because production rules correctly
-block public reads of private progress documents. If an owner account still has
-a dirty private save, the correct behavior is for the client to show
+That was not enough to close the incident. A later audit in the same cleanup
+run again saw Clark's raw public rows with `100450 XP`:
+
+```json
+{
+  "contaminatedLeaderboardRows": 1,
+  "contaminatedPublicProfiles": 1,
+  "displayLeakRisk": "guarded_by_client_but_requires_admin_cleanup",
+  "sampleCleanupPaths": {
+    "contaminatedLeaderboardRows": [
+      "leaderboards/all-modes/scores/C86jDYuYNWZs5f9g7X1r94DO2cq2"
+    ],
+    "contaminatedPublicProfiles": [
+      "users/C86jDYuYNWZs5f9g7X1r94DO2cq2"
+    ]
+  }
+}
+```
+
+The current conclusion is therefore narrower and safer: the player-facing client
+guards are active, Codex does not chase the dirty row, and bad private save
+simulations are blocked by `accountProgressTrust`; however, Clark's raw Firebase
+public profile/leaderboard rows, and likely private `progress/{uid}`, still need
+a reviewed owner/admin repair with known-good XP/Embers. Public reads cannot
+prove private progress is repaired because production rules correctly block
+public reads of `progress/{uid}`. If an owner account still has a dirty private
+save, the correct behavior is for the client to show
 `accountProgressTrust.trusted === false` and avoid cloud writeback until a
 known-good reviewed repair is applied.
 
