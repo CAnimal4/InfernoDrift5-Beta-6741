@@ -62,11 +62,12 @@ carry inflated Embers too.
   special-badge account and has no reviewed marker or gameplay proof. This is
   important because some older clients stripped the obsolete marker first, then
   re-saved the cap as if it were normal progress.
-- When the signed-in Firebase client receives a blocked tainted payload and the
-  Firebase SDK is truly authenticated as that account, it is allowed to write
-  the quarantined zero-XP repair payload back to its own `progress/{uid}`. Fake
-  test auth events cannot do this because the write path requires the real
-  Firebase service status to be `signed-in`.
+- When the signed-in Firebase client receives a blocked tainted payload, it
+  quarantines that value locally and marks the account as `repair-needed`, but
+  it does **not** write a zero-XP repair payload back to Firebase. That matters
+  because a guessed zero repair would be just as destructive as the old guessed
+  `22000 XP` cap. Raw account XP changes for contaminated real accounts require
+  the explicit reviewed repair flow below.
 - Public leaderboard rows are sanitized before display. Suspicious old
   special-badge leaderboard scores and test/smoke/runner/pilot rows are ignored
   client-side.
@@ -150,6 +151,11 @@ active:
   `reviewPaths` for Clark's `users/{uid}` and `progress/{uid}` docs. Those
   require owner/admin credentials or owner-auth repair; the client must not
   guess the correct XP.
+- The public audit can now include evidence summaries for contaminated public
+  profiles. For Clark it reported `baselineXp: 22000`, `rewardXp: 9232`,
+  `personalBestCount: 8`, `medalCount: 9`, and an obsolete repair marker. This
+  evidence explains why the row needs review, but it is intentionally not an
+  automatic repair value.
 
 After the repair, run the reviewed verification command with the same known-good
 values. It reads `progress/{uid}`, `users/{uid}`, and the public leaderboard row

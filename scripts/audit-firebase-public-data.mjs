@@ -286,6 +286,22 @@ function gameplayEvidenceSummary(row = {}) {
   };
 }
 
+function reviewedRepairCommand({ uid = "<UID>", username = "<USERNAME>" } = {}) {
+  const safeUid = uid || "<UID>";
+  const safeUsername = username || "<USERNAME>";
+  return [
+    "FIREBASE_REPAIR_CONFIRM=repair-reviewed-real-account",
+    "npm run cleanup:firebase-public --",
+    "--repair-reviewed-account",
+    "--owner-auth",
+    `--uid ${safeUid}`,
+    `--username ${safeUsername}`,
+    "--xp <KNOWN_GOOD_XP>",
+    "--embers <KNOWN_GOOD_EMBERS>",
+    "--execute",
+  ].join(" ");
+}
+
 function auditScores(scores) {
   return scores
     .map((row) => {
@@ -443,6 +459,10 @@ if (SUMMARY_ONLY) {
             username: row.username,
             xp: row.xp,
             evidence: row.evidence,
+            reviewedRepairCommand: reviewedRepairCommand({
+              uid: row.id,
+              username: row.username,
+            }),
             dirtyFields: row.dirtyFields,
             ownerSelfCleanPossible: row.ownerSelfCleanPossible,
             requiresOwnerSignInOrAdmin: row.requiresOwnerSignInOrAdmin,

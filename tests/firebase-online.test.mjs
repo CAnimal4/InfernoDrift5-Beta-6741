@@ -829,6 +829,8 @@ test("Firebase cleanup supports targeted owner-auth reviewed repair", () => {
   );
   assert.match(auditScript, /function gameplayEvidenceSummary\(row = \{\}\)/);
   assert.match(auditScript, /Evidence only, not an automatic repair value/);
+  assert.match(auditScript, /function reviewedRepairCommand/);
+  assert.match(auditScript, /--xp <KNOWN_GOOD_XP>/);
 });
 
 test("Firebase progress sync merges server and device economy state", () => {
