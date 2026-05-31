@@ -350,6 +350,8 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
 
   const contaminatedServer = {
     saveMeta: { updatedAtMs: 5_000 },
+    worldIndex: 9,
+    levelIndex: 9,
     progressionV2: {
       totalXp: 100450,
       xp: 100450,
@@ -361,6 +363,8 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
   };
   const markerStrippedDevice = {
     saveMeta: { updatedAtMs: 6_000 },
+    worldIndex: 2,
+    levelIndex: 3,
     progressionV2: {
       totalXp: 23175,
       xp: 23175,
@@ -370,6 +374,8 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
   const mergedRepair = mergeFirebaseSavePayload(contaminatedServer, markerStrippedDevice);
   assert.equal(mergedRepair.progressionV2.totalXp, 23175);
   assert.equal(mergedRepair.progressionV2.xp, 23175);
+  assert.equal(mergedRepair.worldIndex, 2);
+  assert.equal(mergedRepair.levelIndex, 3);
   assert.equal(mergedRepair.progressionV2.specialBadgeProgressSource, undefined);
   assert.equal(mergedRepair.progressionV2.specialBadgeProgressBaselineXp, undefined);
   assert.notEqual(

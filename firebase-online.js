@@ -388,13 +388,8 @@ function makeUserPayload(uid, profile = {}) {
 }
 
 function getSavePayloadXp(payload = {}) {
-  return Math.max(
-    0,
-    Math.floor(
-      Number(payload?.progressionV2?.totalXp ?? payload?.progressionV2?.xp) ||
-        0,
-    ),
-  );
+  const trustedXp = getTrustedFirebaseProgressionXp(payload?.progressionV2 || {});
+  return Number.isFinite(trustedXp) ? trustedXp : 0;
 }
 
 function chooseBestSavePayload(...payloads) {
