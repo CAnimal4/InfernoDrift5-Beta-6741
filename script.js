@@ -478,6 +478,7 @@ const SPECIAL_BADGE_ACCOUNT_KEYS = new Set([
 ]);
 const SPECIAL_BADGE_REPAIR_VERSION = "2026-05-23-badge-xp-repair-v3";
 const SPECIAL_BADGE_SUSPECT_XP = 90000;
+const SPECIAL_BADGE_OBSOLETE_CAP_XP = 22000;
 const SPECIAL_BADGE_REPAIR_SOURCE = "special-badge-xp-repair";
 const ACCOUNT_PROGRESS_REVIEW_SOURCE = "admin-reviewed-real-account";
 const FOUNDER_FRIEND_XP_REWARD = 1000;
@@ -4726,6 +4727,33 @@ function readAccountSavePayload(user = onlineState.user) {
   }
 }
 
+function sanitizeStoredAccountSaveForUser(user = onlineState.user) {
+  const key = getAccountSaveStorageKey(user);
+  const username = user?.username || onlineState.username;
+  if (!key || !isSpecialBadgeAccountUsername(username)) return false;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return false;
+    const payload = JSON.parse(raw);
+    const cleanedPayload = stripUnearnedSpecialProgressPayload(
+      payload,
+      username,
+    );
+    if (cleanedPayload === payload) return false;
+    localStorage.setItem(key, JSON.stringify(cleanedPayload));
+    recordAccountProgressDiagnostic({
+      source: "account-local-save-sanitized",
+      username,
+      oldXp: getSavePayloadTotalXp(payload),
+      newXp: getSavePayloadTotalXp(cleanedPayload),
+      reason: "cleaned stale account-local badge XP cache before account load",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function buildPersistentSavePayload() {
   ensureDailyGiftState(state.progressionV2);
   state.progressionV2.xp = getProgressionTotalXp();
@@ -5039,13 +5067,19 @@ function repairSpecialBadgeContaminatedProgression(
     0,
     Math.floor(Number(progress.totalXp ?? progress.xp) || 0),
   );
+  const hasReviewedProgress = hasReviewedAccountProgress(progress);
+  const looksLikeObsoleteBadgeCap =
+    currentXp === SPECIAL_BADGE_OBSOLETE_CAP_XP &&
+    !hasReviewedProgress &&
+    !hasHighXpGameplayEvidence(progress);
   const shouldBlockTaintedXp =
-    currentXp >= SPECIAL_BADGE_SUSPECT_XP &&
-    !hasReviewedAccountProgress(progress) &&
-    (progressHasMarker ||
-      hintHasMarker ||
-      hintHasUnmarkedProfileRepair ||
-      isSpecialBadgeAccountUsername(username));
+    !hasReviewedProgress &&
+    ((currentXp >= SPECIAL_BADGE_SUSPECT_XP &&
+      (progressHasMarker ||
+        hintHasMarker ||
+        hintHasUnmarkedProfileRepair ||
+        isSpecialBadgeAccountUsername(username))) ||
+      looksLikeObsoleteBadgeCap);
   if (shouldBlockTaintedXp) {
     const markerSource = progressHasMarker
       ? "progress-payload"
@@ -5053,6 +5087,8 @@ function repairSpecialBadgeContaminatedProgression(
         ? "public-profile"
         : hintHasUnmarkedProfileRepair
           ? "public-profile"
+          : looksLikeObsoleteBadgeCap
+            ? "obsolete-badge-cap"
         : "unmarked-cache";
     const safeProgression = {
       ...cleaned.progression,
@@ -7907,6 +7943,7 @@ function handleOnlineMessage(raw) {
     onlineState.sessionToken = message.sessionToken || onlineState.sessionToken;
     if (onlineState.user?.username)
       onlineState.username = onlineState.user.username;
+    sanitizeStoredAccountSaveForUser(onlineState.user);
     applyServerSave(message.save, {
       force: true,
       resetIfMissing: message.user?.account,
@@ -7957,7 +7994,10 @@ function handleOnlineMessage(raw) {
   } else if (message.type === "profile.snapshot") {
     const safeMessage = sanitizeOnlineProfileSnapshotMessage(message);
     onlineState.profileSnapshot = safeMessage;
-    if (safeMessage.user) onlineState.user = safeMessage.user;
+    if (safeMessage.user) {
+      onlineState.user = safeMessage.user;
+      sanitizeStoredAccountSaveForUser(onlineState.user);
+    }
     applyServerSave(safeMessage.save, {
       force: Boolean(safeMessage.save),
       preferAccountLocal:

@@ -7,6 +7,7 @@ const baseUrl =
   "http://127.0.0.1:4173/";
 const SAVE_STORAGE_KEY = "infernoDrift4.save.v1";
 const ONLINE_STORAGE_KEY = "infernoDrift4.online.v1";
+const ACCOUNT_SAVE_STORAGE_PREFIX = "infernoDrift4.accountSave.v1:";
 
 async function openPageWithStorage(seedStorage) {
   const browser = await chromium.launch({ headless: true });
@@ -68,6 +69,54 @@ const dirtySave = {
   assert.equal(
     result.stored.progressionV2?.accountProgressRepair?.source,
     "special-badge-tainted-xp-blocked",
+  );
+  await browser.close();
+}
+
+{
+  const accountId = "clark-local-cache-targeted";
+  const accountKey = `${ACCOUNT_SAVE_STORAGE_PREFIX}${accountId}`;
+  const { browser, page } = await openPageWithStorage({
+    [ONLINE_STORAGE_KEY]: {
+      backendMode: "firebase",
+      profileMode: "account",
+      username: "Clark",
+      sessionToken: "",
+    },
+    [accountKey]: dirtySave,
+  });
+  const result = await page.evaluate(
+    ({ accountKey }) => {
+      window.__infernodriftTestApi.resetLocalProgressionForTest();
+      window.__infernodriftTestApi.simulateOnlineMessageForTest({
+        type: "auth.ok",
+        user: {
+          id: "clark-local-cache-targeted",
+          username: "Clark",
+          account: true,
+          backendMode: "firebase",
+        },
+        sessionToken: "clark-local-cache-targeted",
+        preferAccountLocal: true,
+      });
+      const diagnostics = JSON.parse(window.render_game_to_text());
+      return {
+        progression: diagnostics.progression,
+        profile: diagnostics.online.profile,
+        stored: JSON.parse(localStorage.getItem(accountKey) || "{}"),
+      };
+    },
+    { accountKey },
+  );
+  assert.equal(result.progression.totalXp, 0);
+  assert.equal(result.stored.progressionV2?.totalXp, 0);
+  assert.equal(
+    result.stored.progressionV2?.accountProgressRepair?.source,
+    "special-badge-tainted-xp-blocked",
+  );
+  assert.equal(
+    result.profile.progressDiagnostics[0]?.source,
+    "account-local-save-sanitized",
   );
   await browser.close();
 }
