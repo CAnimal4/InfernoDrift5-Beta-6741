@@ -452,6 +452,29 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
   );
   assert.equal(mergedNewerDirty.progressionV2.totalXp, 23175);
   assert.equal(mergedNewerDirty.progressionV2.embers, 250);
+
+  const newerStaleShell = {
+    saveMeta: { updatedAtMs: 20_000, progressionUpdatedAtMs: 2_000 },
+    progressionV2: {
+      totalXp: 9_000,
+      xp: 9_000,
+      embers: 10,
+    },
+  };
+  const olderFreshEconomy = {
+    saveMeta: { updatedAtMs: 10_000, progressionUpdatedAtMs: 8_000 },
+    progressionV2: {
+      totalXp: 8_500,
+      xp: 8_500,
+      embers: 700,
+    },
+  };
+  const mergedStaleShell = mergeFirebaseSavePayload(
+    newerStaleShell,
+    olderFreshEconomy,
+  );
+  assert.equal(mergedStaleShell.progressionV2.totalXp, 9000);
+  assert.equal(mergedStaleShell.progressionV2.embers, 700);
 });
 
 test("Firebase chat and feedback filters block unsafe text", () => {
@@ -901,8 +924,11 @@ test("Firebase progress sync merges server and device economy state", () => {
   assert.match(firebaseOnline, /function getPayloadUpdatedAt\(payload = \{\}\)/);
   assert.match(firebaseOnline, /const latestShell = chooseLatestSavePayload\(existingPayload, incomingPayload\)/);
   assert.match(firebaseOnline, /function getTrustedFirebaseProgressionEmbers\(progression = \{\}\)/);
+  assert.match(firebaseOnline, /function getPayloadProgressionUpdatedAt\(payload = \{\}\)/);
+  assert.match(firebaseOnline, /saveMeta\?\.progressionUpdatedAtMs/);
   assert.match(firebaseOnline, /const trustedEmbers = chooseTrustedFirebaseProgressionForEmbers\(/);
   assert.match(firebaseOnline, /embers: trustedEmbers\.embers/);
+  assert.doesNotMatch(firebaseOnline, /trustedLatestShellEmbers/);
   assert.match(firebaseOnline, /ownedCosmetics: uniqueArrayValues\(/);
   assert.match(firebaseOnline, /claimedLevelRewards: uniqueArrayValues\(/);
   assert.match(firebaseOnline, /dailySparks: mergeFirebaseDailySparks\(existing\.dailySparks, incoming\.dailySparks\)/);

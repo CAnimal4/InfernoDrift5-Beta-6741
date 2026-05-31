@@ -449,6 +449,26 @@ function getPayloadFieldUpdatedAt(payload = {}, fieldName = "") {
   return getPayloadUpdatedAt(payload);
 }
 
+function getPayloadProgressionUpdatedAt(payload = {}) {
+  return Math.max(
+    0,
+    Number(payload?.saveMeta?.progressionUpdatedAtMs) ||
+      Number(payload?.progressionV2?.updatedAtMs) ||
+      0,
+  );
+}
+
+function getPayloadProgression(payload = {}) {
+  const progression =
+    payload?.progressionV2 && typeof payload.progressionV2 === "object"
+      ? payload.progressionV2
+      : {};
+  const progressionUpdatedAtMs = getPayloadProgressionUpdatedAt(payload);
+  return progressionUpdatedAtMs
+    ? { ...progression, updatedAtMs: progressionUpdatedAtMs }
+    : progression;
+}
+
 function chooseLatestSavePayloadField(
   existingPayload = {},
   incomingPayload = {},
@@ -651,8 +671,8 @@ export function mergeFirebaseSavePayload(
   if (!incomingPayload || typeof incomingPayload !== "object")
     return existingPayload;
   if (replaceProgression) return incomingPayload;
-  const existingProgression = existingPayload.progressionV2 || {};
-  const incomingProgression = incomingPayload.progressionV2 || {};
+  const existingProgression = getPayloadProgression(existingPayload);
+  const incomingProgression = getPayloadProgression(incomingPayload);
   const mergedProgression = mergeFirebaseProgression(
     existingProgression,
     incomingProgression,
@@ -665,15 +685,6 @@ export function mergeFirebaseSavePayload(
   const garageShell =
     chooseLatestSavePayloadField(existingPayload, incomingPayload, "garage") ||
     latestShell;
-  const trustedLatestShellEmbers = getTrustedFirebaseProgressionEmbers(
-    latestShell.progressionV2 || {},
-  );
-  if (Number.isFinite(trustedLatestShellEmbers)) {
-    mergedProgression.embers = Math.max(
-      0,
-      Math.floor(Number(trustedLatestShellEmbers) || 0),
-    );
-  }
   return {
     ...bestShell,
     saveMeta: latestShell.saveMeta || incomingPayload.saveMeta || existingPayload.saveMeta,
