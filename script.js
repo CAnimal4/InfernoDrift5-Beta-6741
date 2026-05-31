@@ -4604,6 +4604,14 @@ function getSavePayloadUpdatedAtMs(payload = {}) {
   );
 }
 
+function shouldApplyTimestampedAccountField(incomingAt = 0, currentAt = 0) {
+  const incoming = Math.max(0, Number(incomingAt) || 0);
+  const current = Math.max(0, Number(currentAt) || 0);
+  if (!current) return true;
+  if (!incoming) return !onlineState.accountSaveDirty;
+  return incoming >= current - 250;
+}
+
 function broadcastAccountSync(payload, { reason = "save" } = {}) {
   if (
     onlineState.applyingAccountSync ||
@@ -5419,6 +5427,21 @@ function applyPersistentSavePayload(
 ) {
   if (!data || typeof data !== "object") return false;
   try {
+    const incomingCustomizationUpdatedAtMs =
+      Number(data.saveMeta?.customizationUpdatedAtMs) || 0;
+    const incomingGarageUpdatedAtMs =
+      Number(data.saveMeta?.garageUpdatedAtMs) || 0;
+    const currentCustomizationUpdatedAtMs =
+      onlineState.accountCustomizationUpdatedAtMs || 0;
+    const currentGarageUpdatedAtMs = onlineState.accountGarageUpdatedAtMs || 0;
+    const applyIncomingCustomization = shouldApplyTimestampedAccountField(
+      incomingCustomizationUpdatedAtMs,
+      currentCustomizationUpdatedAtMs,
+    );
+    const applyIncomingGarage = shouldApplyTimestampedAccountField(
+      incomingGarageUpdatedAtMs,
+      currentGarageUpdatedAtMs,
+    );
     if (data.saveMeta && typeof data.saveMeta === "object") {
       onlineState.accountCustomizationUpdatedAtMs = Math.max(
         onlineState.accountCustomizationUpdatedAtMs || 0,
@@ -5534,7 +5557,11 @@ function applyPersistentSavePayload(
       if (typeof data.devTuning.worldModifier === "string")
         devTuning.worldModifier = data.devTuning.worldModifier;
     }
-    if (data.customization && typeof data.customization === "object") {
+    if (
+      applyIncomingCustomization &&
+      data.customization &&
+      typeof data.customization === "object"
+    ) {
       Object.keys(DEFAULT_CUSTOMIZATION).forEach((key) => {
         if (typeof data.customization[key] === "string")
           customization[key] = data.customization[key];
@@ -5544,7 +5571,11 @@ function applyPersistentSavePayload(
       worldIndex: Number.isFinite(data.worldIndex) ? data.worldIndex : 0,
       levelIndex: Number.isFinite(data.levelIndex) ? data.levelIndex : 0,
     };
-    if (data.garage && typeof data.garage === "object") {
+    if (
+      applyIncomingGarage &&
+      data.garage &&
+      typeof data.garage === "object"
+    ) {
       const incomingLoadouts = Array.isArray(data.garage.loadouts)
         ? data.garage.loadouts
         : [];
@@ -5561,10 +5592,6 @@ function applyPersistentSavePayload(
         ? data.garage.activeLoadoutId
         : GARAGE_LOADOUT_IDS[0];
       copyCustomizationFromLoadout(getActiveLoadout());
-    } else {
-      garageState.activeLoadoutId = GARAGE_LOADOUT_IDS[0];
-      garageState.loadouts[0] = makeGarageLoadout(0, { ...customization });
-      syncActiveLoadoutFromCustomization();
     }
     ownEquippedGarageCosmetics();
     hydrateControlBindings(data.controlBindings);

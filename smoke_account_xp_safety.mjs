@@ -323,4 +323,63 @@ const dirtySave = {
   await browser.close();
 }
 
+{
+  const { browser, page } = await openPageWithStorage({});
+  const result = await page.evaluate(() => {
+    window.__infernodriftTestApi.resetLocalProgressionForTest();
+    window.__infernodriftTestApi.grantGarageCosmeticForTest("bodyId", "monster");
+    window.__infernodriftTestApi.equipGarageCosmetic("bodyId", "monster");
+    const currentBody =
+      window.__infernodriftTestApi.getCarVisualConfigForTest().body;
+    const stalePayload = window.__infernodriftTestApi.buildFreshAccountSaveForTest();
+    stalePayload.saveMeta = {
+      updatedAtMs: 1,
+      customizationUpdatedAtMs: 1,
+      garageUpdatedAtMs: 1,
+    };
+    stalePayload.customization = {
+      ...stalePayload.customization,
+      bodyId: "street",
+    };
+    window.__infernodriftTestApi.applySavePayloadForTest(stalePayload, {
+      forceProgression: true,
+    });
+    const afterStale =
+      window.__infernodriftTestApi.getCarVisualConfigForTest().body;
+    const freshPayload = window.__infernodriftTestApi.buildFreshAccountSaveForTest();
+    freshPayload.saveMeta = {
+      updatedAtMs: Date.now() + 1000,
+      customizationUpdatedAtMs: Date.now() + 1000,
+      garageUpdatedAtMs: Date.now() + 1000,
+    };
+    freshPayload.progressionV2 = {
+      ...freshPayload.progressionV2,
+      xp: 12000,
+      totalXp: 12000,
+      ownedCosmetics: [
+        ...(freshPayload.progressionV2.ownedCosmetics || []),
+        "bodyId-muscle",
+      ],
+    };
+    freshPayload.customization = {
+      ...freshPayload.customization,
+      bodyId: "muscle",
+    };
+    freshPayload.garage.loadouts[0] = {
+      ...freshPayload.garage.loadouts[0],
+      bodyId: "muscle",
+    };
+    window.__infernodriftTestApi.applySavePayloadForTest(freshPayload, {
+      forceProgression: true,
+    });
+    const afterFresh =
+      window.__infernodriftTestApi.getCarVisualConfigForTest().body;
+    return { currentBody, afterStale, afterFresh };
+  });
+  assert.equal(result.currentBody, "monster");
+  assert.equal(result.afterStale, "monster");
+  assert.equal(result.afterFresh, "muscle");
+  await browser.close();
+}
+
 console.log("account XP safety smoke passed");
