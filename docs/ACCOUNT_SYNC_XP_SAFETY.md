@@ -43,13 +43,10 @@ carry inflated Embers too.
 - Signed-in account merges keep the highest XP already present in the account
   payloads unless that XP is still tagged with an obsolete badge-repair marker
   and is in the known contaminated range. Marked contaminated XP is blocked from
-  becoming active profile state; if a clean local/account value is already
-  loaded, that clean value is preserved instead.
-- Existing signed-in accounts with blocked tainted cloud progress may be repaired
-  from a clean account-local save, but only when the cloud value is already
-  marked blocked and the local value is clean, nonzero, and below the known
-  contaminated range. This prevents arbitrary browser saves from seeding new
-  accounts while still giving real players a recovery path.
+  becoming active profile state. The client no longer "rescues" these accounts
+  by copying a stale clean-looking local value such as `22000 XP`; that value can
+  be just another old cache. A known-good real account value must be restored by
+  the explicit admin-reviewed repair flow below.
 - Unmarked cached special-badge XP in the contaminated range is blocked unless
   it carries an explicit admin-reviewed progress marker. Gameplay metadata such
   as medals or personal bests is not enough to trust a `90k+` special-badge
@@ -64,7 +61,9 @@ carry inflated Embers too.
   special-badge leaderboard scores and test/smoke/runner/pilot rows are ignored
   client-side.
 - ChatGPT (Codex) is leaderboard-only. It may stay slightly ahead of real
-  visible players, but it must not write to real player profiles.
+  visible players, but it must not write to real player profiles. Its ranking
+  logic sanitizes input rows before chasing the top score, so dirty `100k+`
+  Clark/cache rows cannot drag Codex up to `100k+`.
 
 ## Admin Data Cleanup
 
