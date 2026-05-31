@@ -8,11 +8,21 @@ const SUMMARY_ONLY = process.argv.includes("--summary");
 const CONFIRM_VALUE = "delete-public-test-data";
 const REPAIR_CONFIRM_VALUE = "repair-reviewed-real-account";
 const ACCOUNT_PROGRESS_REVIEW_SOURCE = "admin-reviewed-real-account";
+const SPECIAL_BADGE_SUSPECT_XP = 90_000;
 const REPAIR_REVIEWED_ACCOUNT = process.argv.includes("--repair-reviewed-account");
 const VERIFY_REVIEWED_ACCOUNT = process.argv.includes("--verify-reviewed-account");
 
 const TEST_NAME_PATTERN =
   /^(test|teest|smoke|fresh|runner|pilot|test-removed)[a-z0-9_-]*/i;
+const SPECIAL_BADGE_NAMES = new Set([
+  "clark",
+  "billy",
+  "jfine",
+  "moderator",
+  "joshua",
+  "tosh_the_sigma",
+  "tosh the sigma",
+]);
 const KNOWN_TEST_NAMES = new Set([
   "ajhdfiumhziwuehrmz",
   "akfjicoajsodifjmoi",
@@ -158,6 +168,20 @@ function isTestLikeName(value = "") {
   return TEST_NAME_PATTERN.test(compact) || KNOWN_TEST_NAMES.has(compact);
 }
 
+function compactName(value = "") {
+  return normalizedName(value).replace(/[^a-z0-9]/g, "");
+}
+
+function isSpecialBadgeName(value = "") {
+  const normalized = normalizedName(value);
+  const compact = compactName(value);
+  return (
+    SPECIAL_BADGE_NAMES.has(normalized) ||
+    SPECIAL_BADGE_NAMES.has(normalized.replace(/\s+/g, "_")) ||
+    Array.from(SPECIAL_BADGE_NAMES).some((name) => compactName(name) === compact)
+  );
+}
+
 function getXp(row = {}) {
   return Math.max(
     0,
@@ -236,9 +260,9 @@ function repairMarkerSnapshot(progression = {}) {
   };
 }
 
-function isSuspiciousClark(row = {}) {
+function isSuspiciousSpecialBadgeAccount(row = {}) {
   const username = row.username || row.displayName || "";
-  return normalizedName(username) === "clark" && getXp(row) >= 90_000;
+  return isSpecialBadgeName(username) && getXp(row) >= SPECIAL_BADGE_SUSPECT_XP;
 }
 
 function makeCleanupPlan({ scores = [], users = [] } = {}) {
@@ -246,12 +270,12 @@ function makeCleanupPlan({ scores = [], users = [] } = {}) {
   const reviewPaths = [];
 
   scores.forEach((row) => {
-    if (isTestLikeName(row.username) || isSuspiciousClark(row)) {
+    if (isTestLikeName(row.username) || isSuspiciousSpecialBadgeAccount(row)) {
       deletePaths.push({
         path: `leaderboards/all-modes/scores/${row.id}`,
         username: row.username || "",
         xp: getXp(row),
-        reason: isSuspiciousClark(row)
+        reason: isSuspiciousSpecialBadgeAccount(row)
           ? "delete contaminated leaderboard score; real account can re-sync"
           : "delete test-like leaderboard score",
       });
@@ -283,7 +307,7 @@ function makeCleanupPlan({ scores = [], users = [] } = {}) {
       }
       return;
     }
-    if (isSuspiciousClark(row)) {
+    if (isSuspiciousSpecialBadgeAccount(row)) {
       reviewPaths.push({
         path: `users/${row.id}`,
         username: row.username || row.displayName || "",

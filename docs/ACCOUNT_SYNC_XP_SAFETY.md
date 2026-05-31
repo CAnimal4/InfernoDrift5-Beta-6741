@@ -74,7 +74,10 @@ leaderboard, and test account rows requires Firebase owner/admin credentials or
 an explicit one-time admin cleanup path.
 
 Use `npm run audit:firebase-public -- --summary` to list currently visible
-public rows that the client is ignoring.
+public rows that the client is ignoring. The summary includes the dirty public
+field paths, such as `leaderboards/all-modes/scores/{uid}.score` or
+`users/{uid}.progress.totalXp`, plus whether the row can be self-cleaned by the
+owner signing in or requires owner/admin cleanup.
 
 Use `SMOKE_URL=<url> npm run smoke:account-xp:target` to run the XP safety smoke
 against a deployed or otherwise already-running build. That smoke seeds dirty
@@ -90,9 +93,10 @@ FIREBASE_CLEANUP_CONFIRM=delete-public-test-data npm run cleanup:firebase-public
 ```
 
 The cleanup script intentionally does not delete real special-badge user
-profiles such as Clark's profile. Those rows are reported under `reviewPaths`
-because the correct action is an explicit manual admin review with a known-good
-XP value; the client will not guess or cap real-account progress.
+profiles such as Clark, MODERATOR, Joshua, Tosh, Billy, or JFine. Those rows are
+reported under `reviewPaths` because the correct action is an explicit manual
+admin review with a known-good XP value; the client will not guess, grant, or cap
+real-account progress based on badge status.
 
 After a known-good real-account XP and Ember value has been verified by an
 admin, the cleanup script can apply that reviewed repair to `progress/{uid}`,

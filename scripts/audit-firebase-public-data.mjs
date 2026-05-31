@@ -5,6 +5,17 @@ const SUMMARY_ONLY = process.argv.includes("--summary");
 
 const TEST_NAME_PATTERN =
   /^(test|teest|smoke|fresh|runner|pilot|test-removed)[a-z0-9_-]*/i;
+const SPECIAL_BADGE_SUSPECT_XP = 90_000;
+const ACCOUNT_PROGRESS_REVIEW_SOURCE = "admin-reviewed-real-account";
+const SPECIAL_BADGE_NAMES = new Set([
+  "clark",
+  "billy",
+  "jfine",
+  "moderator",
+  "joshua",
+  "tosh_the_sigma",
+  "tosh the sigma",
+]);
 const KNOWN_TEST_NAMES = new Set([
   "ajhdfiumhziwuehrmz",
   "akfjicoajsodifjmoi",
@@ -76,57 +87,160 @@ function isTestLikeName(value = "") {
   return TEST_NAME_PATTERN.test(compact) || KNOWN_TEST_NAMES.has(compact);
 }
 
-function isSuspiciousClarkXp(username = "", xp = 0) {
-  return normalizedName(username) === "clark" && Number(xp) >= 90_000;
+function compactName(value = "") {
+  return normalizedName(value).replace(/[^a-z0-9]/g, "");
+}
+
+function isSpecialBadgeName(value = "") {
+  const normalized = normalizedName(value);
+  const compact = compactName(value);
+  return (
+    SPECIAL_BADGE_NAMES.has(normalized) ||
+    SPECIAL_BADGE_NAMES.has(normalized.replace(/\s+/g, "_")) ||
+    Array.from(SPECIAL_BADGE_NAMES).some((name) => compactName(name) === compact)
+  );
+}
+
+function isReviewedProgress(progress = {}) {
+  return (
+    progress?.accountProgressReviewedSource === ACCOUNT_PROGRESS_REVIEW_SOURCE ||
+    progress?.adminRepair?.source === ACCOUNT_PROGRESS_REVIEW_SOURCE ||
+    progress?.adminRepair === "reviewed-real-account-repair" ||
+    Boolean(progress?.accountProgressReviewedAt)
+  );
+}
+
+function numericXp(value) {
+  return Math.max(0, Math.floor(Number(value) || 0));
+}
+
+function collectXpFields(row = {}, fields = []) {
+  return fields
+    .map(({ path, value, reviewed = false }) => ({
+      path,
+      xp: numericXp(value),
+      reviewed: Boolean(reviewed),
+    }))
+    .filter((field) => field.xp > 0);
+}
+
+function scoreXpFields(row = {}) {
+  return collectXpFields(row, [
+    { path: "score", value: row.score },
+    { path: "xp", value: row.xp },
+    { path: "totalXp", value: row.totalXp },
+    { path: "rating", value: row.rating },
+  ]);
+}
+
+function publicProfileXpFields(row = {}) {
+  return collectXpFields(row, [
+    {
+      path: "progress.totalXp",
+      value: row.progress?.totalXp,
+      reviewed: isReviewedProgress(row.progress),
+    },
+    {
+      path: "progress.xp",
+      value: row.progress?.xp,
+      reviewed: isReviewedProgress(row.progress),
+    },
+    {
+      path: "stats.totalXp",
+      value: row.stats?.totalXp,
+      reviewed: isReviewedProgress(row.stats),
+    },
+    {
+      path: "stats.xp",
+      value: row.stats?.xp,
+      reviewed: isReviewedProgress(row.stats),
+    },
+    {
+      path: "payload.progressionV2.totalXp",
+      value: row.payload?.progressionV2?.totalXp,
+      reviewed: isReviewedProgress(row.payload?.progressionV2),
+    },
+    {
+      path: "payload.progressionV2.xp",
+      value: row.payload?.progressionV2?.xp,
+      reviewed: isReviewedProgress(row.payload?.progressionV2),
+    },
+  ]);
+}
+
+function dirtySpecialBadgeFields(username = "", fields = []) {
+  if (!isSpecialBadgeName(username)) return [];
+  return fields.filter(
+    (field) => field.xp >= SPECIAL_BADGE_SUSPECT_XP && !field.reviewed,
+  );
 }
 
 function scoreXp(row) {
-  return Math.max(0, Math.floor(Number(row.score ?? row.xp ?? row.totalXp) || 0));
+  return numericXp(row.score ?? row.xp ?? row.totalXp);
 }
 
 function profileXp(row) {
-  return Math.max(
-    0,
-    Math.floor(Number(row.progress?.totalXp ?? row.progress?.xp) || 0),
-  );
+  return Math.max(0, ...publicProfileXpFields(row).map((field) => field.xp));
 }
 
 function auditScores(scores) {
   return scores
+    .map((row) => {
+      const fields = scoreXpFields(row);
+      const dirtyFields = dirtySpecialBadgeFields(row.username, fields);
+      return {
+        path: `leaderboards/all-modes/scores/${row.id}`,
+        id: row.id,
+        uid: row.uid || row.userId || row.id,
+        username: row.username || "",
+        score: scoreXp(row),
+        xpFields: fields,
+        dirtyFields,
+        ownerSelfCleanPossible: Boolean(row.uid || row.userId || row.id),
+        requiresOwnerSignInOrAdmin: dirtyFields.length > 0,
+        reason: dirtyFields.length
+          ? "special-badge-contaminated-score"
+          : "test-like-score-row",
+      };
+    })
     .filter(
-      (row) =>
-        isTestLikeName(row.username) || isSuspiciousClarkXp(row.username, scoreXp(row)),
+      (row) => row.dirtyFields.length > 0 || isTestLikeName(row.username),
     )
-    .map((row) => ({
-      path: `leaderboards/all-modes/scores/${row.id}`,
-      id: row.id,
-      uid: row.uid || row.id,
-      username: row.username || "",
-      score: scoreXp(row),
-      reason: isSuspiciousClarkXp(row.username, scoreXp(row))
-        ? "special-badge-contaminated-score"
-        : "test-like-score-row",
-    }))
     .sort((a, b) => b.score - a.score || a.username.localeCompare(b.username));
 }
 
 function auditUsers(users) {
   return users
+    .map((row) => {
+      const username = row.username || row.displayName || "";
+      const fields = publicProfileXpFields(row);
+      const dirtyFields = dirtySpecialBadgeFields(username, fields);
+      return {
+        path: `users/${row.id}`,
+        id: row.id,
+        username,
+        xp: profileXp(row),
+        xpFields: fields,
+        dirtyFields,
+        source:
+          row.progress?.specialBadgeProgressSource ||
+          row.stats?.specialBadgeProgressSource ||
+          "",
+        baseline:
+          row.progress?.specialBadgeProgressBaselineXp ??
+          row.stats?.specialBadgeProgressBaselineXp ??
+          null,
+        ownerSelfCleanPossible: true,
+        requiresOwnerSignInOrAdmin: dirtyFields.length > 0,
+        progressPath: `progress/${row.id}`,
+        reason: dirtyFields.length
+          ? "special-badge-contaminated-profile"
+          : "test-like-public-user",
+      };
+    })
     .filter(
-      (row) =>
-        isTestLikeName(row.username) || isSuspiciousClarkXp(row.username, profileXp(row)),
+      (row) => row.dirtyFields.length > 0 || isTestLikeName(row.username),
     )
-    .map((row) => ({
-      path: `users/${row.id}`,
-      id: row.id,
-      username: row.username || row.displayName || "",
-      xp: profileXp(row),
-      source: row.progress?.specialBadgeProgressSource || "",
-      baseline: row.progress?.specialBadgeProgressBaselineXp ?? null,
-      reason: isSuspiciousClarkXp(row.username, profileXp(row))
-        ? "special-badge-contaminated-profile"
-        : "test-like-public-user",
-    }))
     .sort((a, b) => b.xp - a.xp || a.username.localeCompare(b.username));
 }
 
@@ -195,6 +309,27 @@ if (SUMMARY_ONLY) {
           testLikePublicProfiles: testLikePublicProfiles
             .slice(0, 5)
             .map((row) => row.path),
+        },
+        contaminatedDetails: {
+          leaderboard: contaminatedLeaderboardRows.slice(0, 8).map((row) => ({
+            path: row.path,
+            uid: row.uid,
+            username: row.username,
+            score: row.score,
+            dirtyFields: row.dirtyFields,
+            ownerSelfCleanPossible: row.ownerSelfCleanPossible,
+            requiresOwnerSignInOrAdmin: row.requiresOwnerSignInOrAdmin,
+          })),
+          publicProfiles: contaminatedPublicProfiles.slice(0, 8).map((row) => ({
+            path: row.path,
+            progressPath: row.progressPath,
+            id: row.id,
+            username: row.username,
+            xp: row.xp,
+            dirtyFields: row.dirtyFields,
+            ownerSelfCleanPossible: row.ownerSelfCleanPossible,
+            requiresOwnerSignInOrAdmin: row.requiresOwnerSignInOrAdmin,
+          })),
         },
       },
       null,
