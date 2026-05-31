@@ -70,6 +70,39 @@ const dirtySave = {
 }
 
 {
+  const { browser, page } = await openPageWithStorage({
+    [ONLINE_STORAGE_KEY]: {
+      backendMode: "firebase",
+      profileMode: "account",
+      username: "Clark",
+      sessionToken: "",
+    },
+    [SAVE_STORAGE_KEY]: {
+      ...dirtySave,
+      progressionV2: {
+        ...dirtySave.progressionV2,
+        personalBests: { race: { score: 12500 } },
+        medals: { race: "Gold" },
+      },
+    },
+  });
+  const result = await page.evaluate((SAVE_STORAGE_KEY) => {
+    const diagnostics = JSON.parse(window.render_game_to_text());
+    return {
+      progression: diagnostics.progression,
+      stored: JSON.parse(localStorage.getItem(SAVE_STORAGE_KEY) || "{}"),
+    };
+  }, SAVE_STORAGE_KEY);
+  assert.equal(result.progression.totalXp, 0);
+  assert.equal(
+    result.progression.accountProgressRepair?.source,
+    "special-badge-tainted-xp-blocked",
+  );
+  assert.equal(result.stored.progressionV2?.totalXp, 0);
+  await browser.close();
+}
+
+{
   const { browser, page } = await openPageWithStorage({});
   const result = await page.evaluate(() => {
     window.__infernodriftTestApi.resetLocalProgressionForTest();

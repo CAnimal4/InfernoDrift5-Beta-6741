@@ -38,6 +38,7 @@ const FIREBASE_LIVE_MODES = new Set([
 ]);
 const FIREBASE_LIVE_PLAYER_LIMIT = 8;
 const SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD = 90_000;
+const ACCOUNT_PROGRESS_REVIEW_SOURCE = "admin-reviewed-real-account";
 const FIREBASE_TEST_ACCOUNT_NAME_BLOCKLIST = new Set([
   "ajhdfiumhziwuehrmz",
   "akfjicoajsodifjmoi",
@@ -222,6 +223,18 @@ function hasFirebaseHighXpGameplayEvidence(progression = {}) {
   );
 }
 
+function hasReviewedFirebaseAccountProgress(progression = {}) {
+  const source =
+    progression?.accountProgressReviewedSource ||
+    progression?.adminRepair?.source ||
+    progression?.adminRepair;
+  return (
+    source === ACCOUNT_PROGRESS_REVIEW_SOURCE ||
+    source === "reviewed-real-account-repair" ||
+    Boolean(progression?.accountProgressReviewedAt)
+  );
+}
+
 function getProfileProgressRepairHint(profile = {}) {
   const progress = profile?.progress;
   const username = profile?.username || profile?.displayName || state.username;
@@ -229,7 +242,7 @@ function getProfileProgressRepairHint(profile = {}) {
   const looksLikeUnmarkedBadgeContamination =
     isSpecialBadgeFirebaseUsername(username) &&
     getProgressionXpValue(progress) >= SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD &&
-    !hasFirebaseHighXpGameplayEvidence(progress);
+    !hasReviewedFirebaseAccountProgress(progress);
   if (!hasMarker && !looksLikeUnmarkedBadgeContamination) return null;
   return stripUndefinedForFirestore({
     specialBadgeProgressSource: progress.specialBadgeProgressSource,
@@ -262,7 +275,7 @@ export function repairSavePayloadWithProfileMarker(payload = null, profile = {})
   const payloadLooksLikeUnmarkedBadgeContamination =
     isSpecialBadgeFirebaseUsername(username) &&
     rawXp >= SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD &&
-    !hasFirebaseHighXpGameplayEvidence(progression);
+    !hasReviewedFirebaseAccountProgress(progression);
   if (!progressHasMarker && !profileHint && !payloadLooksLikeUnmarkedBadgeContamination) {
     return payload;
   }

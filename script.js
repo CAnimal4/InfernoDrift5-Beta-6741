@@ -479,6 +479,7 @@ const SPECIAL_BADGE_ACCOUNT_KEYS = new Set([
 const SPECIAL_BADGE_REPAIR_VERSION = "2026-05-23-badge-xp-repair-v3";
 const SPECIAL_BADGE_SUSPECT_XP = 90000;
 const SPECIAL_BADGE_REPAIR_SOURCE = "special-badge-xp-repair";
+const ACCOUNT_PROGRESS_REVIEW_SOURCE = "admin-reviewed-real-account";
 const FOUNDER_FRIEND_XP_REWARD = 1000;
 const CODEX_LEADERBOARD_USERNAME = "ChatGPT (Codex)";
 const CODEX_LEADERBOARD_ID = "system-chatgpt-codex";
@@ -4906,6 +4907,18 @@ function hasHighXpGameplayEvidence(progression = {}) {
   );
 }
 
+function hasReviewedAccountProgress(progression = {}) {
+  const source =
+    progression?.accountProgressReviewedSource ||
+    progression?.adminRepair?.source ||
+    progression?.adminRepair;
+  return (
+    source === ACCOUNT_PROGRESS_REVIEW_SOURCE ||
+    source === "reviewed-real-account-repair" ||
+    Boolean(progression?.accountProgressReviewedAt)
+  );
+}
+
 function isSpecialBadgeAccountUsername(username = "") {
   const key = normalizeLegacyProgressKey(username);
   return (
@@ -5019,10 +5032,11 @@ function repairSpecialBadgeContaminatedProgression(
   const cleanLocalAccountXp = cleanLoadedXp ? 0 : getCleanAccountLocalProgressionXp();
   const shouldBlockTaintedXp =
     currentXp >= SPECIAL_BADGE_SUSPECT_XP &&
+    !hasReviewedAccountProgress(progress) &&
     (progressHasMarker ||
       hintHasMarker ||
       hintHasUnmarkedProfileRepair ||
-      !hasHighXpGameplayEvidence(progress));
+      isSpecialBadgeAccountUsername(username));
   if (shouldBlockTaintedXp) {
     const safeXp = cleanLoadedXp || cleanLocalAccountXp;
     const markerSource = progressHasMarker

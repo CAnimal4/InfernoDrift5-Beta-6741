@@ -7,6 +7,7 @@ const EXECUTE = process.argv.includes("--execute");
 const SUMMARY_ONLY = process.argv.includes("--summary");
 const CONFIRM_VALUE = "delete-public-test-data";
 const REPAIR_CONFIRM_VALUE = "repair-reviewed-real-account";
+const ACCOUNT_PROGRESS_REVIEW_SOURCE = "admin-reviewed-real-account";
 const REPAIR_REVIEWED_ACCOUNT = process.argv.includes("--repair-reviewed-account");
 const VERIFY_REVIEWED_ACCOUNT = process.argv.includes("--verify-reviewed-account");
 
@@ -346,6 +347,8 @@ async function repairReviewedAccountProgress(request, token) {
     level: getLevelFromXP(request.xp),
     embers,
     updatedAtClient: now,
+    accountProgressReviewedAt: now,
+    accountProgressReviewedSource: ACCOUNT_PROGRESS_REVIEW_SOURCE,
   };
   delete progressionV2.specialBadgeRepairVersion;
   delete progressionV2.specialBadgeProgressRepairedAt;
@@ -512,6 +515,38 @@ async function verifyReviewedAccountProgress(request, token) {
       ok: !hasObsoleteRepairMarker(userStats),
       actual: repairMarkerSnapshot(userStats),
       expected: null,
+    },
+    {
+      name: "progress payload reviewed marker present",
+      ok:
+        progressPayloadProgression?.accountProgressReviewedSource ===
+        ACCOUNT_PROGRESS_REVIEW_SOURCE,
+      actual: progressPayloadProgression?.accountProgressReviewedSource || null,
+      expected: ACCOUNT_PROGRESS_REVIEW_SOURCE,
+    },
+    {
+      name: "progress stats reviewed marker present",
+      ok:
+        progressStats?.accountProgressReviewedSource ===
+        ACCOUNT_PROGRESS_REVIEW_SOURCE,
+      actual: progressStats?.accountProgressReviewedSource || null,
+      expected: ACCOUNT_PROGRESS_REVIEW_SOURCE,
+    },
+    {
+      name: "user progress reviewed marker present",
+      ok:
+        userProgress?.accountProgressReviewedSource ===
+        ACCOUNT_PROGRESS_REVIEW_SOURCE,
+      actual: userProgress?.accountProgressReviewedSource || null,
+      expected: ACCOUNT_PROGRESS_REVIEW_SOURCE,
+    },
+    {
+      name: "user stats reviewed marker present",
+      ok:
+        userStats?.accountProgressReviewedSource ===
+        ACCOUNT_PROGRESS_REVIEW_SOURCE,
+      actual: userStats?.accountProgressReviewedSource || null,
+      expected: ACCOUNT_PROGRESS_REVIEW_SOURCE,
     },
     {
       name: "progress username",

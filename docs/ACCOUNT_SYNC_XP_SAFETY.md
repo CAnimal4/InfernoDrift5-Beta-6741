@@ -51,12 +51,15 @@ carry inflated Embers too.
   contaminated range. This prevents arbitrary browser saves from seeding new
   accounts while still giving real players a recovery path.
 - Unmarked cached special-badge XP in the contaminated range is blocked unless
-  it has high-XP gameplay evidence. This prevents old local cache from making
-  the player profile or ChatGPT (Codex) leaderboard row chase fake `100k+` XP.
+  it carries an explicit admin-reviewed progress marker. Gameplay metadata such
+  as medals or personal bests is not enough to trust a `90k+` special-badge
+  payload because the old contaminated XP can be attached to otherwise real
+  saved progress.
 - Firebase account-profile repair hints also treat unmarked `90k+`
-  special-badge profile progress as suspicious when it lacks gameplay evidence.
-  That keeps a dirty public `users/{uid}.progress` row from re-seeding
-  `progress/{uid}` during sign-in or sync.
+  special-badge profile progress as suspicious unless it carries the
+  `admin-reviewed-real-account` progress marker. That keeps a dirty public
+  `users/{uid}.progress` row from re-seeding `progress/{uid}` during sign-in or
+  sync.
 - Public leaderboard rows are sanitized before display. Suspicious old
   special-badge leaderboard scores and test/smoke/runner/pilot rows are ignored
   client-side.
@@ -111,7 +114,8 @@ verified; it is intentionally not an automatic guess.
 After the repair, run the reviewed verification command with the same known-good
 values. It reads `progress/{uid}`, `users/{uid}`, and the public leaderboard row
 with admin credentials and fails if any copy still has the wrong XP, wrong
-Embers, wrong username, or obsolete special-badge repair markers:
+Embers, wrong username, missing admin-reviewed marker, or obsolete special-badge
+repair markers:
 
 ```bash
 GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)" \

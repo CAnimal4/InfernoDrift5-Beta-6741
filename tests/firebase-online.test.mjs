@@ -236,7 +236,7 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
     "public-profile",
   );
 
-  const hardEarnedHighXp = repairSavePayloadWithProfileMarker(
+  const hardEarnedButUnreviewedHighXp = repairSavePayloadWithProfileMarker(
     {
       saveMeta: { updatedAtMs: 8_000 },
       progressionV2: {
@@ -255,8 +255,36 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
       },
     },
   );
-  assert.equal(hardEarnedHighXp.progressionV2.totalXp, 100450);
-  assert.equal(hardEarnedHighXp.progressionV2.accountProgressRepair, undefined);
+  assert.equal(hardEarnedButUnreviewedHighXp.progressionV2.totalXp, 0);
+  assert.equal(
+    hardEarnedButUnreviewedHighXp.progressionV2.accountProgressRepair?.source,
+    "special-badge-tainted-xp-blocked",
+  );
+
+  const adminReviewedHighXp = repairSavePayloadWithProfileMarker(
+    {
+      saveMeta: { updatedAtMs: 8_500 },
+      progressionV2: {
+        totalXp: 100450,
+        xp: 100450,
+        embers: 976,
+        personalBests: { race: { score: 12500 } },
+        accountProgressReviewedSource: "admin-reviewed-real-account",
+        accountProgressReviewedAt: "2026-05-31T00:00:00.000Z",
+      },
+    },
+    {
+      username: "Clark",
+      progress: {
+        totalXp: 100450,
+        xp: 100450,
+        embers: 976,
+        accountProgressReviewedSource: "admin-reviewed-real-account",
+      },
+    },
+  );
+  assert.equal(adminReviewedHighXp.progressionV2.totalXp, 100450);
+  assert.equal(adminReviewedHighXp.progressionV2.accountProgressRepair, undefined);
 
   const contaminatedServer = {
     saveMeta: { updatedAtMs: 5_000 },
@@ -639,8 +667,8 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.doesNotMatch(script, /source:\s*"special-badge-contamination-v1"/);
   assert.match(script, /special-badge-tainted-xp-blocked/);
   assert.match(script, /unmarked-cache/);
-  assert.match(script, /function hasHighXpGameplayEvidence/);
-  assert.match(script, /!hasHighXpGameplayEvidence\(progress\)/);
+  assert.match(script, /function hasReviewedAccountProgress/);
+  assert.match(script, /ACCOUNT_PROGRESS_REVIEW_SOURCE/);
   assert.doesNotMatch(script, /special-badge-contamination-quarantine-v2/);
   assert.doesNotMatch(script, /repairXp:\s*22000/i);
   assert.doesNotMatch(script, /maxEmbers:\s*875/i);
