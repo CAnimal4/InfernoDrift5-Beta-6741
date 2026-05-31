@@ -7963,7 +7963,7 @@ function handleOnlineMessage(raw) {
       onlineRoomCode.value = onlineState.room.code;
     }
     onlineState.leaderboard = Array.isArray(message.room?.leaderboard)
-      ? filterTestLikeLeaderboardRows(message.room.leaderboard)
+      ? sanitizeOnlineLeaderboardRows(message.room.leaderboard)
       : onlineState.leaderboard;
     updateRemoteSnapshotsFromRoom(message.room);
     if (joinedNewRoom && isFirebaseLiveRoom(onlineState.room) && state.running) {

@@ -303,13 +303,28 @@ try {
   await page.evaluate(() =>
     window.__infernodriftTestApi.openMenuTab("leaderboard"),
   );
-  await page.waitForTimeout(500);
+  await page.waitForFunction(() => {
+    const state = JSON.parse(window.render_game_to_text());
+    return state.online.leaderboardState?.syncStatus === "server";
+  });
   syncedProgressState = JSON.parse(
     await page.evaluate(() => window.render_game_to_text()),
   );
   assert.equal(
     syncedProgressState.progression.totalXp,
     accountGarageMutation.xp,
+  );
+  const codexRow = syncedProgressState.online.leaderboard.find(
+    (row) => row.username === "ChatGPT (Codex)",
+  );
+  assert.ok(codexRow, "live leaderboard includes Codex system row");
+  assert.ok(codexRow.xp < 90_000, `Codex chased dirty live XP: ${codexRow.xp}`);
+  assert.equal(
+    syncedProgressState.online.leaderboard.some(
+      (row) => row.username === "Clark" && Number(row.xp || row.totalXp || row.score || 0) >= 90_000,
+    ),
+    false,
+    "live leaderboard must not display dirty Clark 90k+ XP",
   );
 
   const result = await page.evaluate(() =>
