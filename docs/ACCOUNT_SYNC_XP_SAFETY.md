@@ -87,6 +87,27 @@ profiles such as Clark's profile. Those rows are reported under `reviewPaths`
 because the correct action is an explicit manual admin review with a known-good
 XP value; the client will not guess or cap real-account progress.
 
+After a known-good real-account XP and Ember value has been verified by an
+admin, the cleanup script can apply that reviewed repair to `progress/{uid}`,
+`users/{uid}`, and the public leaderboard row. This path requires both an
+explicit UID/username/XP and a short-lived Google OAuth access token:
+
+```bash
+GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)" \
+FIREBASE_REPAIR_CONFIRM=repair-reviewed-real-account \
+npm run cleanup:firebase-public -- \
+  --repair-reviewed-account \
+  --uid C86jDYuYNWZs5f9g7X1r94DO2cq2 \
+  --username Clark \
+  --xp <KNOWN_GOOD_XP> \
+  --embers <KNOWN_GOOD_EMBERS> \
+  --execute
+```
+
+Run the same command without `--execute` first to print the dry-run summary.
+Do not use this repair command unless the XP/Ember values are independently
+verified; it is intentionally not an automatic guess.
+
 The public audit can read `users/{uid}` and leaderboard rows. It cannot read
 `progress/{uid}` without owner/admin credentials; a public REST read returning
 `403 Missing or insufficient permissions` is expected and means private progress
