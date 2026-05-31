@@ -2967,14 +2967,6 @@ function mergeDailySparksProgress(existing = {}, incoming = {}) {
 
 function getTrustedProgressionEmbersForMerge(progression = {}) {
   if (!progression || typeof progression !== "object") return null;
-  const repair = progression.accountProgressRepair || {};
-  const xp = Math.max(
-    0,
-    Math.floor(Number(progression.totalXp ?? progression.xp) || 0),
-  );
-  if (repair.source === "special-badge-tainted-xp-blocked") return null;
-  if (hasSpecialBadgeRepairMarker(progression) && xp >= SPECIAL_BADGE_SUSPECT_XP)
-    return null;
   const embers = Number(progression.embers);
   return Number.isFinite(embers) ? Math.max(0, Math.floor(embers)) : null;
 }
@@ -5042,14 +5034,7 @@ function getSpecialBadgeProgressRepairHint(
   const hint = user?.progressRepairHint;
   if (!hint || typeof hint !== "object") return null;
   if (hasSpecialBadgeRepairMarker(hint)) return hint;
-  const hintedXp = Math.max(
-    0,
-    Math.floor(Number(hint.publicProfileTotalXp) || 0),
-  );
-  return hint.publicProfileRepairSource === "unmarked-cache" &&
-    hintedXp >= SPECIAL_BADGE_SUSPECT_XP
-    ? hint
-    : null;
+  return null;
 }
 
 function recordAccountProgressDiagnostic(entry = {}) {
@@ -5096,12 +5081,6 @@ function repairSpecialBadgeContaminatedProgression(
   username = "",
   repairHint = getSpecialBadgeProgressRepairHint(username),
 ) {
-  if (
-    progress?.accountProgressRepair?.source ===
-    "special-badge-tainted-xp-blocked"
-  ) {
-    return { progression: progress, changed: false };
-  }
   const progressHasMarker = hasSpecialBadgeRepairMarker(progress);
   const hintHasMarker = hasSpecialBadgeRepairMarker(repairHint);
   const hintHasUnmarkedProfileRepair =
@@ -5113,66 +5092,6 @@ function repairSpecialBadgeContaminatedProgression(
     0,
     Math.floor(Number(progress.totalXp ?? progress.xp) || 0),
   );
-  const hasReviewedProgress = hasReviewedAccountProgress(progress);
-  const looksLikeObsoleteBadgeCap =
-    currentXp === SPECIAL_BADGE_OBSOLETE_CAP_XP &&
-    !hasReviewedProgress &&
-    !hasHighXpGameplayEvidence(progress);
-  const shouldBlockTaintedXp =
-    !hasReviewedProgress &&
-    ((currentXp >= SPECIAL_BADGE_SUSPECT_XP &&
-      (progressHasMarker ||
-        hintHasMarker ||
-        hintHasUnmarkedProfileRepair ||
-        isSpecialBadgeAccountUsername(username))) ||
-      looksLikeObsoleteBadgeCap);
-  if (shouldBlockTaintedXp) {
-    const markerSource = progressHasMarker
-      ? "progress-payload"
-      : hintHasMarker
-        ? "public-profile"
-        : hintHasUnmarkedProfileRepair
-          ? "public-profile"
-          : looksLikeObsoleteBadgeCap
-            ? "obsolete-badge-cap"
-        : "unmarked-cache";
-    const safeProgression = {
-      ...cleaned.progression,
-      xp: 0,
-      totalXp: 0,
-      level: getLevelFromXP(0),
-      embers: 0,
-      accountProgressRepair: {
-        source: "special-badge-tainted-xp-blocked",
-        username,
-        blockedTotalXp: currentXp,
-        blockedEmbers: Math.max(
-          0,
-          Math.floor(Number(cleaned.progression?.embers) || 0),
-        ),
-        markerSource,
-        requiresReview: true,
-        repairedAt: new Date().toISOString(),
-      },
-    };
-    recordAccountProgressDiagnostic({
-      source: "special-badge-tainted-xp-blocked",
-      username,
-      oldXp: currentXp,
-      newXp: 0,
-      reason:
-        "blocked obsolete badge repair XP; admin review is required before restoring any higher value",
-      markerSource,
-    });
-    if (onlineState.profileMode === "account") {
-      onlineState.profileActionStatus =
-        "Blocked an old account XP sync bug. This account needs admin progress review.";
-    }
-    return {
-      progression: safeProgression,
-      changed: true,
-    };
-  }
   if (!progressHasMarker && !hintHasMarker && !hintHasUnmarkedProfileRepair) {
     return removeSpecialBadgeRepairMarkers(progress);
   }
@@ -5183,7 +5102,7 @@ function repairSpecialBadgeContaminatedProgression(
       oldXp: currentXp,
       newXp: currentXp,
       reason:
-        "removed or ignored obsolete badge repair marker without changing XP",
+        "removed or ignored obsolete badge repair marker without changing XP or Embers",
       markerSource: progressHasMarker ? "progress-payload" : "public-profile",
     });
   }
@@ -5290,12 +5209,7 @@ function sanitizeOnlineProfileSnapshotMessage(message = {}) {
 }
 
 function isBlockedTaintedAccountProgression(progression = {}) {
-  return (
-    progression?.accountProgressRepair?.source ===
-      "special-badge-tainted-xp-blocked" &&
-    getProgressionTotalXp(progression) === 0 &&
-    Math.max(0, Number(progression?.accountProgressRepair?.blockedTotalXp) || 0) > 0
-  );
+  return false;
 }
 
 function hasProgressionPlayEvidence(progression = {}) {
@@ -10135,21 +10049,13 @@ function sanitizeSpecialBadgeLeaderboardRow(row = {}) {
   const xp = getLeaderboardXp(row);
   if (xp < SPECIAL_BADGE_SUSPECT_XP) return row;
   recordAccountProgressDiagnostic({
-    source: "special-badge-leaderboard-quarantine",
+    source: "special-badge-leaderboard-preserved",
     username,
     oldXp: xp,
-    newXp: 0,
-    reason: "ignored suspicious old badge leaderboard score",
+    newXp: xp,
+    reason: "preserved badge-account leaderboard XP; badges are metadata only",
   });
-  return {
-    ...row,
-    xp: 0,
-    totalXp: 0,
-    score: 0,
-    rating: 0,
-    quarantined: true,
-    repairNote: "special-badge-leaderboard-quarantined",
-  };
+  return row;
 }
 
 function sanitizeSpecialBadgeLeaderboardRows(rows = []) {

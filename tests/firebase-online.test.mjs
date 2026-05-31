@@ -173,8 +173,8 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
   const replaced = mergeFirebaseSavePayload(olderServer, newerDevice, {
     replaceProgression: true,
   });
-  assert.equal(replaced.progressionV2.totalXp, 8500);
-  assert.equal(replaced.progressionV2.xp, 8500);
+  assert.equal(replaced.progressionV2.totalXp, 9000);
+  assert.equal(replaced.progressionV2.xp, 9000);
   assert.equal(replaced.progressionV2.embers, 140);
 
   assert.equal(
@@ -233,21 +233,12 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
       },
     },
   );
-  assert.equal(unmarkedProfileOnlyContamination.progressionV2.totalXp, 0);
-  assert.equal(unmarkedProfileOnlyContamination.progressionV2.xp, 0);
-  assert.equal(unmarkedProfileOnlyContamination.progressionV2.embers, 0);
+  assert.equal(unmarkedProfileOnlyContamination.progressionV2.totalXp, 100450);
+  assert.equal(unmarkedProfileOnlyContamination.progressionV2.xp, 100450);
+  assert.equal(unmarkedProfileOnlyContamination.progressionV2.embers, 976);
   assert.equal(
-    unmarkedProfileOnlyContamination.progressionV2.accountProgressRepair
-      ?.blockedEmbers,
-    976,
-  );
-  assert.equal(
-    unmarkedProfileOnlyContamination.progressionV2.accountProgressRepair?.source,
-    "special-badge-tainted-xp-blocked",
-  );
-  assert.equal(
-    unmarkedProfileOnlyContamination.progressionV2.accountProgressRepair?.markerSource,
-    "public-profile",
+    unmarkedProfileOnlyContamination.progressionV2.accountProgressRepair,
+    undefined,
   );
 
   const hardEarnedButUnreviewedHighXp = repairSavePayloadWithProfileMarker(
@@ -269,10 +260,10 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
       },
     },
   );
-  assert.equal(hardEarnedButUnreviewedHighXp.progressionV2.totalXp, 0);
+  assert.equal(hardEarnedButUnreviewedHighXp.progressionV2.totalXp, 100450);
   assert.equal(
     hardEarnedButUnreviewedHighXp.progressionV2.accountProgressRepair?.source,
-    "special-badge-tainted-xp-blocked",
+    undefined,
   );
 
   const adminReviewedHighXp = repairSavePayloadWithProfileMarker(
@@ -319,10 +310,10 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
       },
     },
   );
-  assert.equal(timestampOnlyReviewMarker.progressionV2.totalXp, 0);
+  assert.equal(timestampOnlyReviewMarker.progressionV2.totalXp, 100450);
   assert.equal(
     timestampOnlyReviewMarker.progressionV2.accountProgressRepair?.source,
-    "special-badge-tainted-xp-blocked",
+    undefined,
   );
 
   const obsoleteCapWithoutMarker = repairSavePayloadWithProfileMarker(
@@ -343,22 +334,10 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
       },
     },
   );
-  assert.equal(obsoleteCapWithoutMarker.progressionV2.totalXp, 0);
-  assert.equal(obsoleteCapWithoutMarker.progressionV2.xp, 0);
-  assert.equal(obsoleteCapWithoutMarker.progressionV2.embers, 0);
-  assert.equal(
-    obsoleteCapWithoutMarker.progressionV2.accountProgressRepair
-      ?.blockedEmbers,
-    875,
-  );
-  assert.equal(
-    obsoleteCapWithoutMarker.progressionV2.accountProgressRepair?.source,
-    "special-badge-tainted-xp-blocked",
-  );
-  assert.equal(
-    obsoleteCapWithoutMarker.progressionV2.accountProgressRepair?.markerSource,
-    "obsolete-badge-cap",
-  );
+  assert.equal(obsoleteCapWithoutMarker.progressionV2.totalXp, 22000);
+  assert.equal(obsoleteCapWithoutMarker.progressionV2.xp, 22000);
+  assert.equal(obsoleteCapWithoutMarker.progressionV2.embers, 875);
+  assert.equal(obsoleteCapWithoutMarker.progressionV2.accountProgressRepair, undefined);
 
   const contaminatedServer = {
     saveMeta: { updatedAtMs: 5_000 },
@@ -384,10 +363,10 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
     },
   };
   const mergedRepair = mergeFirebaseSavePayload(contaminatedServer, markerStrippedDevice);
-  assert.equal(mergedRepair.progressionV2.totalXp, 23175);
-  assert.equal(mergedRepair.progressionV2.xp, 23175);
-  assert.equal(mergedRepair.worldIndex, 2);
-  assert.equal(mergedRepair.levelIndex, 3);
+  assert.equal(mergedRepair.progressionV2.totalXp, 100450);
+  assert.equal(mergedRepair.progressionV2.xp, 100450);
+  assert.equal(mergedRepair.worldIndex, 9);
+  assert.equal(mergedRepair.levelIndex, 9);
   assert.equal(mergedRepair.progressionV2.specialBadgeProgressSource, undefined);
   assert.equal(mergedRepair.progressionV2.specialBadgeProgressBaselineXp, undefined);
   assert.notEqual(
@@ -404,9 +383,8 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
       specialBadgeProgressBaselineXp: 22000,
     },
   });
-  assert.equal(onlyContaminated.progressionV2.totalXp, 0);
-  assert.equal(onlyContaminated.progressionV2.xp, 0);
-  assert.equal(onlyContaminated.progressionV2.embers, 0);
+  assert.equal(onlyContaminated.progressionV2.totalXp, 100450);
+  assert.equal(onlyContaminated.progressionV2.xp, 100450);
 
   const blockedCloudWithCleanLocal = mergeFirebaseSavePayload(
     {
@@ -450,8 +428,8 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
     newerContaminatedServer,
     olderCleanDevice,
   );
-  assert.equal(mergedNewerDirty.progressionV2.totalXp, 23175);
-  assert.equal(mergedNewerDirty.progressionV2.embers, 250);
+  assert.equal(mergedNewerDirty.progressionV2.totalXp, 100450);
+  assert.equal(mergedNewerDirty.progressionV2.embers, 976);
 
   const newerStaleShell = {
     saveMeta: { updatedAtMs: 20_000, progressionUpdatedAtMs: 2_000 },
@@ -771,10 +749,9 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   );
   assert.match(firebaseOnline, /const safeBestPayload = stripUndefinedForFirestore\(bestPayload\);/);
   assert.match(firebaseOnline, /payload: safeBestPayload,/);
-  assert.match(
-    firebaseOnline,
-    /replace\s*&&\s*!isBlockedTaintedRepairPayload\(cleanPayload\)[\s\S]{0,120}\?\s*cleanPayload[\s\S]{0,120}:\s*mergeFirebaseSavePayload\(cleanExistingPayload, cleanPayload\)/,
-  );
+  assert.match(firebaseOnline, /const canReplaceMissingServerSave =/);
+  assert.match(firebaseOnline, /replace && !cleanExistingPayload/);
+  assert.match(firebaseOnline, /canReplaceMissingServerSave[\s\S]{0,120}\?\s*cleanPayload[\s\S]{0,120}:\s*mergeFirebaseSavePayload\(cleanExistingPayload, cleanPayload\)/);
   assert.match(firebaseOnline, /function isBlockedTaintedRepairPayload/);
   assert.match(firebaseOnline, /state\.leaderboardStatus = "repair-needed"/);
   assert.match(firebaseOnline, /function writeProgressPayload\(payload, \{ silent = false \} = \{\}\)/);
@@ -803,12 +780,12 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(script, /cleanUnearnedSpecialProgress: Boolean\(message\.user\?\.account\)/);
   assert.match(script, /replaceNextProgressSync = true/);
   assert.match(script, /function sanitizeSpecialBadgeLeaderboardRow\(row = \{\}\)/);
-  assert.match(script, /special-badge-leaderboard-quarantined/);
+  assert.match(script, /special-badge-leaderboard-preserved/);
   assert.doesNotMatch(script, /repairNote: "special-badge-xp-cap"/);
   assert.match(script, /function sanitizeSpecialBadgeProgression\(/);
   assert.doesNotMatch(script, /source:\s*"special-badge-contamination-v1"/);
-  assert.match(script, /special-badge-tainted-xp-blocked/);
-  assert.match(script, /unmarked-cache/);
+  assert.doesNotMatch(script, /source:\s*"special-badge-tainted-xp-blocked"/);
+  assert.doesNotMatch(script, /blocked obsolete badge repair XP/);
   assert.match(script, /function hasReviewedAccountProgress/);
   assert.match(script, /ACCOUNT_PROGRESS_REVIEW_SOURCE/);
   assert.doesNotMatch(script, /special-badge-contamination-quarantine-v2/);
@@ -843,7 +820,9 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(script, /const CODEX_LEADERBOARD_BASELINE_XP = 22153;/);
   assert.match(script, /codexLeaderboardXp = CODEX_LEADERBOARD_BASELINE_XP;/);
   assert.match(firebaseOnline, /syncProgress\(payload, \{ silent = false, replace = false \} = \{\}\)/);
-  assert.match(firebaseOnline, /replace\s*&&\s*!isBlockedTaintedRepairPayload\(cleanPayload\)/);
+  assert.match(firebaseOnline, /const canReplaceMissingServerSave =/);
+  assert.match(firebaseOnline, /replace && !cleanExistingPayload/);
+  assert.match(firebaseOnline, /canReplaceMissingServerSave[\s\S]{0,120}\?\s*cleanPayload[\s\S]{0,120}:\s*mergeFirebaseSavePayload\(cleanExistingPayload, cleanPayload\)/);
   assert.doesNotMatch(firebaseOnline, /replace\s*\?\s*payload\s*:\s*mergeFirebaseSavePayload/);
   assert.match(firebaseOnline, /await firestore\.getDoc\(ref\)\.catch\(\(\) => null\)/);
   assert.match(script, /room_left_ignored/);

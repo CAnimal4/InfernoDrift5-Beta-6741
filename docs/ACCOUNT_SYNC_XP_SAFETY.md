@@ -10,10 +10,10 @@ accounts. That produced contaminated saved data such as `100450 XP` for Clark
 with markers like `specialBadgeProgressSource: "special-badge-xp-repair"` and
 `specialBadgeProgressBaselineXp: 22000`.
 
-The later account merge logic treated XP as "highest value wins." That is safe
-for normal earned progress, but unsafe when the higher value came from an
-obsolete repair marker. The contaminated value could live in more than one
-place:
+The later account merge logic treated XP as "highest value wins." The current
+client keeps that invariant for signed-in accounts because lowering real account
+progress caused worse data-loss regressions than the original badge bug. Old
+repair markers can still live in more than one place:
 
 - `progress/{uid}.payload.progressionV2`
 - `users/{uid}.progress`
@@ -23,13 +23,10 @@ place:
 If any writer re-saved a contaminated payload, the bad XP could keep spreading
 across sessions and devices.
 
-A second-order form of the same bug can happen after an older client has already
-stripped the obsolete marker and cached the bad `100k+` number locally. The
-current client treats unmarked special-badge XP in the contaminated range as
-suspicious unless it is backed by gameplay evidence such as medals, personal
-bests, ghost samples, gameplay reward-log entries, tutorial completion, or Daily
-Sparks progress. Embers alone are not enough proof because contaminated saves can
-carry inflated Embers too.
+The important follow-up rule is that badge status is never a progress policy.
+Special usernames may display badges, but they cannot grant progress and they
+cannot trigger a cleanup routine that lowers XP, Embers, cosmetics, or garage
+state.
 
 ## Current Invariants
 
@@ -40,41 +37,25 @@ carry inflated Embers too.
   account's XP or Embers while doing it.
 - Special-badge status itself must never grant, cap, or reset XP, Embers,
   cosmetics, garage state, inventory, or claimed rewards.
-- Signed-in account merges keep the highest XP already present in the account
-  payloads unless that XP is still tagged with an obsolete badge-repair marker
-  and is in the known contaminated range. Marked contaminated XP is blocked from
-  becoming active profile state. The client no longer "rescues" these accounts
-  by copying a stale clean-looking local value such as `22000 XP`; that value can
-  be just another old cache. A known-good real account value must be restored by
-  the explicit admin-reviewed repair flow below.
-- Unmarked cached special-badge XP in the contaminated range is blocked unless
-  it carries an explicit admin-reviewed progress marker. Gameplay metadata such
-  as medals or personal bests is not enough to trust a `90k+` special-badge
-  payload because the old contaminated XP can be attached to otherwise real
-  saved progress.
-- Firebase account-profile repair hints also treat unmarked `90k+`
-  special-badge profile progress as suspicious unless it carries the
-  `admin-reviewed-real-account` progress marker. That keeps a dirty public
-  `users/{uid}.progress` row from re-seeding `progress/{uid}` during sign-in or
-  sync.
-- Firebase account-profile repair hints also treat the old markerless
-  `22000 XP` / `875 Embers` badge-repair cap as suspicious when it belongs to a
-  special-badge account and has no reviewed marker or gameplay proof. This is
-  important because some older clients stripped the obsolete marker first, then
-  re-saved the cap as if it were normal progress.
-- When the signed-in Firebase client receives a blocked tainted payload, it
-  quarantines that value locally and marks the account as `repair-needed`, but
-  it does **not** write a zero-XP repair payload back to Firebase. That matters
-  because a guessed zero repair would be just as destructive as the old guessed
-  `22000 XP` cap. Raw account XP changes for contaminated real accounts require
-  the explicit reviewed repair flow below.
-- Public leaderboard rows are sanitized before display. Suspicious old
-  special-badge leaderboard scores and test/smoke/runner/pilot rows are ignored
-  client-side.
+- Signed-in account merges keep the highest XP already present in trusted
+  account payloads. Obsolete special-badge repair markers are stripped, but the
+  XP and Embers attached to the payload are not lowered by client cleanup.
+- Replacement sync is only allowed to seed a missing server save. Once a
+  `progress/{uid}` payload exists, even a `replace` sync is merged so a stale
+  local/browser payload cannot overwrite newer Firebase XP with a lower value.
+- Unmarked cached special-badge XP is treated like normal account XP for merge
+  purposes. If a human review later finds a specific account value is wrong,
+  the correction must use the explicit reviewed repair flow and known-good
+  values.
+- Firebase account-profile repair hints only mark obsolete repair markers; they
+  do not classify high XP or the old `22000 XP` / `875 Embers` values as a
+  reason to downgrade an account.
+- Public leaderboard rows are sanitized before display for test/smoke/runner/
+  pilot rows. Special-badge leaderboard XP is preserved because badges are
+  metadata only.
 - ChatGPT (Codex) is leaderboard-only. It may stay slightly ahead of real
   visible players, but it must not write to real player profiles. Its ranking
-  logic sanitizes input rows before chasing the top score, so dirty `100k+`
-  Clark/cache rows cannot drag Codex up to `100k+`.
+  logic still ignores dirty system-player rows for Codex itself.
 - Account save timestamps are field-specific where needed. Normal progression
   saves must not refresh `customizationUpdatedAtMs` or `garageUpdatedAtMs`,
   because an old tab can otherwise make stale equipped cosmetics look newer than
@@ -83,11 +64,11 @@ carry inflated Embers too.
 
 ## Admin Data Cleanup
 
-The client can quarantine obsolete owner-writable private markers on sign-in and
-hide dirty public rows, but it cannot delete or edit other users' Firestore
-documents under the current production rules. Physical cleanup of stale public profile,
-leaderboard, and test account rows requires Firebase owner/admin credentials or
-an explicit one-time admin cleanup path.
+The client can strip obsolete owner-writable private markers on sign-in and hide
+test/smoke/runner/pilot public rows, but it cannot delete or edit other users'
+Firestore documents under the current production rules. Physical cleanup of
+stale public profile, leaderboard, and test account rows requires Firebase
+owner/admin credentials or an explicit one-time admin cleanup path.
 
 Use `npm run audit:firebase-public -- --summary` to list currently visible
 public rows that the client is ignoring. The summary includes the dirty public

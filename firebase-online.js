@@ -237,31 +237,16 @@ function hasReviewedFirebaseAccountProgress(progression = {}) {
 
 function getProfileProgressRepairHint(profile = {}) {
   const progress = profile?.progress;
-  const username = profile?.username || profile?.displayName || state.username;
   const hasMarker = hasObsoleteSpecialBadgeRepairMarker(progress);
   const progressXp = getProgressionXpValue(progress);
-  const looksLikeObsoleteBadgeCap =
-    isSpecialBadgeFirebaseUsername(username) &&
-    progressXp === SPECIAL_BADGE_OBSOLETE_CAP_XP &&
-    !hasReviewedFirebaseAccountProgress(progress) &&
-    !hasFirebaseHighXpGameplayEvidence(progress);
-  const looksLikeUnmarkedBadgeContamination =
-    isSpecialBadgeFirebaseUsername(username) &&
-    progressXp >= SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD &&
-    !hasReviewedFirebaseAccountProgress(progress);
-  if (!hasMarker && !looksLikeUnmarkedBadgeContamination && !looksLikeObsoleteBadgeCap)
-    return null;
+  if (!hasMarker) return null;
   return stripUndefinedForFirestore({
     specialBadgeProgressSource: progress.specialBadgeProgressSource,
     specialBadgeRepairVersion: progress.specialBadgeRepairVersion,
     specialBadgeProgressRepairedAt: progress.specialBadgeProgressRepairedAt,
     specialBadgeProgressBaselineXp: progress.specialBadgeProgressBaselineXp,
     publicProfileTotalXp: progressXp,
-    publicProfileRepairSource: hasMarker
-      ? "marker"
-      : looksLikeObsoleteBadgeCap
-        ? "obsolete-badge-cap"
-        : "unmarked-cache",
+    publicProfileRepairSource: "marker",
   });
 }
 
@@ -281,63 +266,10 @@ export function repairSavePayloadWithProfileMarker(payload = null, profile = {})
   if (!progression || typeof progression !== "object") return payload;
   const profileHint = getProfileProgressRepairHint(profile);
   const progressHasMarker = hasObsoleteSpecialBadgeRepairMarker(progression);
-  const username = profile?.username || profile?.displayName || state.username;
-  const rawXp = getProgressionXpValue(progression);
-  const payloadLooksLikeUnmarkedBadgeContamination =
-    isSpecialBadgeFirebaseUsername(username) &&
-    rawXp >= SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD &&
-    !hasReviewedFirebaseAccountProgress(progression);
-  const payloadLooksLikeObsoleteBadgeCap =
-    isSpecialBadgeFirebaseUsername(username) &&
-    rawXp === SPECIAL_BADGE_OBSOLETE_CAP_XP &&
-    !hasReviewedFirebaseAccountProgress(progression) &&
-    !hasFirebaseHighXpGameplayEvidence(progression);
-  if (
-    !progressHasMarker &&
-    !profileHint &&
-    !payloadLooksLikeUnmarkedBadgeContamination &&
-    !payloadLooksLikeObsoleteBadgeCap
-  ) {
+  if (!progressHasMarker && !profileHint) {
     return payload;
   }
   const cleanProgression = removeObsoleteSpecialBadgeRepairMarkers(progression);
-  const markerSource = progressHasMarker
-    ? "progress-payload"
-    : profileHint
-      ? profileHint.publicProfileRepairSource === "obsolete-badge-cap"
-        ? "obsolete-badge-cap"
-        : "public-profile"
-      : payloadLooksLikeObsoleteBadgeCap
-        ? "obsolete-badge-cap"
-      : "unmarked-cache";
-  const shouldBlockHighXp =
-    (rawXp >= SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD &&
-      (progressHasMarker ||
-        profileHint?.publicProfileRepairSource === "marker" ||
-        payloadLooksLikeUnmarkedBadgeContamination)) ||
-    payloadLooksLikeObsoleteBadgeCap ||
-    profileHint?.publicProfileRepairSource === "obsolete-badge-cap";
-  if (shouldBlockHighXp) {
-    return {
-      ...payload,
-      progressionV2: {
-        ...cleanProgression,
-        xp: 0,
-        totalXp: 0,
-        embers: 0,
-        accountProgressRepair: {
-          source: "special-badge-tainted-xp-blocked",
-          blockedTotalXp: rawXp,
-          blockedEmbers: Math.max(
-            0,
-            Math.floor(Number(cleanProgression.embers) || 0),
-          ),
-          markerSource,
-          requiresReview: true,
-        },
-      },
-    };
-  }
   return {
     ...payload,
     progressionV2: cleanProgression,
@@ -539,24 +471,11 @@ function getProgressionXpValue(progression = {}) {
 }
 
 function getTrustedFirebaseProgressionXp(progression = {}) {
-  const xp = getProgressionXpValue(progression);
-  return hasObsoleteSpecialBadgeRepairMarker(progression) &&
-    xp >= SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD
-    ? null
-    : xp;
+  return getProgressionXpValue(progression);
 }
 
 function getTrustedFirebaseProgressionEmbers(progression = {}) {
   if (!progression || typeof progression !== "object") return null;
-  const xp = getProgressionXpValue(progression);
-  const repair = progression.accountProgressRepair || {};
-  if (repair.source === "special-badge-tainted-xp-blocked") return null;
-  if (
-    hasObsoleteSpecialBadgeRepairMarker(progression) &&
-    xp >= SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD
-  ) {
-    return null;
-  }
   const embers = Number(progression.embers);
   return Number.isFinite(embers) ? Math.max(0, Math.floor(embers)) : null;
 }
@@ -670,7 +589,11 @@ export function mergeFirebaseSavePayload(
     return incomingPayload;
   if (!incomingPayload || typeof incomingPayload !== "object")
     return existingPayload;
-  if (replaceProgression) return incomingPayload;
+  if (replaceProgression) {
+    const existingXp = getSavePayloadXp(existingPayload);
+    const incomingXp = getSavePayloadXp(incomingPayload);
+    if (incomingXp >= existingXp) return incomingPayload;
+  }
   const existingProgression = getPayloadProgression(existingPayload);
   const incomingProgression = getPayloadProgression(incomingPayload);
   const mergedProgression = mergeFirebaseProgression(
@@ -1586,8 +1509,10 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       if (!silent) emit("save.repair-needed", { payload: cleanPayload });
       return cleanPayload;
     }
+    const canReplaceMissingServerSave =
+      replace && !cleanExistingPayload && !isBlockedTaintedRepairPayload(cleanPayload);
     const mergedPayload = stripUndefinedForFirestore(
-      replace && !isBlockedTaintedRepairPayload(cleanPayload)
+      canReplaceMissingServerSave
         ? cleanPayload
         : mergeFirebaseSavePayload(cleanExistingPayload, cleanPayload),
     );
