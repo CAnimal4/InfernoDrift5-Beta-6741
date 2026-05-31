@@ -185,7 +185,11 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
     "street",
   );
   const newerServer = {
-    saveMeta: { updatedAtMs: 5_000 },
+    saveMeta: {
+      updatedAtMs: 5_000,
+      customizationUpdatedAtMs: 5_000,
+      garageUpdatedAtMs: 5_000,
+    },
     customization: { bodyId: "monster", wheelId: "reactor" },
     garage: { activeLoadoutId: "loadout-b" },
     progressionV2: {
@@ -196,16 +200,20 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
     },
   };
   const staleBrowser = {
-    saveMeta: { updatedAtMs: 1_000 },
+    saveMeta: {
+      updatedAtMs: 10_000,
+      customizationUpdatedAtMs: 1_000,
+      garageUpdatedAtMs: 1_000,
+    },
     customization: { bodyId: "interceptor", wheelId: "grip" },
     garage: { activeLoadoutId: "loadout-a" },
-    progressionV2: { totalXp: 1000, xp: 1000, embers: 50 },
+    progressionV2: { totalXp: 1000, xp: 1000, embers: 250 },
   };
   const mergedStale = mergeFirebaseSavePayload(newerServer, staleBrowser);
   assert.equal(mergedStale.customization.bodyId, "monster");
   assert.equal(mergedStale.customization.wheelId, "reactor");
   assert.equal(mergedStale.garage.activeLoadoutId, "loadout-b");
-  assert.equal(mergedStale.progressionV2.embers, 200);
+  assert.equal(mergedStale.progressionV2.embers, 250);
 
   const unmarkedProfileOnlyContamination = repairSavePayloadWithProfileMarker(
     {
@@ -748,8 +756,11 @@ test("Firebase progress sync merges server and device economy state", () => {
   assert.match(firebaseOnline, /ownedCosmetics: uniqueArrayValues\(/);
   assert.match(firebaseOnline, /claimedLevelRewards: uniqueArrayValues\(/);
   assert.match(firebaseOnline, /dailySparks: mergeFirebaseDailySparks\(existing\.dailySparks, incoming\.dailySparks\)/);
-  assert.match(firebaseOnline, /customization: latestShell\.customization/);
-  assert.match(firebaseOnline, /garage: latestShell\.garage/);
+  assert.match(firebaseOnline, /function getPayloadFieldUpdatedAt\(payload = \{\}, fieldName = ""\)/);
+  assert.match(firebaseOnline, /chooseLatestSavePayloadField\(existingPayload, incomingPayload, "customization"\)/);
+  assert.match(firebaseOnline, /chooseLatestSavePayloadField\(existingPayload, incomingPayload, "garage"\)/);
+  assert.doesNotMatch(firebaseOnline, /customization: latestShell\.customization/);
+  assert.doesNotMatch(firebaseOnline, /garage: latestShell\.garage/);
   assert.doesNotMatch(firebaseOnline, /fail\(error, "chat_listener_failed"\)/);
   assert.match(firebaseOnline, /emit\("save\.synced", \{ payload: mergedPayload \}\)/);
 });
@@ -770,7 +781,7 @@ test("legacy import marker cannot hide downgraded Firebase progress", () => {
   assert.match(script, /if \(currentXp >= markerXp\) \{/);
   assert.match(
     script,
-    /saveMeta: \{\s*updatedAtClient: savedAt,\s*updatedAtMs: Date\.now\(\),\s*\}/,
+    /saveMeta: \{\s*updatedAtClient: savedAt,\s*updatedAtMs: savedAtMs,[\s\S]*customizationUpdatedAtMs:/,
   );
   assert.match(
     script,

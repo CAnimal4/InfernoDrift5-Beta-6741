@@ -105,6 +105,8 @@ page.on("console", (msg) => {
 
 let joinerContext = null;
 let joiner = null;
+let accountMirrorContext = null;
+let accountMirror = null;
 
 try {
   await page.addInitScript(() => {
@@ -232,6 +234,72 @@ try {
       state.online.transport === "firebase"
     );
   }, accountUsername);
+  const accountSyncBeforeGarage = await page.evaluate(() => {
+    const state = JSON.parse(window.render_game_to_text());
+    return Number(state.online.profile?.saveSyncedAt || 0);
+  });
+  const accountGarageMutation = await page.evaluate(() => {
+    window.__infernodriftTestApi.grantGarageCosmeticForTest("bodyId", "monster");
+    const equip = window.__infernodriftTestApi.equipGarageCosmetic("bodyId", "monster");
+    window.__infernodriftTestApi.forceOnlineProgressSync();
+    const state = JSON.parse(window.render_game_to_text());
+    return {
+      equipOk: Boolean(equip?.ok),
+      xp: Number(state.progression?.totalXp || 0),
+      embers: Number(state.progression?.embers || 0),
+      body: window.__infernodriftTestApi.getCarVisualConfigForTest().body,
+    };
+  });
+  assert.equal(accountGarageMutation.equipOk, true);
+  assert.equal(accountGarageMutation.body, "monster");
+  await page.waitForFunction((startedAt) => {
+    const state = JSON.parse(window.render_game_to_text());
+    return Number(state.online.profile?.saveSyncedAt || 0) > Number(startedAt || 0);
+  }, accountSyncBeforeGarage);
+
+  accountMirrorContext = await browser.newContext({
+    viewport: { width: 1280, height: 820 },
+  });
+  accountMirror = await accountMirrorContext.newPage();
+  accountMirror.setDefaultTimeout(30_000);
+  await accountMirror.goto(smokeUrl, { waitUntil: "commit", timeout: 45_000 });
+  await accountMirror.waitForFunction(
+    () => typeof window.render_game_to_text === "function",
+  );
+  await accountMirror.evaluate(() =>
+    window.__infernodriftTestApi.dismissSchoolGateForTest(),
+  );
+  await accountMirror.locator("#start-account-username").fill(accountUsername);
+  await accountMirror.locator("#start-account-password").fill("smoke12345");
+  await accountMirror.locator("#start-account-age").fill("13");
+  await accountMirror.evaluate(() =>
+    document
+      .querySelector("#start-account-submit")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+  );
+  await accountMirror.waitForFunction((username) => {
+    const state = JSON.parse(window.render_game_to_text());
+    return (
+      state.online.authenticated === true &&
+      state.online.username === username &&
+      state.online.transport === "firebase"
+    );
+  }, accountUsername);
+  const mirroredAccountState = await accountMirror.evaluate(() => {
+    const state = JSON.parse(window.render_game_to_text());
+    return {
+      xp: Number(state.progression?.totalXp || 0),
+      embers: Number(state.progression?.embers || 0),
+      body: window.__infernodriftTestApi.getCarVisualConfigForTest().body,
+    };
+  });
+  assert.equal(mirroredAccountState.xp, accountGarageMutation.xp);
+  assert.equal(mirroredAccountState.embers, accountGarageMutation.embers);
+  assert.equal(mirroredAccountState.body, "monster");
+  await accountMirrorContext.close();
+  accountMirror = null;
+  accountMirrorContext = null;
+
   await page.evaluate(() =>
     window.__infernodriftTestApi.openMenuTab("leaderboard"),
   );
@@ -241,7 +309,7 @@ try {
   );
   assert.equal(
     syncedProgressState.progression.totalXp,
-    giftResult.progression.totalXp,
+    accountGarageMutation.xp,
   );
 
   const result = await page.evaluate(() =>
@@ -498,6 +566,7 @@ try {
     ),
   );
 } finally {
+  await accountMirrorContext?.close().catch(() => undefined);
   await cleanupSmokeAccount(joiner);
   await joinerContext?.close().catch(() => undefined);
   await cleanupSmokeAccount(page);

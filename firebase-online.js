@@ -416,6 +416,27 @@ export function chooseLatestSavePayload(existingPayload = {}, incomingPayload = 
   return incomingPayload || existingPayload;
 }
 
+function getPayloadFieldUpdatedAt(payload = {}, fieldName = "") {
+  const explicit = Number(payload?.saveMeta?.[`${fieldName}UpdatedAtMs`]);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  return getPayloadUpdatedAt(payload);
+}
+
+function chooseLatestSavePayloadField(
+  existingPayload = {},
+  incomingPayload = {},
+  fieldName = "",
+) {
+  const existingTime = getPayloadFieldUpdatedAt(existingPayload, fieldName);
+  const incomingTime = getPayloadFieldUpdatedAt(incomingPayload, fieldName);
+  if (!incomingTime && existingTime) return existingPayload;
+  if (!incomingTime) return incomingPayload || existingPayload;
+  if (!existingTime) return incomingPayload;
+  if (incomingTime > existingTime) return incomingPayload;
+  if (existingTime > incomingTime) return existingPayload;
+  return incomingPayload || existingPayload;
+}
+
 function mergeFirebaseChallenge(existing = {}, incoming = {}) {
   if (!existing || typeof existing !== "object") return incoming;
   if (!incoming || typeof incoming !== "object") return existing;
@@ -576,6 +597,12 @@ export function mergeFirebaseSavePayload(
   );
   const bestShell = chooseBestSavePayload(existingPayload, incomingPayload) || incomingPayload;
   const latestShell = chooseLatestSavePayload(existingPayload, incomingPayload) || incomingPayload;
+  const customizationShell =
+    chooseLatestSavePayloadField(existingPayload, incomingPayload, "customization") ||
+    latestShell;
+  const garageShell =
+    chooseLatestSavePayloadField(existingPayload, incomingPayload, "garage") ||
+    latestShell;
   if (latestShell.progressionV2 && Number.isFinite(Number(latestShell.progressionV2.embers))) {
     mergedProgression.embers = Math.max(
       0,
@@ -586,8 +613,12 @@ export function mergeFirebaseSavePayload(
     ...bestShell,
     saveMeta: latestShell.saveMeta || incomingPayload.saveMeta || existingPayload.saveMeta,
     settings: { ...(existingPayload.settings || {}), ...(latestShell.settings || {}) },
-    customization: latestShell.customization || incomingPayload.customization || existingPayload.customization,
-    garage: latestShell.garage || incomingPayload.garage || existingPayload.garage,
+    customization:
+      customizationShell.customization ||
+      incomingPayload.customization ||
+      existingPayload.customization,
+    garage:
+      garageShell.garage || incomingPayload.garage || existingPayload.garage,
     maxTeamCustomization:
       latestShell.maxTeamCustomization ||
       incomingPayload.maxTeamCustomization ||

@@ -2378,6 +2378,8 @@ const onlineState = {
   applyingAccountSync: false,
   lastAccountSyncPayloadAt: 0,
   accountSyncChannel: null,
+  accountCustomizationUpdatedAtMs: 0,
+  accountGarageUpdatedAtMs: 0,
   freshAccountSaveSyncPending: false,
   freshAccountRepairApplied: false,
   profileSnapshot: null,
@@ -3899,8 +3901,8 @@ function equipGarageCosmetic(categoryKey, optionId, { save = true } = {}) {
   customization[categoryKey] = option.id;
   applyPlayerCustomization();
   if (save) {
-    savePersistentState();
     markAccountSaveDirty("garage-equip");
+    savePersistentState();
     syncProgressionToBackend();
   }
   setEffectToast(`${option.name} equipped`, { pulse: 0.22 });
@@ -3932,8 +3934,8 @@ function buyGarageCosmetic(categoryKey, optionId) {
     cosmeticId,
   });
   equipGarageCosmetic(categoryKey, option.id, { save: false });
-  savePersistentState();
   markAccountSaveDirty("garage-buy");
+  savePersistentState();
   syncProgressionToBackend();
   renderProgressPanel();
   refreshCustomizationMenu();
@@ -4036,8 +4038,8 @@ function applyCarClass(classId, { save = true } = {}) {
   });
   applyPlayerCustomization();
   if (save) {
-    savePersistentState();
     markAccountSaveDirty("garage-class");
+    savePersistentState();
     syncProgressionToBackend();
   }
 }
@@ -4050,8 +4052,8 @@ function selectGarageLoadout(loadoutId, { save = true } = {}) {
   copyCustomizationFromLoadout(next);
   applyPlayerCustomization();
   if (save) {
-    savePersistentState();
     markAccountSaveDirty("garage-loadout");
+    savePersistentState();
     syncProgressionToBackend();
   }
 }
@@ -4577,6 +4579,11 @@ function savePersistentState() {
 }
 
 function markAccountSaveDirty(reason = "local-change") {
+  if (String(reason || "").startsWith("garage-")) {
+    const now = Date.now();
+    onlineState.accountCustomizationUpdatedAtMs = now;
+    onlineState.accountGarageUpdatedAtMs = now;
+  }
   if (
     onlineState.profileMode !== "account" ||
     onlineState.guestTemporary ||
@@ -4717,11 +4724,15 @@ function buildPersistentSavePayload() {
   state.progressionV2.totalXp = state.progressionV2.xp;
   state.progressionV2.level = getProgressionLevel();
   const savedAt = new Date().toISOString();
+  const savedAtMs = Date.now();
   state.progressionV2.updatedAtClient = savedAt;
   return {
     saveMeta: {
       updatedAtClient: savedAt,
-      updatedAtMs: Date.now(),
+      updatedAtMs: savedAtMs,
+      customizationUpdatedAtMs:
+        onlineState.accountCustomizationUpdatedAtMs || savedAtMs,
+      garageUpdatedAtMs: onlineState.accountGarageUpdatedAtMs || savedAtMs,
     },
     worldIndex: state.worldIndex,
     levelIndex: state.levelIndex,
@@ -5388,6 +5399,16 @@ function applyPersistentSavePayload(
 ) {
   if (!data || typeof data !== "object") return false;
   try {
+    if (data.saveMeta && typeof data.saveMeta === "object") {
+      onlineState.accountCustomizationUpdatedAtMs = Math.max(
+        onlineState.accountCustomizationUpdatedAtMs || 0,
+        Number(data.saveMeta.customizationUpdatedAtMs) || 0,
+      );
+      onlineState.accountGarageUpdatedAtMs = Math.max(
+        onlineState.accountGarageUpdatedAtMs || 0,
+        Number(data.saveMeta.garageUpdatedAtMs) || 0,
+      );
+    }
     if (data.settings && typeof data.settings === "object") {
       if (typeof data.settings.difficulty === "string")
         settings.difficulty = data.settings.difficulty;
