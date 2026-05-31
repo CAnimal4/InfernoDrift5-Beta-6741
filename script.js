@@ -8022,12 +8022,24 @@ function handleOnlineMessage(raw) {
   } else if (message.type === "queue.joined") {
     onlineState.queue = message;
   } else if (message.type === "room.left") {
+    const leftCode = String(message.code || "");
+    const currentCode = String(onlineState.room?.code || "");
+    if (leftCode && currentCode && leftCode !== currentCode) {
+      debugOnlineThrottled("room_left_ignored", {
+        code: leftCode,
+        currentCode,
+        reason: message.reason || "",
+      }, 0);
+      return;
+    }
     onlineState.room = null;
     onlineState.queue = null;
     onlineState.joinRoomPending = false;
     onlineState.joinRoomPendingCode = "";
     onlineState.roomShared = false;
     onlineState.roomSharePending = false;
+    onlineState.firebaseLiveStatus = "idle";
+    onlineState.firebaseLiveError = "";
     onlineState.remoteSnapshots = [];
     setRemoteHumanPlayers([]);
   } else if (message.type === "chat.message") {

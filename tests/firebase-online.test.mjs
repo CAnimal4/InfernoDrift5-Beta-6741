@@ -710,6 +710,9 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(firebaseOnline, /syncProgress\(payload, \{ silent = false, replace = false \} = \{\}\)/);
   assert.match(firebaseOnline, /replace\s*&&\s*!isBlockedTaintedRepairPayload\(cleanPayload\)/);
   assert.doesNotMatch(firebaseOnline, /replace\s*\?\s*payload\s*:\s*mergeFirebaseSavePayload/);
+  assert.match(firebaseOnline, /await firestore\.getDoc\(ref\)\.catch\(\(\) => null\)/);
+  assert.match(script, /room_left_ignored/);
+  assert.match(script, /onlineState\.firebaseLiveStatus = "idle"/);
   const rules = fs.readFileSync(
     new URL("../firestore.rules", import.meta.url),
     "utf8",

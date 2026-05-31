@@ -2142,7 +2142,13 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     });
     if (!cleanPlayer && !cleanState && staleIds.length === 0) return null;
     await firestore.updateDoc(ref, ...updates);
-    return null;
+    const snapshot = await firestore.getDoc(ref).catch(() => null);
+    return snapshot?.exists()
+      ? mapLobbyDoc({
+          id: snapshot.id,
+          data: () => snapshot.data() || {},
+        })
+      : null;
   }
 
   async function submitFeedback(payload = {}) {
