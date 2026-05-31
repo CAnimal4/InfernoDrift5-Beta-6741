@@ -77,6 +77,11 @@ an explicit one-time admin cleanup path.
 Use `npm run audit:firebase-public -- --summary` to list currently visible
 public rows that the client is ignoring.
 
+Use `SMOKE_URL=<url> npm run smoke:account-xp:target` to run the XP safety smoke
+against a deployed or otherwise already-running build. That smoke seeds dirty
+Clark/local/Firebase-style data in the browser and fails if the rendered profile
+or leaderboard lets `100k+` special-badge XP or Codex contamination through.
+
 Use `npm run cleanup:firebase-public` for a dry-run cleanup plan. To actually
 delete the public test-like rows and contaminated leaderboard score rows, first
 run `firebase login` with project owner/admin access, then run:

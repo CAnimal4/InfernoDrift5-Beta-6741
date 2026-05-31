@@ -26,6 +26,7 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Updated `docs/ACCOUNT_SYNC_XP_SAFETY.md` with the exact post-repair verification command. The remaining raw Firebase cleanup is still admin-gated because this shell has no Firebase owner login or Google OAuth token.
 - Validation for this follow-up: `node --check script.js firebase-online.js firebase-online-core.js scripts/cleanup-firebase-public-data.mjs`, `node --test tests/firebase-online.test.mjs`, `npm run smoke:account-xp`, `npm test`, `npm run build`, and `npm run audit:firebase-public -- --summary` passed. The broad `npm run smoke` browser run hung twice at the existing progression/leaderboard smoke block and was killed so no Playwright browser was left running.
 - Follow-up after live 100k still appeared: tightened special-badge trust again so `90k+` special-badge XP is blocked unless it carries the explicit `admin-reviewed-real-account` marker. Ordinary gameplay evidence like medals/personal bests is no longer enough because the contaminated XP can be attached to a real save. The reviewed repair tool now writes that marker, and verification requires it.
+- Added `npm run smoke:account-xp:target` so the account-XP safety smoke can run directly against cache-busted Pages URLs without starting a local server. Verified it against both live Pages targets after commit `c84d2a8` / mirror `5323b82`.
 
 2026-05-24 Firebase realtime sync repair:
 
