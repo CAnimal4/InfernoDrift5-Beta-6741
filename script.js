@@ -10328,9 +10328,9 @@ function isTestLikeAccountName(value = "") {
   const compact = normalized.replace(/[^a-z0-9]/g, "");
   if (!compact) return false;
   if (TEST_ACCOUNT_NAME_BLOCKLIST.has(compact)) return true;
-  if (/(^|[^a-z])(test|teest|smoke|fresh|runner|pilot)([^a-z]|$)/i.test(normalized))
+  if (/(^|[^a-z])(test|teest|smoke|fresh|runner|pilot|join)([^a-z]|$)/i.test(normalized))
     return true;
-  if (/^(test|teest|smoke|fresh|runner|pilot)[a-z0-9_-]*$/i.test(compact)) return true;
+  if (/^(test|teest|smoke|fresh|runner|pilot|join)[a-z0-9_-]*$/i.test(compact)) return true;
   return compact.length >= 14 && /^[a-z]+$/.test(compact);
 }
 
@@ -25360,6 +25360,10 @@ window.__infernodriftTestApi = {
     renderProgressPanel();
     refreshGamesUi();
     return forceOnlineProgressSync({ force: true });
+  },
+  cleanupSmokeAccountProfileForTest: () => {
+    if (!firebaseOnline?.cleanupTestAccountProfile) return false;
+    return firebaseOnline.cleanupTestAccountProfile();
   },
   normalizeProgressionForTest: (progression = {}) =>
     structuredClone(normalizeProgressionV2(progression)),

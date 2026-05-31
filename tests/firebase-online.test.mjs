@@ -755,7 +755,13 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(firebaseOnline, /payload: safeBestPayload,/);
   assert.match(firebaseOnline, /const canReplaceMissingServerSave =/);
   assert.match(firebaseOnline, /replace && !cleanExistingPayload/);
-  assert.match(firebaseOnline, /canReplaceMissingServerSave[\s\S]{0,120}\?\s*cleanPayload[\s\S]{0,120}:\s*mergeFirebaseSavePayload\(cleanExistingPayload, cleanPayload\)/);
+  assert.match(firebaseOnline, /const canReplaceTestAccountSave =/);
+  assert.match(firebaseOnline, /isFirebaseTestLikeAccountName\(state\.username\)/);
+  assert.match(firebaseOnline, /canReplaceMissingServerSave \|\| canReplaceTestAccountSave[\s\S]{0,120}\?\s*cleanPayload[\s\S]{0,120}:\s*mergeFirebaseSavePayload\(cleanExistingPayload, cleanPayload\)/);
+  assert.match(firebaseOnline, /async function cleanupTestAccountProfile/);
+  assert.match(firebaseOnline, /const archivedUsername = "Archived QA"/);
+  assert.match(firebaseOnline, /cleanupTestAccountProfile,/);
+  assert.match(script, /cleanupSmokeAccountProfileForTest/);
   assert.match(firebaseOnline, /function isBlockedTaintedRepairPayload/);
   assert.match(firebaseOnline, /state\.leaderboardStatus = "repair-needed"/);
   assert.match(firebaseOnline, /function writeProgressPayload\(payload, \{ silent = false \} = \{\}\)/);
@@ -861,9 +867,10 @@ test("Firebase leaderboard hides and stops syncing test-like accounts", () => {
   assert.match(firebaseOnline, /function isFirebaseTestLikeAccountName\(value = ""\)/);
   assert.match(firebaseOnline, /hidden-test-account/);
   assert.match(firebaseOnline, /filter\(\(row\) => !isFirebaseTestLikeAccountName\(row\.username\)\)/);
-  assert.match(firebaseOnline, /\(test\|teest\|smoke\|fresh\|runner\|pilot\)/);
-  assert.match(script, /\(test\|teest\|smoke\|fresh\|runner\|pilot\)/);
+  assert.match(firebaseOnline, /\(test\|teest\|smoke\|fresh\|runner\|pilot\|join\)/);
+  assert.match(script, /\(test\|teest\|smoke\|fresh\|runner\|pilot\|join\)/);
   assert.match(firebaseSmoke, /const accountUsername = `Smoke/);
+  assert.match(firebaseSmoke, /const joinerUsername = `Join/);
   assert.doesNotMatch(firebaseSmoke, /const accountUsername = `Pilot/);
 });
 

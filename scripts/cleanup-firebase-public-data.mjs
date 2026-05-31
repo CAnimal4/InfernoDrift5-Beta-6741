@@ -20,7 +20,7 @@ const VERIFY_REVIEWED_ACCOUNT = process.argv.includes("--verify-reviewed-account
 const OWNER_AUTH = process.argv.includes("--owner-auth");
 
 const TEST_NAME_PATTERN =
-  /^(test|teest|smoke|fresh|runner|pilot|test-removed)[a-z0-9_-]*/i;
+  /^(test|teest|smoke|fresh|runner|pilot|join|test-removed)[a-z0-9_-]*/i;
 const SPECIAL_BADGE_NAMES = new Set([
   "clark",
   "billy",

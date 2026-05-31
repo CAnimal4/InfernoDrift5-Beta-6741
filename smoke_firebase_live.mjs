@@ -82,6 +82,10 @@ async function cleanupSmokeAccount(targetPage) {
         Number(state.progression?.totalXp || 0) === 0
       );
     }, startedAt);
+    const profileCleaned = await targetPage.evaluate(() =>
+      window.__infernodriftTestApi.cleanupSmokeAccountProfileForTest(),
+    );
+    if (!profileCleaned) return false;
     return true;
   } catch (error) {
     console.warn("Smoke account cleanup failed", error?.message || error);
@@ -107,6 +111,7 @@ let joinerContext = null;
 let joiner = null;
 let accountMirrorContext = null;
 let accountMirror = null;
+let hostSmokeAccountCleaned = false;
 
 try {
   await page.addInitScript(() => {
@@ -534,7 +539,11 @@ try {
   });
 
   assert.deepEqual(joinerConsoleErrors, []);
-  await cleanupSmokeAccount(joiner);
+  assert.equal(
+    await cleanupSmokeAccount(joiner),
+    true,
+    "joiner smoke account cleanup should reset progress",
+  );
   await joinerContext.close();
   joiner = null;
   joinerContext = null;
@@ -580,10 +589,21 @@ try {
       2,
     ),
   );
+  hostSmokeAccountCleaned = await cleanupSmokeAccount(page);
+  assert.equal(
+    hostSmokeAccountCleaned,
+    true,
+    "host smoke account cleanup should reset progress",
+  );
 } finally {
   await accountMirrorContext?.close().catch(() => undefined);
   await cleanupSmokeAccount(joiner);
   await joinerContext?.close().catch(() => undefined);
-  await cleanupSmokeAccount(page);
+  const hostCleaned = hostSmokeAccountCleaned
+    ? true
+    : await cleanupSmokeAccount(page);
+  if (page && !page.isClosed() && !hostCleaned) {
+    console.warn("Host smoke account cleanup did not complete before browser close");
+  }
   await browser.close();
 }

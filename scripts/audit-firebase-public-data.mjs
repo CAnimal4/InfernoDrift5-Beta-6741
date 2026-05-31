@@ -5,7 +5,7 @@ const MAX_FETCH_ATTEMPTS = 4;
 const SUMMARY_ONLY = process.argv.includes("--summary");
 
 const TEST_NAME_PATTERN =
-  /^(test|teest|smoke|fresh|runner|pilot|test-removed)[a-z0-9_-]*/i;
+  /^(test|teest|smoke|fresh|runner|pilot|join|test-removed)[a-z0-9_-]*/i;
 const SPECIAL_BADGE_SUSPECT_XP = 90_000;
 const ACCOUNT_PROGRESS_REVIEW_SOURCE = "admin-reviewed-real-account";
 const SPECIAL_BADGE_NAMES = new Set([

@@ -54,9 +54,9 @@ function isFirebaseTestLikeAccountName(value = "") {
   const compact = normalized.replace(/[^a-z0-9]/g, "");
   if (!compact) return false;
   if (FIREBASE_TEST_ACCOUNT_NAME_BLOCKLIST.has(compact)) return true;
-  if (/(^|[^a-z])(test|teest|smoke|fresh|runner|pilot)([^a-z]|$)/i.test(normalized))
+  if (/(^|[^a-z])(test|teest|smoke|fresh|runner|pilot|join)([^a-z]|$)/i.test(normalized))
     return true;
-  if (/^(test|teest|smoke|fresh|runner|pilot)[a-z0-9_-]*$/i.test(compact)) return true;
+  if (/^(test|teest|smoke|fresh|runner|pilot|join)[a-z0-9_-]*$/i.test(compact)) return true;
   return compact.length >= 14 && /^[a-z]+$/.test(compact);
 }
 const FIREBASE_LIVE_STATE_LIMIT = 12000;
@@ -1592,12 +1592,48 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     }
     const canReplaceMissingServerSave =
       replace && !cleanExistingPayload && !isBlockedTaintedRepairPayload(cleanPayload);
+    const canReplaceTestAccountSave =
+      replace &&
+      isFirebaseTestLikeAccountName(state.username) &&
+      !isBlockedTaintedRepairPayload(cleanPayload);
     const mergedPayload = stripUndefinedForFirestore(
-      canReplaceMissingServerSave
+      canReplaceMissingServerSave || canReplaceTestAccountSave
         ? cleanPayload
         : mergeFirebaseSavePayload(cleanExistingPayload, cleanPayload),
     );
     return writeProgressPayload(mergedPayload, { silent });
+  }
+
+  async function cleanupTestAccountProfile() {
+    requireReady();
+    const originalUsername =
+      internals.userProfile?.username || internals.userProfile?.displayName || state.username;
+    if (!state.uid || !isFirebaseTestLikeAccountName(originalUsername)) return false;
+    const { firestore } = internals.sdk;
+    const archivedUsername = "Archived QA";
+    const resetProgress = { schemaVersion: 3, xp: 0, totalXp: 0, embers: 0 };
+    const profile = stripUndefinedForFirestore({
+      uid: state.uid,
+      username: archivedUsername,
+      usernameLower: normalizeFirebaseUsernameKey(archivedUsername),
+      displayName: archivedUsername,
+      isGuest: true,
+      badges: [],
+      age: internals.userProfile?.age || 13,
+      progress: resetProgress,
+      stats: resetProgress,
+      settings: {},
+      cosmetics: {},
+      loadouts: {},
+      lastSeenAt: firestore.serverTimestamp(),
+    });
+    await firestore.setDoc(firestore.doc(internals.db, "users", state.uid), profile, {
+      merge: true,
+    });
+    internals.userProfile = { ...(internals.userProfile || {}), ...profile };
+    state.username = archivedUsername;
+    state.isGuest = true;
+    return true;
   }
 
   async function refreshLeaderboard({ mode = FIREBASE_LEADERBOARD_MODE } = {}) {
@@ -2551,6 +2587,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     logout,
     getProgress,
     syncProgress,
+    cleanupTestAccountProfile,
     refreshLeaderboard,
     submitLeaderboard,
     createLobby,
