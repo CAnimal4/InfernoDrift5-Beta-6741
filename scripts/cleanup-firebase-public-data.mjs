@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { getFirebaseConfig } from "../firebase-config.js";
+import { usernameToFirebaseEmail } from "../firebase-online-core.js";
 
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "infernodrift4-online";
 const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
@@ -12,6 +14,7 @@ const ACCOUNT_PROGRESS_REVIEW_SOURCE = "admin-reviewed-real-account";
 const SPECIAL_BADGE_SUSPECT_XP = 90_000;
 const REPAIR_REVIEWED_ACCOUNT = process.argv.includes("--repair-reviewed-account");
 const VERIFY_REVIEWED_ACCOUNT = process.argv.includes("--verify-reviewed-account");
+const OWNER_AUTH = process.argv.includes("--owner-auth");
 
 const TEST_NAME_PATTERN =
   /^(test|teest|smoke|fresh|runner|pilot|test-removed)[a-z0-9_-]*/i;
@@ -175,6 +178,44 @@ async function patchFirestoreDocument(path, fields, token) {
   return readFirestoreDocument(payload);
 }
 
+async function getOwnerAuthToken(request) {
+  const password =
+    process.env.FIREBASE_REPAIR_OWNER_PASSWORD ||
+    process.env.FIREBASE_OWNER_PASSWORD ||
+    "";
+  if (!password) {
+    throw new Error(
+      "Owner-auth repair requires FIREBASE_REPAIR_OWNER_PASSWORD or FIREBASE_OWNER_PASSWORD in the environment.",
+    );
+  }
+  const config = getFirebaseConfig();
+  if (!config.apiKey) throw new Error("Owner-auth repair requires a Firebase apiKey.");
+  const email = usernameToFirebaseEmail(request.username);
+  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(config.apiKey)}`;
+  const response = await fetchWithRetry(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      email,
+      password,
+      returnSecureToken: true,
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      `Owner auth failed ${response.status}: ${JSON.stringify(payload).slice(0, 400)}`,
+    );
+  }
+  if (payload.localId !== request.uid) {
+    throw new Error(
+      `Owner auth UID mismatch: expected ${request.uid}, got ${payload.localId || "missing"}`,
+    );
+  }
+  if (!payload.idToken) throw new Error("Owner auth did not return an idToken.");
+  return payload.idToken;
+}
+
 function normalizedName(value = "") {
   return String(value || "")
     .trim()
@@ -260,6 +301,12 @@ function getReviewedRepairRequest() {
     throw new Error("--embers must be a non-negative number when provided");
   }
   return { uid, username, xp, embers };
+}
+
+function shouldBuildPublicCleanupPlan(reviewedRepair) {
+  if (!reviewedRepair) return true;
+  if (EXECUTE && process.env.FIREBASE_CLEANUP_CONFIRM === CONFIRM_VALUE) return true;
+  return false;
 }
 
 function hasObsoleteRepairMarker(progression = {}) {
@@ -657,10 +704,15 @@ async function verifyReviewedAccountProgress(request, token) {
   };
 }
 
-const scores = await listDocuments("leaderboards/all-modes/scores");
-const users = await listDocuments("users");
-const plan = makeCleanupPlan({ scores, users });
 const reviewedRepair = getReviewedRepairRequest();
+const buildPublicCleanupPlan = shouldBuildPublicCleanupPlan(reviewedRepair);
+const [scores, users] = buildPublicCleanupPlan
+  ? await Promise.all([
+      listDocuments("leaderboards/all-modes/scores"),
+      listDocuments("users"),
+    ])
+  : [[], []];
+const plan = makeCleanupPlan({ scores, users });
 const output = {
   projectId: PROJECT_ID,
   generatedAt: new Date().toISOString(),
@@ -669,9 +721,11 @@ const output = {
     deleteCount: plan.deletePaths.length,
     reviewCount: plan.reviewPaths.length,
     destructiveActionsRequire: `--execute and FIREBASE_CLEANUP_CONFIRM=${CONFIRM_VALUE}`,
-    reviewedRepairRequires: `--repair-reviewed-account --execute and FIREBASE_REPAIR_CONFIRM=${REPAIR_CONFIRM_VALUE} plus GOOGLE_OAUTH_ACCESS_TOKEN`,
-    reviewedVerifyRequires: `--verify-reviewed-account plus GOOGLE_OAUTH_ACCESS_TOKEN`,
-    firebaseAuthRequired: "Run firebase login with project owner/admin access first.",
+    reviewedRepairRequires: `--repair-reviewed-account --execute and FIREBASE_REPAIR_CONFIRM=${REPAIR_CONFIRM_VALUE} plus GOOGLE_OAUTH_ACCESS_TOKEN, or --owner-auth plus FIREBASE_REPAIR_OWNER_PASSWORD`,
+    reviewedVerifyRequires: `--verify-reviewed-account plus GOOGLE_OAUTH_ACCESS_TOKEN, or --owner-auth plus FIREBASE_REPAIR_OWNER_PASSWORD`,
+    firebaseAuthRequired:
+      "Run firebase login with project owner/admin access, or use --owner-auth for the exact account being repaired.",
+    publicCleanupPlanRead: buildPublicCleanupPlan ? "attempted" : "skipped_for_targeted_reviewed_account",
   },
   deletePaths: plan.deletePaths,
   reviewPaths: plan.reviewPaths,
@@ -726,11 +780,13 @@ if (EXECUTE && reviewedRepair) {
       `Refusing reviewed repair without FIREBASE_REPAIR_CONFIRM=${REPAIR_CONFIRM_VALUE}`,
     );
   }
-  const token = process.env.GOOGLE_OAUTH_ACCESS_TOKEN || process.env.GCLOUD_ACCESS_TOKEN;
+  const token = OWNER_AUTH
+    ? await getOwnerAuthToken(reviewedRepair)
+    : process.env.GOOGLE_OAUTH_ACCESS_TOKEN || process.env.GCLOUD_ACCESS_TOKEN;
   if (!token) {
     printOutputForError();
     throw new Error(
-      "Reviewed repair requires GOOGLE_OAUTH_ACCESS_TOKEN, for example: GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token)",
+      "Reviewed repair requires GOOGLE_OAUTH_ACCESS_TOKEN, for example: GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token), or --owner-auth with FIREBASE_REPAIR_OWNER_PASSWORD.",
     );
   }
   output.reviewedRepairResult = await repairReviewedAccountProgress(
@@ -740,11 +796,13 @@ if (EXECUTE && reviewedRepair) {
 }
 
 if (VERIFY_REVIEWED_ACCOUNT && reviewedRepair) {
-  const token = process.env.GOOGLE_OAUTH_ACCESS_TOKEN || process.env.GCLOUD_ACCESS_TOKEN;
+  const token = OWNER_AUTH
+    ? await getOwnerAuthToken(reviewedRepair)
+    : process.env.GOOGLE_OAUTH_ACCESS_TOKEN || process.env.GCLOUD_ACCESS_TOKEN;
   if (!token) {
     printOutputForError();
     throw new Error(
-      "Reviewed verification requires GOOGLE_OAUTH_ACCESS_TOKEN, for example: GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token)",
+      "Reviewed verification requires GOOGLE_OAUTH_ACCESS_TOKEN, for example: GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token), or --owner-auth with FIREBASE_REPAIR_OWNER_PASSWORD.",
     );
   }
   output.reviewedVerification = await verifyReviewedAccountProgress(

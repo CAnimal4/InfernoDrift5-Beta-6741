@@ -779,6 +779,18 @@ test("Firebase leaderboard hides and stops syncing test-like accounts", () => {
   assert.doesNotMatch(firebaseSmoke, /const accountUsername = `Pilot/);
 });
 
+test("Firebase cleanup supports targeted owner-auth reviewed repair", () => {
+  const cleanupScript = fs.readFileSync(
+    new URL("../scripts/cleanup-firebase-public-data.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(cleanupScript, /--owner-auth/);
+  assert.match(cleanupScript, /signInWithPassword/);
+  assert.match(cleanupScript, /Owner auth UID mismatch/);
+  assert.match(cleanupScript, /skipped_for_targeted_reviewed_account/);
+  assert.match(cleanupScript, /FIREBASE_REPAIR_OWNER_PASSWORD/);
+});
+
 test("Firebase progress sync merges server and device economy state", () => {
   const firebaseOnline = fs.readFileSync(
     new URL("../firebase-online.js", import.meta.url),

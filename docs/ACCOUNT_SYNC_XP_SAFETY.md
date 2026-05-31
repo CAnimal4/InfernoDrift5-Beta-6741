@@ -145,3 +145,35 @@ The public audit can read `users/{uid}` and leaderboard rows. It cannot read
 `progress/{uid}` without owner/admin credentials; a public REST read returning
 `403 Missing or insufficient permissions` is expected and means private progress
 cleanup must be verified by an admin.
+
+If Firebase public collection reads are quota-limited, the targeted reviewed
+repair path can skip the public scan and authenticate as the exact owner account
+instead of requiring Firebase admin login. This still requires independently
+verified XP/Embers and the account password, and it refuses to run if Firebase
+Auth returns a different UID:
+
+```bash
+FIREBASE_REPAIR_OWNER_PASSWORD="<ACCOUNT_PASSWORD>" \
+FIREBASE_REPAIR_CONFIRM=repair-reviewed-real-account \
+npm run cleanup:firebase-public -- \
+  --repair-reviewed-account \
+  --owner-auth \
+  --uid C86jDYuYNWZs5f9g7X1r94DO2cq2 \
+  --username Clark \
+  --xp <KNOWN_GOOD_XP> \
+  --embers <KNOWN_GOOD_EMBERS> \
+  --execute
+```
+
+Verify with the same owner-auth path:
+
+```bash
+FIREBASE_REPAIR_OWNER_PASSWORD="<ACCOUNT_PASSWORD>" \
+npm run cleanup:firebase-public -- \
+  --verify-reviewed-account \
+  --owner-auth \
+  --uid C86jDYuYNWZs5f9g7X1r94DO2cq2 \
+  --username Clark \
+  --xp <KNOWN_GOOD_XP> \
+  --embers <KNOWN_GOOD_EMBERS>
+```
