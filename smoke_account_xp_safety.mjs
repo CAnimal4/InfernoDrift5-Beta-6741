@@ -160,6 +160,72 @@ const dirtySave = {
   const { browser, page } = await openPageWithStorage({});
   const result = await page.evaluate(() => {
     window.__infernodriftTestApi.resetLocalProgressionForTest();
+    window.__infernodriftTestApi.configureOnlineForTest({
+      backendMode: "firebase",
+      username: "Clark",
+    });
+    window.__infernodriftTestApi.simulateOnlineMessageForTest({
+      type: "auth.ok",
+      user: {
+        id: "clark-profile-snapshot-targeted",
+        username: "Clark",
+        account: true,
+        backendMode: "firebase",
+      },
+      sessionToken: "clark-profile-snapshot-targeted",
+      save: { payload: { progressionV2: { xp: 0, totalXp: 0, embers: 0 } } },
+      preferAccountLocal: false,
+    });
+    window.__infernodriftTestApi.simulateOnlineMessageForTest({
+      type: "profile.snapshot",
+      user: {
+        id: "clark-profile-snapshot-targeted",
+        username: "Clark",
+        account: true,
+        backendMode: "firebase",
+        progressRepairHint: {
+          publicProfileTotalXp: 100450,
+          publicProfileRepairSource: "unmarked-cache",
+        },
+      },
+      save: {
+        payload: {
+          progressionV2: {
+            xp: 100450,
+            totalXp: 100450,
+            embers: 1400,
+          },
+        },
+      },
+      preferAccountLocal: false,
+      realtime: true,
+    });
+    const syncResult = window.__infernodriftTestApi.forceOnlineProgressSync();
+    const diagnostics = JSON.parse(window.render_game_to_text());
+    return {
+      syncResult,
+      progression: diagnostics.progression,
+      profile: diagnostics.online.profile,
+    };
+  });
+  assert.equal(result.syncResult, false);
+  assert.equal(result.progression.totalXp, 0);
+  assert.equal(
+    result.progression.accountProgressRepair?.source,
+    "special-badge-tainted-xp-blocked",
+  );
+  assert.equal(
+    result.progression.accountProgressRepair?.blockedTotalXp,
+    100450,
+  );
+  assert.match(result.profile.actionStatus, /admin review/i);
+  await browser.close();
+}
+
+{
+  const { browser, page } = await openPageWithStorage({});
+  const result = await page.evaluate(() => {
+    window.__infernodriftTestApi.resetLocalProgressionForTest();
     window.__infernodriftTestApi.setOnlineUserForTest({
       id: "clark-leaderboard-dirty",
       username: "Clark",
