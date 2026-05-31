@@ -356,11 +356,13 @@ const clarkSpecialProgress = await page.evaluate(() => {
   );
   return JSON.parse(window.render_game_to_text()).progression;
 });
-assert.equal(clarkSpecialProgress.totalXp, 100000);
-assert.equal(clarkSpecialProgress.embers, 9999);
+assert.equal(clarkSpecialProgress.totalXp, 0);
+assert.equal(clarkSpecialProgress.embers, 0);
 assert.equal(clarkSpecialProgress.specialBadgeRepairVersion, undefined);
 assert.equal(clarkSpecialProgress.specialBadgeProgressBaselineXp, undefined);
-assert.ok(clarkSpecialProgress.accountProgressRepair == null);
+assert.equal(clarkSpecialProgress.accountProgressRepair?.source, "special-badge-tainted-xp-blocked");
+assert.equal(clarkSpecialProgress.accountProgressRepair?.blockedTotalXp, 100000);
+assert.equal(clarkSpecialProgress.accountProgressRepair?.blockedEmbers, 9999);
 const clarkUnmarkedProgress = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.setOnlineUserForTest({
@@ -373,9 +375,13 @@ const clarkUnmarkedProgress = await page.evaluate(() => {
   );
   return JSON.parse(window.render_game_to_text()).progression;
 });
-assert.equal(clarkUnmarkedProgress.totalXp, 100000);
-assert.equal(clarkUnmarkedProgress.embers, 9999);
-assert.ok(clarkUnmarkedProgress.accountProgressRepair == null);
+assert.equal(clarkUnmarkedProgress.totalXp, 0);
+assert.equal(clarkUnmarkedProgress.embers, 0);
+assert.equal(clarkUnmarkedProgress.accountProgressRepair?.blockedEmbers, 9999);
+assert.equal(
+  clarkUnmarkedProgress.accountProgressRepair?.markerSource,
+  "unmarked-cache",
+);
 const clarkUnmarkedWithEvidence = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.setOnlineUserForTest({
@@ -395,8 +401,15 @@ const clarkUnmarkedWithEvidence = await page.evaluate(() => {
   );
   return JSON.parse(window.render_game_to_text()).progression;
 });
-assert.equal(clarkUnmarkedWithEvidence.totalXp, 100000);
-assert.ok(clarkUnmarkedWithEvidence.accountProgressRepair == null);
+assert.equal(clarkUnmarkedWithEvidence.totalXp, 0);
+assert.equal(
+  clarkUnmarkedWithEvidence.accountProgressRepair?.source,
+  "special-badge-tainted-xp-blocked",
+);
+assert.equal(
+  clarkUnmarkedWithEvidence.accountProgressRepair?.markerSource,
+  "unmarked-cache",
+);
 const clarkPublicMarkerRepair = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.setOnlineUserForTest({
@@ -425,9 +438,17 @@ const clarkPublicMarkerRepair = await page.evaluate(() => {
   );
   return JSON.parse(window.render_game_to_text()).progression;
 });
-assert.equal(clarkPublicMarkerRepair.totalXp, 100450);
-assert.equal(clarkPublicMarkerRepair.embers, 1200);
-assert.ok(clarkPublicMarkerRepair.accountProgressRepair == null);
+assert.equal(clarkPublicMarkerRepair.totalXp, 0);
+assert.equal(clarkPublicMarkerRepair.embers, 0);
+assert.equal(
+  clarkPublicMarkerRepair.accountProgressRepair?.source,
+  "special-badge-tainted-xp-blocked",
+);
+assert.equal(clarkPublicMarkerRepair.accountProgressRepair?.blockedEmbers, 1200);
+assert.equal(
+  clarkPublicMarkerRepair.accountProgressRepair?.markerSource,
+  "public-profile",
+);
 const clarkAuthEventPublicUnmarkedRepair = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.configureOnlineForTest({
@@ -449,12 +470,10 @@ const clarkAuthEventPublicUnmarkedRepair = await page.evaluate(() => {
     sessionToken: "clark-auth-unmarked",
     save: {
       payload: {
-        saveMeta: { updatedAtMs: 9000, progressionUpdatedAtMs: 9000 },
         progressionV2: {
           xp: 100450,
           totalXp: 100450,
           embers: 1200,
-          updatedAtMs: 9000,
         },
       },
     },
@@ -462,9 +481,20 @@ const clarkAuthEventPublicUnmarkedRepair = await page.evaluate(() => {
     cleanPollutedFresh: false,
   }).progression;
 });
-assert.equal(clarkAuthEventPublicUnmarkedRepair.totalXp, 100450);
+assert.equal(clarkAuthEventPublicUnmarkedRepair.totalXp, 0);
 assert.equal(clarkAuthEventPublicUnmarkedRepair.embers, 0);
-assert.ok(clarkAuthEventPublicUnmarkedRepair.accountProgressRepair == null);
+assert.equal(
+  clarkAuthEventPublicUnmarkedRepair.accountProgressRepair?.source,
+  "special-badge-tainted-xp-blocked",
+);
+assert.equal(
+  clarkAuthEventPublicUnmarkedRepair.accountProgressRepair?.blockedEmbers,
+  1200,
+);
+assert.equal(
+  clarkAuthEventPublicUnmarkedRepair.accountProgressRepair?.markerSource,
+  "public-profile",
+);
 const clarkBlockedRepairDoesNotSync = await page.evaluate(() => {
   const syncResult = window.__infernodriftTestApi.forceOnlineProgressSync();
   const diagnostics = JSON.parse(window.render_game_to_text());
@@ -474,8 +504,16 @@ const clarkBlockedRepairDoesNotSync = await page.evaluate(() => {
     profile: diagnostics.online.profile,
   };
 });
-assert.equal(clarkBlockedRepairDoesNotSync.syncResult, true);
-assert.equal(clarkBlockedRepairDoesNotSync.progression.totalXp, 100450);
+assert.equal(clarkBlockedRepairDoesNotSync.syncResult, false);
+assert.equal(clarkBlockedRepairDoesNotSync.progression.totalXp, 0);
+assert.match(
+  clarkBlockedRepairDoesNotSync.profile.actionStatus,
+  /admin review/i,
+);
+assert.equal(
+  clarkBlockedRepairDoesNotSync.profile.progressDiagnostics[0]?.source,
+  "special-badge-tainted-xp-blocked",
+);
 const clarkContaminationNeedsReviewInsteadOfStaleLocal = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.setOnlineUserForTest({
@@ -501,9 +539,12 @@ const clarkContaminationNeedsReviewInsteadOfStaleLocal = await page.evaluate(() 
 });
 assert.equal(
   clarkContaminationNeedsReviewInsteadOfStaleLocal.totalXp,
-  100450,
+  0,
 );
-assert.ok(clarkContaminationNeedsReviewInsteadOfStaleLocal.accountProgressRepair == null);
+assert.equal(
+  clarkContaminationNeedsReviewInsteadOfStaleLocal.accountProgressRepair?.source,
+  "special-badge-tainted-xp-blocked",
+);
 const codexDoesNotChaseUnmarkedCachedSpecialXp = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.setOnlineUserForTest({
@@ -521,9 +562,12 @@ const codexDoesNotChaseUnmarkedCachedSpecialXp = await page.evaluate(() => {
     leaderboard: diagnostics.online.leaderboard,
   };
 });
-assert.equal(codexDoesNotChaseUnmarkedCachedSpecialXp.progression.totalXp, 100000);
-assert.ok(codexDoesNotChaseUnmarkedCachedSpecialXp.progression.accountProgressRepair == null);
-assert.ok(codexDoesNotChaseUnmarkedCachedSpecialXp.leaderboard[0].xp > 100000);
+assert.equal(codexDoesNotChaseUnmarkedCachedSpecialXp.progression.totalXp, 0);
+assert.equal(
+  codexDoesNotChaseUnmarkedCachedSpecialXp.progression.accountProgressRepair?.markerSource,
+  "unmarked-cache",
+);
+assert.ok(codexDoesNotChaseUnmarkedCachedSpecialXp.leaderboard[0].xp < 90000);
 const specialBadgeStatsAreDisplayOnly = await page.evaluate(() => {
   const usernames = ["MODERATOR", "Joshua", "Tosh_the_Sigma", "Billy", "JFine"];
   return usernames.map((username, index) => {
@@ -581,16 +625,19 @@ const leaderboardRecoveryState = await page.evaluate(() => {
     playerRow: diagnostics.online.leaderboardState.playerRow,
   };
 });
-assert.equal(leaderboardRecoveryState.progression.totalXp, 22000);
-assert.ok(leaderboardRecoveryState.progression.accountProgressRepair == null);
+assert.equal(leaderboardRecoveryState.progression.totalXp, 0);
+assert.equal(
+  leaderboardRecoveryState.progression.accountProgressRepair?.source,
+  "special-badge-tainted-xp-blocked",
+);
 assert.equal(leaderboardRecoveryState.leaderboard[0].username, "ChatGPT (Codex)");
-assert.ok(leaderboardRecoveryState.leaderboard[0].xp > 100000);
+assert.ok(leaderboardRecoveryState.leaderboard[0].xp < 90000);
 assert.equal(
   leaderboardRecoveryState.leaderboard.find((row) => row.username === "Clark")?.quarantined,
-  undefined,
+  true,
 );
-assert.equal(leaderboardRecoveryState.playerRow.quarantined, undefined);
-assert.equal(leaderboardRecoveryState.playerRow.totalXp, 100000);
+assert.equal(leaderboardRecoveryState.playerRow.quarantined, true);
+assert.equal(leaderboardRecoveryState.playerRow.totalXp, 0);
 await page.locator('[data-tab="profile"]').click({ force: true });
 await page.waitForTimeout(150);
 onlineUiState = JSON.parse(

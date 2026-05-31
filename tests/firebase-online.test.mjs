@@ -233,12 +233,12 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
       },
     },
   );
-  assert.equal(unmarkedProfileOnlyContamination.progressionV2.totalXp, 100450);
-  assert.equal(unmarkedProfileOnlyContamination.progressionV2.xp, 100450);
-  assert.equal(unmarkedProfileOnlyContamination.progressionV2.embers, 976);
+  assert.equal(unmarkedProfileOnlyContamination.progressionV2.totalXp, 0);
+  assert.equal(unmarkedProfileOnlyContamination.progressionV2.xp, 0);
+  assert.equal(unmarkedProfileOnlyContamination.progressionV2.embers, 0);
   assert.equal(
-    unmarkedProfileOnlyContamination.progressionV2.accountProgressRepair,
-    undefined,
+    unmarkedProfileOnlyContamination.progressionV2.accountProgressRepair?.source,
+    "special-badge-tainted-xp-blocked",
   );
 
   const hardEarnedButUnreviewedHighXp = repairSavePayloadWithProfileMarker(
@@ -260,10 +260,10 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
       },
     },
   );
-  assert.equal(hardEarnedButUnreviewedHighXp.progressionV2.totalXp, 100450);
+  assert.equal(hardEarnedButUnreviewedHighXp.progressionV2.totalXp, 0);
   assert.equal(
     hardEarnedButUnreviewedHighXp.progressionV2.accountProgressRepair?.source,
-    undefined,
+    "special-badge-tainted-xp-blocked",
   );
 
   const adminReviewedHighXp = repairSavePayloadWithProfileMarker(
@@ -310,10 +310,10 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
       },
     },
   );
-  assert.equal(timestampOnlyReviewMarker.progressionV2.totalXp, 100450);
+  assert.equal(timestampOnlyReviewMarker.progressionV2.totalXp, 0);
   assert.equal(
     timestampOnlyReviewMarker.progressionV2.accountProgressRepair?.source,
-    undefined,
+    "special-badge-tainted-xp-blocked",
   );
 
   const obsoleteCapWithoutMarker = repairSavePayloadWithProfileMarker(
@@ -334,10 +334,13 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
       },
     },
   );
-  assert.equal(obsoleteCapWithoutMarker.progressionV2.totalXp, 22000);
-  assert.equal(obsoleteCapWithoutMarker.progressionV2.xp, 22000);
-  assert.equal(obsoleteCapWithoutMarker.progressionV2.embers, 875);
-  assert.equal(obsoleteCapWithoutMarker.progressionV2.accountProgressRepair, undefined);
+  assert.equal(obsoleteCapWithoutMarker.progressionV2.totalXp, 0);
+  assert.equal(obsoleteCapWithoutMarker.progressionV2.xp, 0);
+  assert.equal(obsoleteCapWithoutMarker.progressionV2.embers, 0);
+  assert.equal(
+    obsoleteCapWithoutMarker.progressionV2.accountProgressRepair?.source,
+    "special-badge-tainted-xp-blocked",
+  );
 
   const contaminatedServer = {
     saveMeta: { updatedAtMs: 5_000 },
@@ -363,10 +366,10 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
     },
   };
   const mergedRepair = mergeFirebaseSavePayload(contaminatedServer, markerStrippedDevice);
-  assert.equal(mergedRepair.progressionV2.totalXp, 100450);
-  assert.equal(mergedRepair.progressionV2.xp, 100450);
-  assert.equal(mergedRepair.worldIndex, 9);
-  assert.equal(mergedRepair.levelIndex, 9);
+  assert.equal(mergedRepair.progressionV2.totalXp, 23175);
+  assert.equal(mergedRepair.progressionV2.xp, 23175);
+  assert.equal(mergedRepair.worldIndex, 2);
+  assert.equal(mergedRepair.levelIndex, 3);
   assert.equal(mergedRepair.progressionV2.specialBadgeProgressSource, undefined);
   assert.equal(mergedRepair.progressionV2.specialBadgeProgressBaselineXp, undefined);
   assert.notEqual(
@@ -383,8 +386,9 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
       specialBadgeProgressBaselineXp: 22000,
     },
   });
-  assert.equal(onlyContaminated.progressionV2.totalXp, 100450);
-  assert.equal(onlyContaminated.progressionV2.xp, 100450);
+  assert.equal(onlyContaminated.progressionV2.totalXp, 0);
+  assert.equal(onlyContaminated.progressionV2.xp, 0);
+  assert.equal(onlyContaminated.progressionV2.embers, 0);
 
   const blockedCloudWithCleanLocal = mergeFirebaseSavePayload(
     {
@@ -428,8 +432,8 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
     newerContaminatedServer,
     olderCleanDevice,
   );
-  assert.equal(mergedNewerDirty.progressionV2.totalXp, 100450);
-  assert.equal(mergedNewerDirty.progressionV2.embers, 976);
+  assert.equal(mergedNewerDirty.progressionV2.totalXp, 23175);
+  assert.equal(mergedNewerDirty.progressionV2.embers, 250);
 
   const newerStaleShell = {
     saveMeta: { updatedAtMs: 20_000, progressionUpdatedAtMs: 2_000 },
@@ -780,12 +784,12 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.match(script, /cleanUnearnedSpecialProgress: Boolean\(message\.user\?\.account\)/);
   assert.match(script, /replaceNextProgressSync = true/);
   assert.match(script, /function sanitizeSpecialBadgeLeaderboardRow\(row = \{\}\)/);
-  assert.match(script, /special-badge-leaderboard-preserved/);
+  assert.match(script, /special-badge-leaderboard-quarantined/);
   assert.doesNotMatch(script, /repairNote: "special-badge-xp-cap"/);
   assert.match(script, /function sanitizeSpecialBadgeProgression\(/);
   assert.doesNotMatch(script, /source:\s*"special-badge-contamination-v1"/);
-  assert.doesNotMatch(script, /source:\s*"special-badge-tainted-xp-blocked"/);
-  assert.doesNotMatch(script, /blocked obsolete badge repair XP/);
+  assert.match(script, /special-badge-tainted-xp-blocked/);
+  assert.match(script, /blocked obsolete badge repair XP/);
   assert.match(script, /function hasReviewedAccountProgress/);
   assert.match(script, /ACCOUNT_PROGRESS_REVIEW_SOURCE/);
   assert.doesNotMatch(script, /special-badge-contamination-quarantine-v2/);

@@ -60,12 +60,18 @@ const dirtySave = {
     };
   }, SAVE_STORAGE_KEY);
   assert.equal(result.progression.clientBuildId, EXPECTED_CLIENT_BUILD_ID);
-  assert.equal(result.progression.totalXp, 100450);
+  assert.equal(result.progression.totalXp, 0);
   assert.equal(result.leaderboard[0]?.username, "ChatGPT (Codex)");
-  assert.ok(result.leaderboard[0]?.xp > 100450);
-  assert.ok(result.progression.accountProgressRepair == null);
-  assert.equal(result.stored.progressionV2?.totalXp, 100450);
-  assert.ok(result.stored.progressionV2?.accountProgressRepair == null);
+  assert.ok(result.leaderboard[0]?.xp < 90000);
+  assert.equal(
+    result.progression.accountProgressRepair?.source,
+    "special-badge-tainted-xp-blocked",
+  );
+  assert.equal(result.stored.progressionV2?.totalXp, 0);
+  assert.equal(
+    result.stored.progressionV2?.accountProgressRepair?.source,
+    "special-badge-tainted-xp-blocked",
+  );
   await browser.close();
 }
 
@@ -104,9 +110,16 @@ const dirtySave = {
     },
     { accountKey },
   );
-  assert.equal(result.progression.totalXp, 100450);
-  assert.equal(result.stored.progressionV2?.totalXp, 100450);
-  assert.ok(result.stored.progressionV2?.accountProgressRepair == null);
+  assert.equal(result.progression.totalXp, 0);
+  assert.equal(result.stored.progressionV2?.totalXp, 0);
+  assert.equal(
+    result.stored.progressionV2?.accountProgressRepair?.source,
+    "special-badge-tainted-xp-blocked",
+  );
+  assert.equal(
+    result.profile.progressDiagnostics[0]?.source,
+    "account-local-save-sanitized",
+  );
   await browser.close();
 }
 
@@ -134,10 +147,13 @@ const dirtySave = {
       stored: JSON.parse(localStorage.getItem(SAVE_STORAGE_KEY) || "{}"),
     };
   }, SAVE_STORAGE_KEY);
-  assert.equal(result.progression.totalXp, 100450);
-  assert.equal(result.progression.embers, 1200);
-  assert.ok(result.progression.accountProgressRepair == null);
-  assert.equal(result.stored.progressionV2?.totalXp, 100450);
+  assert.equal(result.progression.totalXp, 0);
+  assert.equal(result.progression.embers, 0);
+  assert.equal(
+    result.progression.accountProgressRepair?.source,
+    "special-badge-tainted-xp-blocked",
+  );
+  assert.equal(result.stored.progressionV2?.totalXp, 0);
   await browser.close();
 }
 
@@ -201,9 +217,9 @@ const dirtySave = {
       profile: diagnostics.online.profile,
     };
   });
-  assert.equal(result.progression.totalXp, 100450);
-  assert.equal(result.progression.embers, 1400);
-  assert.equal(result.profile.snapshot?.save?.payload?.progressionV2?.embers, 1400);
+  assert.equal(result.progression.totalXp, 23175);
+  assert.equal(result.progression.embers, 250);
+  assert.equal(result.profile.snapshot?.save?.payload?.progressionV2?.embers, 0);
   await browser.close();
 }
 
@@ -244,9 +260,17 @@ const dirtySave = {
       profile: diagnostics.online.profile,
     };
   });
-  assert.equal(result.syncResult, true);
-  assert.equal(result.progression.totalXp, 100450);
-  assert.ok(result.progression.accountProgressRepair == null);
+  assert.equal(result.syncResult, false);
+  assert.equal(result.progression.totalXp, 0);
+  assert.equal(
+    result.progression.accountProgressRepair?.source,
+    "special-badge-tainted-xp-blocked",
+  );
+  assert.equal(
+    result.profile.progressDiagnostics[0]?.source,
+    "special-badge-tainted-xp-blocked",
+  );
+  assert.match(result.profile.actionStatus, /admin review/i);
   await browser.close();
 }
 
@@ -364,25 +388,35 @@ const dirtySave = {
       profile: diagnostics.online.profile,
     };
   });
-  assert.equal(result.syncResult, true);
-  assert.equal(result.progression.totalXp, 100450);
-  assert.ok(result.progression.accountProgressRepair == null);
+  assert.equal(result.syncResult, false);
+  assert.equal(result.progression.totalXp, 0);
   assert.equal(
-    result.profile.snapshot?.save?.payload?.progressionV2?.totalXp,
+    result.progression.accountProgressRepair?.source,
+    "special-badge-tainted-xp-blocked",
+  );
+  assert.equal(
+    result.progression.accountProgressRepair?.blockedTotalXp,
     100450,
   );
   assert.equal(
-    result.profile.snapshot?.save?.payload?.progressionV2?.accountProgressRepair,
-    undefined,
+    result.profile.snapshot?.save?.payload?.progressionV2?.totalXp,
+    0,
+  );
+  assert.equal(
+    result.profile.snapshot?.save?.payload?.progressionV2?.accountProgressRepair
+      ?.source,
+    "special-badge-tainted-xp-blocked",
   );
   assert.equal(
     result.profile.snapshot?.user?.progressRepairHint?.publicProfileTotalXp,
     undefined,
   );
   assert.equal(
-    result.profile.snapshot?.user?.progressRepairHint?.publicProfileTotalXpRedacted,
+    result.profile.snapshot?.user?.progressRepairHint
+      ?.publicProfileTotalXpRedacted,
     true,
   );
+  assert.match(result.profile.actionStatus, /admin review/i);
   await browser.close();
 }
 
@@ -423,13 +457,13 @@ const dirtySave = {
   });
   assert.equal(result.progression.totalXp, 0);
   assert.equal(result.leaderboard[0].username, "ChatGPT (Codex)");
-  assert.ok(result.leaderboard[0].xp > 100450);
+  assert.ok(result.leaderboard[0].xp < 90000);
   assert.equal(
     result.leaderboard.find((row) => row.username === "Clark")?.quarantined,
-    undefined,
+    true,
   );
-  assert.ok(result.playerRow.quarantined == null);
-  assert.equal(result.playerRow.totalXp, 100450);
+  assert.equal(result.playerRow.quarantined, true);
+  assert.equal(result.playerRow.totalXp, 0);
   await browser.close();
 }
 
@@ -452,10 +486,10 @@ const dirtySave = {
     };
   });
   const clark = result.leaderboard.find((row) => row.displayName === "Clark");
-  assert.ok(clark?.quarantined == null);
-  assert.equal(clark?.score, 100450);
+  assert.equal(clark?.quarantined, true);
+  assert.equal(clark?.score, 0);
   assert.equal(result.leaderboard[0].username, "ChatGPT (Codex)");
-  assert.ok(result.leaderboard[0].xp > 100450);
+  assert.ok(result.leaderboard[0].xp < 90000);
   await browser.close();
 }
 
@@ -489,7 +523,6 @@ const dirtySave = {
     (row) => row.username === "ChatGPT (Codex)",
   );
   assert.ok(codex, "Codex row is present");
-  assert.ok(codex.xp > 23175, "Codex stays just ahead of the top real row");
   assert.ok(codex.xp < 90000, "dirty server Codex XP is ignored");
   assert.equal(result.leaderboard[0].username, "ChatGPT (Codex)");
   await browser.close();
