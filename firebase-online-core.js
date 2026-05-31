@@ -383,6 +383,8 @@ export function mapFirebaseError(error) {
   if (
     code.includes("too-many") ||
     code.includes("quota") ||
+    code.includes("resource-exhausted") ||
+    code.includes("resource_exhausted") ||
     code.includes("rate-limit") ||
     code.includes("rate_limited") ||
     code.includes("429")

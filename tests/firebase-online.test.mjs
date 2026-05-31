@@ -468,6 +468,10 @@ test("Firebase error mapping feeds the offline fallback state machine", () => {
     "firebase_rate_limited",
   );
   assert.equal(
+    mapFirebaseError({ code: "resource-exhausted" }),
+    "firebase_rate_limited",
+  );
+  assert.equal(
     mapFirebaseError({ code: "permission-denied" }),
     "permission_denied",
   );
@@ -578,6 +582,7 @@ test("Firebase start account errors distinguish credentials from outages", () =>
     new RegExp("Online services are unavailable" + " on this network"),
   );
   assert.match(script, /firebase_rate_limited/);
+  assert.match(script, /resource\[-_ \]\?exhausted\|quota\|429\|rate/);
 });
 
 test("legacy Cloudflare progress manifest restores old account XP without secrets", () => {

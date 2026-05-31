@@ -7299,8 +7299,16 @@ async function requestFirebaseLeaderboard({ force = false } = {}) {
     syncFirebaseServiceStatus();
     return true;
   } catch (error) {
+    const rawError = String(error?.message || "");
+    const errorCode = /resource[-_ ]?exhausted|quota|429|rate[-_ ]?limit/i.test(
+      rawError,
+    )
+      ? "firebase_rate_limited"
+      : rawError;
+    onlineState.leaderboardSyncedAt =
+      errorCode === "firebase_rate_limited" ? now + 48000 : now;
     onlineState.leaderboardSyncStatus = "firebase-error";
-    onlineState.lastError = describeOnlineError(error?.message || "");
+    onlineState.lastError = describeOnlineError(errorCode || error?.message || "");
     updateOnlineUi();
     return false;
   }
@@ -7470,6 +7478,10 @@ function describeOnlineError(error = "") {
       "Online services did not connect. Try again in a moment, or play Guest Offline.",
     firebase_rate_limited:
       "Online sign-in is busy for a moment. Wait a bit, then tap Retry Online.",
+    resource_exhausted:
+      "Online services are busy for a moment. Wait a bit, then try again.",
+    "resource-exhausted":
+      "Online services are busy for a moment. Wait a bit, then try again.",
     permission_denied:
       "Online services rejected that request. A developer may need to check account and database rules.",
     health_timeout:
