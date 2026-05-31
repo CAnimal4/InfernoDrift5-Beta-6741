@@ -75,6 +75,11 @@ carry inflated Embers too.
   visible players, but it must not write to real player profiles. Its ranking
   logic sanitizes input rows before chasing the top score, so dirty `100k+`
   Clark/cache rows cannot drag Codex up to `100k+`.
+- Account save timestamps are field-specific where needed. Normal progression
+  saves must not refresh `customizationUpdatedAtMs` or `garageUpdatedAtMs`,
+  because an old tab can otherwise make stale equipped cosmetics look newer than
+  the real garage choice from another browser. Those timestamps move only when a
+  garage/customization mutation actually happens.
 
 ## Admin Data Cleanup
 
