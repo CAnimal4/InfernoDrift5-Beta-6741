@@ -876,6 +876,10 @@ test("Firebase cleanup supports targeted owner-auth reviewed repair", () => {
     "utf8",
   );
   assert.match(auditScript, /function gameplayEvidenceSummary\(row = \{\}\)/);
+  assert.match(auditScript, /function highUnreviewedXpFields\(fields = \[\]\)/);
+  assert.match(auditScript, /highUnreviewedLeaderboardRows/);
+  assert.match(auditScript, /highUnreviewedPublicProfiles/);
+  assert.match(auditScript, /manual_review_required_for_high_unreviewed_xp/);
   assert.match(auditScript, /Evidence only, not an automatic repair value/);
   assert.match(auditScript, /function reviewedRepairCommand/);
   assert.match(auditScript, /--xp <KNOWN_GOOD_XP>/);

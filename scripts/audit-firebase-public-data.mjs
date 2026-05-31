@@ -214,6 +214,12 @@ function dirtySpecialBadgeFields(username = "", fields = []) {
   );
 }
 
+function highUnreviewedXpFields(fields = []) {
+  return fields.filter(
+    (field) => field.xp >= SPECIAL_BADGE_SUSPECT_XP && !field.reviewed,
+  );
+}
+
 function scoreXp(row) {
   return numericXp(row.score ?? row.xp ?? row.totalXp);
 }
@@ -308,6 +314,7 @@ function auditScores(scores) {
       const fields = scoreXpFields(row);
       const username = row.username || row.displayName || row.name || "";
       const dirtyFields = dirtySpecialBadgeFields(username, fields);
+      const reviewFields = highUnreviewedXpFields(fields);
       return {
         path: `leaderboards/all-modes/scores/${row.id}`,
         id: row.id,
@@ -316,15 +323,23 @@ function auditScores(scores) {
         score: scoreXp(row),
         xpFields: fields,
         dirtyFields,
+        reviewFields,
         ownerSelfCleanPossible: Boolean(row.uid || row.userId || row.id),
         requiresOwnerSignInOrAdmin: dirtyFields.length > 0,
         reason: dirtyFields.length
           ? "special-badge-contaminated-score"
-          : "test-like-score-row",
+          : isTestLikeName(username)
+            ? "test-like-score-row"
+            : reviewFields.length
+              ? "high-unreviewed-score"
+              : "clean",
       };
     })
     .filter(
-      (row) => row.dirtyFields.length > 0 || isTestLikeName(row.username),
+      (row) =>
+        row.dirtyFields.length > 0 ||
+        row.reviewFields.length > 0 ||
+        isTestLikeName(row.username),
     )
     .sort((a, b) => b.score - a.score || a.username.localeCompare(b.username));
 }
@@ -335,6 +350,7 @@ function auditUsers(users) {
       const username = row.username || row.displayName || "";
       const fields = publicProfileXpFields(row);
       const dirtyFields = dirtySpecialBadgeFields(username, fields);
+      const reviewFields = highUnreviewedXpFields(fields);
       return {
         path: `users/${row.id}`,
         id: row.id,
@@ -342,6 +358,7 @@ function auditUsers(users) {
         xp: profileXp(row),
         xpFields: fields,
         dirtyFields,
+        reviewFields,
         source:
           row.progress?.specialBadgeProgressSource ||
           row.stats?.specialBadgeProgressSource ||
@@ -356,11 +373,18 @@ function auditUsers(users) {
         progressPath: `progress/${row.id}`,
         reason: dirtyFields.length
           ? "special-badge-contaminated-profile"
-          : "test-like-public-user",
+          : isTestLikeName(username)
+            ? "test-like-public-user"
+            : reviewFields.length
+              ? "high-unreviewed-public-user"
+              : "clean",
       };
     })
     .filter(
-      (row) => row.dirtyFields.length > 0 || isTestLikeName(row.username),
+      (row) =>
+        row.dirtyFields.length > 0 ||
+        row.reviewFields.length > 0 ||
+        isTestLikeName(row.username),
     )
     .sort((a, b) => b.xp - a.xp || a.username.localeCompare(b.username));
 }
@@ -372,14 +396,30 @@ const [scoreRead, userRead] = await Promise.all([
 const scores = scoreRead.documents;
 const users = userRead.documents;
 const auditErrors = [scoreRead.error, userRead.error].filter(Boolean);
-const publicLeaderboardRowsToIgnore = auditScores(scores);
-const publicUserRowsToIgnore = auditUsers(users);
+const auditedLeaderboardRows = auditScores(scores);
+const auditedPublicUserRows = auditUsers(users);
+const publicLeaderboardRowsToIgnore = auditedLeaderboardRows.filter((row) =>
+  ["special-badge-contaminated-score", "test-like-score-row"].includes(
+    row.reason,
+  ),
+);
+const publicUserRowsToIgnore = auditedPublicUserRows.filter((row) =>
+  ["special-badge-contaminated-profile", "test-like-public-user"].includes(
+    row.reason,
+  ),
+);
 const contaminatedLeaderboardRows = publicLeaderboardRowsToIgnore.filter(
   (row) => row.reason === "special-badge-contaminated-score",
 );
 const contaminatedPublicProfiles = publicUserRowsToIgnore.filter(
   (row) => row.reason === "special-badge-contaminated-profile",
 );
+const highUnreviewedLeaderboardRows = auditedLeaderboardRows
+  .filter((row) => row.reason === "high-unreviewed-score")
+  .sort((a, b) => b.score - a.score || a.username.localeCompare(b.username));
+const highUnreviewedPublicProfiles = auditedPublicUserRows
+  .filter((row) => row.reason === "high-unreviewed-public-user")
+  .sort((a, b) => b.xp - a.xp || a.username.localeCompare(b.username));
 const testLikeLeaderboardRows = publicLeaderboardRowsToIgnore.filter(
   (row) => row.reason === "test-like-score-row",
 );
@@ -394,16 +434,22 @@ const report = {
     publicUserRowsIgnoredByClient: publicUserRowsToIgnore.length,
     contaminatedLeaderboardRows: contaminatedLeaderboardRows.length,
     contaminatedPublicProfiles: contaminatedPublicProfiles.length,
+    highUnreviewedLeaderboardRows: highUnreviewedLeaderboardRows.length,
+    highUnreviewedPublicProfiles: highUnreviewedPublicProfiles.length,
     testLikeLeaderboardRows: testLikeLeaderboardRows.length,
     testLikePublicProfiles: testLikePublicProfiles.length,
     displayLeakRisk: auditErrors.length
       ? "unknown_public_read_failed"
       : contaminatedLeaderboardRows.length || contaminatedPublicProfiles.length
         ? "guarded_by_client_but_requires_admin_cleanup"
-        : "none_detected",
+        : highUnreviewedLeaderboardRows.length || highUnreviewedPublicProfiles.length
+          ? "manual_review_required_for_high_unreviewed_xp"
+          : "none_detected",
     adminCleanupRequired:
       publicLeaderboardRowsToIgnore.length > 0 ||
       publicUserRowsToIgnore.length > 0 ||
+      highUnreviewedLeaderboardRows.length > 0 ||
+      highUnreviewedPublicProfiles.length > 0 ||
       auditErrors.length > 0,
     cleanupRequires:
       "Firebase owner/admin credentials; production rules block public client deletes.",
@@ -413,8 +459,14 @@ const report = {
   cleanupPlan: {
     deleteLeaderboardScorePaths: publicLeaderboardRowsToIgnore.map((row) => row.path),
     reviewOrDeletePublicUserPaths: publicUserRowsToIgnore.map((row) => row.path),
+    reviewHighXpLeaderboardPaths: highUnreviewedLeaderboardRows.map(
+      (row) => row.path,
+    ),
+    reviewHighXpPublicUserPaths: highUnreviewedPublicProfiles.map(
+      (row) => row.path,
+    ),
     note:
-      "Client-side code ignores these rows. Physical cleanup should be done with admin credentials only.",
+      "Client-side code ignores known test/special contaminated rows. High unreviewed non-special XP is reported for human review before any cleanup.",
   },
   publicLeaderboardRowsToIgnore,
   publicUserRowsToIgnore,
@@ -438,6 +490,12 @@ if (SUMMARY_ONLY) {
             .slice(0, 5)
             .map((row) => row.path),
           testLikePublicProfiles: testLikePublicProfiles
+            .slice(0, 5)
+            .map((row) => row.path),
+          highUnreviewedLeaderboardRows: highUnreviewedLeaderboardRows
+            .slice(0, 5)
+            .map((row) => row.path),
+          highUnreviewedPublicProfiles: highUnreviewedPublicProfiles
             .slice(0, 5)
             .map((row) => row.path),
         },
@@ -466,6 +524,28 @@ if (SUMMARY_ONLY) {
             dirtyFields: row.dirtyFields,
             ownerSelfCleanPossible: row.ownerSelfCleanPossible,
             requiresOwnerSignInOrAdmin: row.requiresOwnerSignInOrAdmin,
+          })),
+        },
+        highUnreviewedDetails: {
+          leaderboard: highUnreviewedLeaderboardRows.slice(0, 8).map((row) => ({
+            path: row.path,
+            uid: row.uid,
+            username: row.username,
+            score: row.score,
+            reviewFields: row.reviewFields,
+            reviewReason:
+              "non-special account has high unreviewed XP; inspect before cleanup",
+          })),
+          publicProfiles: highUnreviewedPublicProfiles.slice(0, 8).map((row) => ({
+            path: row.path,
+            progressPath: row.progressPath,
+            id: row.id,
+            username: row.username,
+            xp: row.xp,
+            evidence: row.evidence,
+            reviewFields: row.reviewFields,
+            reviewReason:
+              "non-special account has high unreviewed XP; inspect before cleanup",
           })),
         },
       },
