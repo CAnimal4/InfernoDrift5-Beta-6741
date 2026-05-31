@@ -5468,7 +5468,10 @@ function applyServerSave(
     replaceProgression: shouldReplaceProgression,
   });
   if (!applied) return false;
-  if (isBlockedTaintedAccountProgression(state.progressionV2)) {
+  const blockedTaintedApplied = isBlockedTaintedAccountProgression(
+    state.progressionV2,
+  );
+  if (blockedTaintedApplied) {
     onlineState.freshAccountSaveSyncPending = true;
     onlineState.replaceNextProgressSync = true;
     onlineState.accountSaveDirty = true;
@@ -5478,8 +5481,10 @@ function applyServerSave(
   renderProgressPanel();
   refreshGamesUi();
   onlineState.saveSyncedAt = Date.now();
-  onlineState.accountSaveDirty = false;
-  onlineState.accountSaveDirtyReason = "";
+  if (!blockedTaintedApplied) {
+    onlineState.accountSaveDirty = false;
+    onlineState.accountSaveDirtyReason = "";
+  }
   savePersistentState();
   return true;
 }
@@ -8012,7 +8017,12 @@ function handleOnlineMessage(raw) {
       `Online as ${onlineState.user?.username || onlineState.username}`,
     );
     onlineState.nextProgressSyncAt =
-      performance.now() + ONLINE_PROGRESS_SYNC_INTERVAL_MS;
+      isBlockedTaintedAccountProgression(state.progressionV2)
+        ? 0
+        : performance.now() + ONLINE_PROGRESS_SYNC_INTERVAL_MS;
+    if (isBlockedTaintedAccountProgression(state.progressionV2)) {
+      setTimeout(() => forceOnlineProgressSync({ force: true }), 0);
+    }
     requestOnlineLeaderboard({ force: true });
     requestOnlineProfile();
     if (onlineState.pendingStartAfterAuth) {
