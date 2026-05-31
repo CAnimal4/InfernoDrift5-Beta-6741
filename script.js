@@ -5303,7 +5303,19 @@ function syncProgressionToBackend() {
       state.progressionV2 = activeRepair.progression;
     }
     const now = performance.now();
-    if (isBlockedTaintedAccountProgression(state.progressionV2)) {
+    const blockedTaintedProgress = isBlockedTaintedAccountProgression(
+      state.progressionV2,
+    );
+    const firebaseServiceStatus = firebaseOnline.getStatus();
+    const canWriteFirebaseAccountProgress =
+      firebaseServiceStatus.authStatus === "signed-in";
+    if (
+      blockedTaintedProgress &&
+      (!canWriteFirebaseAccountProgress ||
+        (!onlineState.freshAccountSaveSyncPending &&
+          !onlineState.replaceNextProgressSync &&
+          !onlineState.accountSaveDirty))
+    ) {
       onlineState.leaderboardSyncStatus = "repair-needed";
       onlineState.profileActionStatus =
         "Account progress needs admin review before it can sync safely.";
@@ -5317,7 +5329,9 @@ function syncProgressionToBackend() {
       ...getCurrentPlayerXpLeaderboardRow(),
       source: "pending",
     };
-    const replace = Boolean(onlineState.replaceNextProgressSync);
+    const replace = Boolean(
+      onlineState.replaceNextProgressSync || blockedTaintedProgress,
+    );
     onlineState.replaceNextProgressSync = false;
     firebaseOnline
       .syncProgress(buildPersistentSavePayload(), { replace })
@@ -5325,6 +5339,12 @@ function syncProgressionToBackend() {
         onlineState.saveSyncedAt = Date.now();
         onlineState.accountSaveDirty = false;
         onlineState.accountSaveDirtyReason = "";
+        onlineState.freshAccountSaveSyncPending = false;
+        if (blockedTaintedProgress) {
+          onlineState.leaderboardSyncStatus = "repair-needed";
+          onlineState.profileActionStatus =
+            "Blocked and quarantined an old XP sync bug. Admin review is still needed before restoring higher progress.";
+        }
         requestOnlineLeaderboard({ force: true });
         syncFirebaseServiceStatus();
         updateOnlineUi();
@@ -5448,6 +5468,12 @@ function applyServerSave(
     replaceProgression: shouldReplaceProgression,
   });
   if (!applied) return false;
+  if (isBlockedTaintedAccountProgression(state.progressionV2)) {
+    onlineState.freshAccountSaveSyncPending = true;
+    onlineState.replaceNextProgressSync = true;
+    onlineState.accountSaveDirty = true;
+    onlineState.accountSaveDirtyReason = "blocked-tainted-progress-repair";
+  }
   renderDailyGiftNotice();
   renderProgressPanel();
   refreshGamesUi();
