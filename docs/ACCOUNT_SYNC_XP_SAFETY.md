@@ -201,6 +201,22 @@ a dirty private save, the correct behavior is for the client to show
 `accountProgressTrust.trusted === false` and avoid cloud writeback until a
 known-good reviewed repair is applied.
 
+The deployed static clients were also smoke-tested with seeded bad local/account
+state and the runtime trust diagnostic enabled:
+
+```bash
+SMOKE_URL='https://canimal4.github.io/InfernoDrift4/?v=90bfe2c' \
+  npm run smoke:account-xp:target
+
+SMOKE_URL='https://canimal4.github.io/InfernoDrift/?v=f28e066' \
+  npm run smoke:account-xp:target
+```
+
+Both returned `account XP safety smoke passed`. This verifies the cache-busted
+Pages builds reject `100k+` special-badge contamination, keep ChatGPT (Codex)
+from chasing the dirty row, and expose `accountProgressTrust` as repair-needed
+for blocked private save simulations.
+
 After the repair, run the reviewed verification command with the same known-good
 values. It reads `progress/{uid}`, `users/{uid}`, and the public leaderboard row
 with admin credentials and fails if any copy still has the wrong XP, wrong
