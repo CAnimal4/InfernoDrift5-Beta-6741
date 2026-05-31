@@ -57,6 +57,16 @@ carry inflated Embers too.
   `admin-reviewed-real-account` progress marker. That keeps a dirty public
   `users/{uid}.progress` row from re-seeding `progress/{uid}` during sign-in or
   sync.
+- Firebase account-profile repair hints also treat the old markerless
+  `22000 XP` / `875 Embers` badge-repair cap as suspicious when it belongs to a
+  special-badge account and has no reviewed marker or gameplay proof. This is
+  important because some older clients stripped the obsolete marker first, then
+  re-saved the cap as if it were normal progress.
+- When the signed-in Firebase client receives a blocked tainted payload and the
+  Firebase SDK is truly authenticated as that account, it is allowed to write
+  the quarantined zero-XP repair payload back to its own `progress/{uid}`. Fake
+  test auth events cannot do this because the write path requires the real
+  Firebase service status to be `signed-in`.
 - Public leaderboard rows are sanitized before display. Suspicious old
   special-badge leaderboard scores and test/smoke/runner/pilot rows are ignored
   client-side.
@@ -124,6 +134,22 @@ npm run cleanup:firebase-public -- \
 Run the same command without `--execute` first to print the dry-run summary.
 Do not use this repair command unless the XP/Ember values are independently
 verified; it is intentionally not an automatic guess.
+
+On 2026-05-31, the public audit could read production again and showed the raw
+Firebase state was still physically dirty even though the client guards were
+active:
+
+- `leaderboards/all-modes/scores/C86jDYuYNWZs5f9g7X1r94DO2cq2.score = 100450`
+  for `Clark`, unreviewed.
+- `users/C86jDYuYNWZs5f9g7X1r94DO2cq2.progress.totalXp`,
+  `users/C86jDYuYNWZs5f9g7X1r94DO2cq2.progress.xp`,
+  `users/C86jDYuYNWZs5f9g7X1r94DO2cq2.stats.totalXp`, and
+  `users/C86jDYuYNWZs5f9g7X1r94DO2cq2.stats.xp` were also `100450`,
+  unreviewed.
+- The cleanup dry run reported hundreds of test-like public rows to delete and
+  `reviewPaths` for Clark's `users/{uid}` and `progress/{uid}` docs. Those
+  require owner/admin credentials or owner-auth repair; the client must not
+  guess the correct XP.
 
 After the repair, run the reviewed verification command with the same known-good
 values. It reads `progress/{uid}`, `users/{uid}`, and the public leaderboard row
