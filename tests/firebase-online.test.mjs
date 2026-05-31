@@ -871,6 +871,10 @@ test("Firebase cleanup supports targeted owner-auth reviewed repair", () => {
   assert.match(cleanupScript, /Owner auth UID mismatch/);
   assert.match(cleanupScript, /skipped_for_targeted_reviewed_account/);
   assert.match(cleanupScript, /FIREBASE_REPAIR_OWNER_PASSWORD/);
+  assert.match(cleanupScript, /SPECIAL_BADGE_OBSOLETE_CAP_XP = 22_000/);
+  assert.match(cleanupScript, /SPECIAL_BADGE_OBSOLETE_CAP_EMBERS = 875/);
+  assert.match(cleanupScript, /FIREBASE_REPAIR_ALLOW_OBSOLETE_CAP/);
+  assert.match(cleanupScript, /allow-obsolete-special-badge-cap/);
   const auditScript = fs.readFileSync(
     new URL("../scripts/audit-firebase-public-data.mjs", import.meta.url),
     "utf8",

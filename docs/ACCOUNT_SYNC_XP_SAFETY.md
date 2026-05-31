@@ -141,6 +141,15 @@ Run the same command without `--execute` first to print the dry-run summary.
 Do not use this repair command unless the XP/Ember values are independently
 verified; it is intentionally not an automatic guess.
 
+The old broken badge repair used `22000 XP` and `875 Embers` as cap-like
+defaults. The cleanup script now refuses to write either of those exact values
+for a special-badge account unless the operator adds the extra environment
+confirmation
+`FIREBASE_REPAIR_ALLOW_OBSOLETE_CAP=allow-obsolete-special-badge-cap`. This is
+deliberately awkward: those values should only be used if they were separately
+verified as the real account state, not because they appeared in an obsolete
+repair marker or baseline.
+
 On 2026-05-31, the public audit could read production again and showed the raw
 Firebase state was still physically dirty even though the client guards were
 active:

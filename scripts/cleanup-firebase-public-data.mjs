@@ -12,6 +12,9 @@ const CONFIRM_VALUE = "delete-public-test-data";
 const REPAIR_CONFIRM_VALUE = "repair-reviewed-real-account";
 const ACCOUNT_PROGRESS_REVIEW_SOURCE = "admin-reviewed-real-account";
 const SPECIAL_BADGE_SUSPECT_XP = 90_000;
+const SPECIAL_BADGE_OBSOLETE_CAP_XP = 22_000;
+const SPECIAL_BADGE_OBSOLETE_CAP_EMBERS = 875;
+const OBSOLETE_CAP_CONFIRM_VALUE = "allow-obsolete-special-badge-cap";
 const REPAIR_REVIEWED_ACCOUNT = process.argv.includes("--repair-reviewed-account");
 const VERIFY_REVIEWED_ACCOUNT = process.argv.includes("--verify-reviewed-account");
 const OWNER_AUTH = process.argv.includes("--owner-auth");
@@ -292,6 +295,10 @@ function getReviewedRepairRequest() {
   const xp = Math.floor(Number(argValue("--xp")));
   const embersRaw = argValue("--embers");
   const embers = embersRaw === "" ? null : Math.floor(Number(embersRaw));
+  const obsoleteCapSelected =
+    isSpecialBadgeName(username) &&
+    (xp === SPECIAL_BADGE_OBSOLETE_CAP_XP ||
+      embers === SPECIAL_BADGE_OBSOLETE_CAP_EMBERS);
   if (!uid || !username || !Number.isFinite(xp) || xp < 0) {
     throw new Error(
       "--repair-reviewed-account requires --uid <uid> --username <username> --xp <non-negative number>",
@@ -300,7 +307,15 @@ function getReviewedRepairRequest() {
   if (embersRaw !== "" && (!Number.isFinite(embers) || embers < 0)) {
     throw new Error("--embers must be a non-negative number when provided");
   }
-  return { uid, username, xp, embers };
+  if (
+    obsoleteCapSelected &&
+    process.env.FIREBASE_REPAIR_ALLOW_OBSOLETE_CAP !== OBSOLETE_CAP_CONFIRM_VALUE
+  ) {
+    throw new Error(
+      `Refusing to use obsolete special-badge repair values (${SPECIAL_BADGE_OBSOLETE_CAP_XP} XP or ${SPECIAL_BADGE_OBSOLETE_CAP_EMBERS} Embers) without FIREBASE_REPAIR_ALLOW_OBSOLETE_CAP=${OBSOLETE_CAP_CONFIRM_VALUE}. Choose independently verified values instead.`,
+    );
+  }
+  return { uid, username, xp, embers, obsoleteCapSelected };
 }
 
 function shouldBuildPublicCleanupPlan(reviewedRepair) {
@@ -723,6 +738,7 @@ const output = {
     destructiveActionsRequire: `--execute and FIREBASE_CLEANUP_CONFIRM=${CONFIRM_VALUE}`,
     reviewedRepairRequires: `--repair-reviewed-account --execute and FIREBASE_REPAIR_CONFIRM=${REPAIR_CONFIRM_VALUE} plus GOOGLE_OAUTH_ACCESS_TOKEN, or --owner-auth plus FIREBASE_REPAIR_OWNER_PASSWORD`,
     reviewedVerifyRequires: `--verify-reviewed-account plus GOOGLE_OAUTH_ACCESS_TOKEN, or --owner-auth plus FIREBASE_REPAIR_OWNER_PASSWORD`,
+    obsoleteCapRepairRequires: `Special-badge repairs using ${SPECIAL_BADGE_OBSOLETE_CAP_XP} XP or ${SPECIAL_BADGE_OBSOLETE_CAP_EMBERS} Embers also require FIREBASE_REPAIR_ALLOW_OBSOLETE_CAP=${OBSOLETE_CAP_CONFIRM_VALUE}`,
     firebaseAuthRequired:
       "Run firebase login with project owner/admin access, or use --owner-auth for the exact account being repaired.",
     publicCleanupPlanRead: buildPublicCleanupPlan ? "attempted" : "skipped_for_targeted_reviewed_account",
@@ -736,6 +752,7 @@ const output = {
         username: reviewedRepair.username,
         xp: reviewedRepair.xp,
         embers: reviewedRepair.embers,
+        obsoleteCapSelected: reviewedRepair.obsoleteCapSelected,
       }
     : null,
 };
