@@ -2964,6 +2964,35 @@ function mergeDailySparksProgress(existing = {}, incoming = {}) {
   };
 }
 
+function getTrustedProgressionEmbersForMerge(progression = {}) {
+  if (!progression || typeof progression !== "object") return null;
+  const repair = progression.accountProgressRepair || {};
+  const xp = Math.max(
+    0,
+    Math.floor(Number(progression.totalXp ?? progression.xp) || 0),
+  );
+  if (repair.source === "special-badge-tainted-xp-blocked") return null;
+  if (hasSpecialBadgeRepairMarker(progression) && xp >= SPECIAL_BADGE_SUSPECT_XP)
+    return null;
+  const embers = Number(progression.embers);
+  return Number.isFinite(embers) ? Math.max(0, Math.floor(embers)) : null;
+}
+
+function chooseTrustedProgressionEmbersForMerge(existing = {}, incoming = {}) {
+  const candidates = [existing, incoming]
+    .map((progression) => ({
+      embers: getTrustedProgressionEmbersForMerge(progression),
+      updatedAtMs: Math.max(
+        0,
+        Number(progression?.updatedAtMs) || 0,
+      ),
+    }))
+    .filter((candidate) => Number.isFinite(candidate.embers));
+  if (!candidates.length) return 0;
+  candidates.sort((a, b) => a.updatedAtMs - b.updatedAtMs);
+  return candidates.at(-1).embers;
+}
+
 function mergeProgressionV2(current, incoming) {
   const existing = normalizeProgressionV2(current);
   const next = normalizeProgressionV2(incoming);
@@ -2994,7 +3023,7 @@ function mergeProgressionV2(current, incoming) {
     xp: totalXp,
     totalXp,
     level: getLevelFromXP(totalXp),
-    embers: Math.max(0, Math.floor(Number(latest.embers) || 0)),
+    embers: chooseTrustedProgressionEmbersForMerge(existing, next),
     medals: { ...existing.medals, ...next.medals },
     personalBests: { ...existing.personalBests, ...next.personalBests },
     ghostSamples: { ...existing.ghostSamples, ...next.ghostSamples },
@@ -5097,10 +5126,15 @@ function repairSpecialBadgeContaminatedProgression(
       xp: 0,
       totalXp: 0,
       level: getLevelFromXP(0),
+      embers: 0,
       accountProgressRepair: {
         source: "special-badge-tainted-xp-blocked",
         username,
         blockedTotalXp: currentXp,
+        blockedEmbers: Math.max(
+          0,
+          Math.floor(Number(cleaned.progression?.embers) || 0),
+        ),
         markerSource,
         requiresReview: true,
         repairedAt: new Date().toISOString(),

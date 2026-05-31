@@ -357,11 +357,12 @@ const clarkSpecialProgress = await page.evaluate(() => {
   return JSON.parse(window.render_game_to_text()).progression;
 });
 assert.equal(clarkSpecialProgress.totalXp, 0);
-assert.equal(clarkSpecialProgress.embers, 9999);
+assert.equal(clarkSpecialProgress.embers, 0);
 assert.equal(clarkSpecialProgress.specialBadgeRepairVersion, undefined);
 assert.equal(clarkSpecialProgress.specialBadgeProgressBaselineXp, undefined);
 assert.equal(clarkSpecialProgress.accountProgressRepair?.source, "special-badge-tainted-xp-blocked");
 assert.equal(clarkSpecialProgress.accountProgressRepair?.blockedTotalXp, 100000);
+assert.equal(clarkSpecialProgress.accountProgressRepair?.blockedEmbers, 9999);
 const clarkUnmarkedProgress = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.setOnlineUserForTest({
@@ -375,7 +376,8 @@ const clarkUnmarkedProgress = await page.evaluate(() => {
   return JSON.parse(window.render_game_to_text()).progression;
 });
 assert.equal(clarkUnmarkedProgress.totalXp, 0);
-assert.equal(clarkUnmarkedProgress.embers, 9999);
+assert.equal(clarkUnmarkedProgress.embers, 0);
+assert.equal(clarkUnmarkedProgress.accountProgressRepair?.blockedEmbers, 9999);
 assert.equal(
   clarkUnmarkedProgress.accountProgressRepair?.markerSource,
   "unmarked-cache",
@@ -437,11 +439,12 @@ const clarkPublicMarkerRepair = await page.evaluate(() => {
   return JSON.parse(window.render_game_to_text()).progression;
 });
 assert.equal(clarkPublicMarkerRepair.totalXp, 0);
-assert.equal(clarkPublicMarkerRepair.embers, 1200);
+assert.equal(clarkPublicMarkerRepair.embers, 0);
 assert.equal(
   clarkPublicMarkerRepair.accountProgressRepair?.source,
   "special-badge-tainted-xp-blocked",
 );
+assert.equal(clarkPublicMarkerRepair.accountProgressRepair?.blockedEmbers, 1200);
 assert.equal(
   clarkPublicMarkerRepair.accountProgressRepair?.markerSource,
   "public-profile",
@@ -479,10 +482,14 @@ const clarkAuthEventPublicUnmarkedRepair = await page.evaluate(() => {
   }).progression;
 });
 assert.equal(clarkAuthEventPublicUnmarkedRepair.totalXp, 0);
-assert.equal(clarkAuthEventPublicUnmarkedRepair.embers, 1200);
+assert.equal(clarkAuthEventPublicUnmarkedRepair.embers, 0);
 assert.equal(
   clarkAuthEventPublicUnmarkedRepair.accountProgressRepair?.source,
   "special-badge-tainted-xp-blocked",
+);
+assert.equal(
+  clarkAuthEventPublicUnmarkedRepair.accountProgressRepair?.blockedEmbers,
+  1200,
 );
 assert.equal(
   clarkAuthEventPublicUnmarkedRepair.accountProgressRepair?.markerSource,

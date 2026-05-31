@@ -324,9 +324,14 @@ export function repairSavePayloadWithProfileMarker(payload = null, profile = {})
         ...cleanProgression,
         xp: 0,
         totalXp: 0,
+        embers: 0,
         accountProgressRepair: {
           source: "special-badge-tainted-xp-blocked",
           blockedTotalXp: rawXp,
+          blockedEmbers: Math.max(
+            0,
+            Math.floor(Number(cleanProgression.embers) || 0),
+          ),
           markerSource,
           requiresReview: true,
         },
@@ -521,6 +526,37 @@ function getTrustedFirebaseProgressionXp(progression = {}) {
     : xp;
 }
 
+function getTrustedFirebaseProgressionEmbers(progression = {}) {
+  if (!progression || typeof progression !== "object") return null;
+  const xp = getProgressionXpValue(progression);
+  const repair = progression.accountProgressRepair || {};
+  if (repair.source === "special-badge-tainted-xp-blocked") return null;
+  if (
+    hasObsoleteSpecialBadgeRepairMarker(progression) &&
+    xp >= SPECIAL_BADGE_CONTAMINATED_XP_THRESHOLD
+  ) {
+    return null;
+  }
+  const embers = Number(progression.embers);
+  return Number.isFinite(embers) ? Math.max(0, Math.floor(embers)) : null;
+}
+
+function chooseTrustedFirebaseProgressionForEmbers(existing = {}, incoming = {}) {
+  const candidates = [existing, incoming]
+    .map((progression) => ({
+      progression,
+      embers: getTrustedFirebaseProgressionEmbers(progression),
+      updatedAtMs: Math.max(
+        0,
+        Number(progression?.updatedAtMs) || 0,
+      ),
+    }))
+    .filter((candidate) => Number.isFinite(candidate.embers));
+  if (!candidates.length) return { embers: 0 };
+  candidates.sort((a, b) => a.updatedAtMs - b.updatedAtMs);
+  return candidates.at(-1);
+}
+
 function getMergedFirebaseProgressionXp(existing = {}, incoming = {}) {
   const trustedValues = [
     getTrustedFirebaseProgressionXp(existing),
@@ -536,6 +572,10 @@ export function mergeFirebaseProgression(existing = {}, incoming = {}) {
     { progressionV2: incoming },
   ).progressionV2 || incoming || existing;
   const xp = getMergedFirebaseProgressionXp(existing, incoming);
+  const trustedEmbers = chooseTrustedFirebaseProgressionForEmbers(
+    existing,
+    incoming,
+  );
   const dailyGift =
     existing.dailyGift?.seed && existing.dailyGift.seed === incoming.dailyGift?.seed
       ? {
@@ -553,7 +593,7 @@ export function mergeFirebaseProgression(existing = {}, incoming = {}) {
     ...incoming,
     xp,
     totalXp: xp,
-    embers: Math.max(0, Math.floor(Number(latestProgression.embers) || 0)),
+    embers: trustedEmbers.embers,
     medals: { ...(existing.medals || {}), ...(incoming.medals || {}) },
     personalBests: {
       ...(existing.personalBests || {}),
@@ -625,10 +665,13 @@ export function mergeFirebaseSavePayload(
   const garageShell =
     chooseLatestSavePayloadField(existingPayload, incomingPayload, "garage") ||
     latestShell;
-  if (latestShell.progressionV2 && Number.isFinite(Number(latestShell.progressionV2.embers))) {
+  const trustedLatestShellEmbers = getTrustedFirebaseProgressionEmbers(
+    latestShell.progressionV2 || {},
+  );
+  if (Number.isFinite(trustedLatestShellEmbers)) {
     mergedProgression.embers = Math.max(
       0,
-      Math.floor(Number(latestShell.progressionV2.embers) || 0),
+      Math.floor(Number(trustedLatestShellEmbers) || 0),
     );
   }
   return {

@@ -148,11 +148,78 @@ const dirtySave = {
     };
   }, SAVE_STORAGE_KEY);
   assert.equal(result.progression.totalXp, 0);
+  assert.equal(result.progression.embers, 0);
   assert.equal(
     result.progression.accountProgressRepair?.source,
     "special-badge-tainted-xp-blocked",
   );
   assert.equal(result.stored.progressionV2?.totalXp, 0);
+  await browser.close();
+}
+
+{
+  const { browser, page } = await openPageWithStorage({});
+  const result = await page.evaluate(() => {
+    window.__infernodriftTestApi.resetLocalProgressionForTest();
+    window.__infernodriftTestApi.configureOnlineForTest({
+      backendMode: "firebase",
+      username: "Clark",
+    });
+    window.__infernodriftTestApi.simulateOnlineMessageForTest({
+      type: "auth.ok",
+      user: {
+        id: "clark-clean-before-dirty-profile",
+        username: "Clark",
+        account: true,
+        backendMode: "firebase",
+      },
+      sessionToken: "clark-clean-before-dirty-profile",
+      save: {
+        payload: {
+          progressionV2: {
+            xp: 23175,
+            totalXp: 23175,
+            embers: 250,
+            updatedAtMs: 8000,
+          },
+        },
+      },
+      preferAccountLocal: false,
+    });
+    window.__infernodriftTestApi.simulateOnlineMessageForTest({
+      type: "profile.snapshot",
+      user: {
+        id: "clark-clean-before-dirty-profile",
+        username: "Clark",
+        account: true,
+        backendMode: "firebase",
+        progressRepairHint: {
+          publicProfileTotalXp: 100450,
+          publicProfileRepairSource: "unmarked-cache",
+        },
+      },
+      save: {
+        payload: {
+          progressionV2: {
+            xp: 100450,
+            totalXp: 100450,
+            embers: 1400,
+            updatedAtMs: 9000,
+          },
+        },
+      },
+      preferAccountLocal: false,
+      realtime: true,
+    });
+    const diagnostics = JSON.parse(window.render_game_to_text());
+    return {
+      progression: diagnostics.progression,
+      profile: diagnostics.online.profile,
+    };
+  });
+  assert.equal(result.progression.totalXp, 23175);
+  assert.equal(result.progression.embers, 250);
+  assert.equal(result.profile.snapshot?.save?.payload?.progressionV2?.embers, 0);
   await browser.close();
 }
 
