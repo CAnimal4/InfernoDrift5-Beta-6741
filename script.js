@@ -4769,8 +4769,8 @@ function buildPersistentSavePayload() {
       updatedAtClient: savedAt,
       updatedAtMs: savedAtMs,
       customizationUpdatedAtMs:
-        onlineState.accountCustomizationUpdatedAtMs || savedAtMs,
-      garageUpdatedAtMs: onlineState.accountGarageUpdatedAtMs || savedAtMs,
+        onlineState.accountCustomizationUpdatedAtMs || 0,
+      garageUpdatedAtMs: onlineState.accountGarageUpdatedAtMs || 0,
     },
     worldIndex: state.worldIndex,
     levelIndex: state.levelIndex,
@@ -25274,6 +25274,7 @@ window.__infernodriftTestApi = {
   },
   normalizeProgressionForTest: (progression = {}) =>
     structuredClone(normalizeProgressionV2(progression)),
+  buildPersistentSaveForTest: () => structuredClone(buildPersistentSavePayload()),
   buildFreshAccountSaveForTest: () => structuredClone(buildFreshAccountSavePayload()),
   isPollutedFreshAccountSaveForTest: (payload = {}) =>
     isPollutedFreshAccountPayload(payload),

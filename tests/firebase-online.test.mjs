@@ -882,6 +882,8 @@ test("legacy import marker cannot hide downgraded Firebase progress", () => {
     script,
     /saveMeta: \{\s*updatedAtClient: savedAt,\s*updatedAtMs: savedAtMs,[\s\S]*customizationUpdatedAtMs:/,
   );
+  assert.doesNotMatch(script, /customizationUpdatedAtMs:[\s\S]{0,80}\|\| savedAtMs/);
+  assert.doesNotMatch(script, /garageUpdatedAtMs:[\s\S]{0,80}\|\| savedAtMs/);
   assert.match(
     script,
     /dailySparks: mergeDailySparksProgress\(existing\.dailySparks, next\.dailySparks\)/,

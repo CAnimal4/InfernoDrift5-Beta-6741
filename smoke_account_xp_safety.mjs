@@ -211,6 +211,28 @@ const dirtySave = {
   const { browser, page } = await openPageWithStorage({});
   const result = await page.evaluate(() => {
     window.__infernodriftTestApi.resetLocalProgressionForTest();
+    const before = window.__infernodriftTestApi.buildPersistentSaveForTest();
+    window.__infernodriftTestApi.grantGarageCosmeticForTest("bodyId", "monster");
+    window.__infernodriftTestApi.equipGarageCosmetic("bodyId", "monster");
+    const after = window.__infernodriftTestApi.buildPersistentSaveForTest();
+    return {
+      before: before.saveMeta,
+      after: after.saveMeta,
+      bodyId: after.customization.bodyId,
+    };
+  });
+  assert.equal(result.before.customizationUpdatedAtMs, 0);
+  assert.equal(result.before.garageUpdatedAtMs, 0);
+  assert.ok(result.after.customizationUpdatedAtMs > 0);
+  assert.ok(result.after.garageUpdatedAtMs > 0);
+  assert.equal(result.bodyId, "monster");
+  await browser.close();
+}
+
+{
+  const { browser, page } = await openPageWithStorage({});
+  const result = await page.evaluate(() => {
+    window.__infernodriftTestApi.resetLocalProgressionForTest();
     window.__infernodriftTestApi.configureOnlineForTest({
       backendMode: "firebase",
       username: "Clark",
