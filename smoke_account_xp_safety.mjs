@@ -53,10 +53,13 @@ const dirtySave = {
     const diagnostics = JSON.parse(window.render_game_to_text());
     return {
       progression: diagnostics.progression,
+      leaderboard: diagnostics.online.leaderboard,
       stored: JSON.parse(localStorage.getItem(SAVE_STORAGE_KEY) || "{}"),
     };
   }, SAVE_STORAGE_KEY);
   assert.equal(result.progression.totalXp, 0);
+  assert.equal(result.leaderboard[0]?.username, "ChatGPT (Codex)");
+  assert.ok(result.leaderboard[0]?.xp < 90000);
   assert.equal(
     result.progression.accountProgressRepair?.source,
     "special-badge-tainted-xp-blocked",

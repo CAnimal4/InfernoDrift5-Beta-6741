@@ -680,6 +680,8 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.doesNotMatch(script, /special-badge-contamination-quarantine-v2/);
   assert.doesNotMatch(script, /repairXp:\s*22000/i);
   assert.doesNotMatch(script, /maxEmbers:\s*875/i);
+  assert.doesNotMatch(script, /preservedLocalTotalXp/);
+  assert.doesNotMatch(script, /getCleanAccountLocalProgressionXp/);
   assert.doesNotMatch(script, /\["billy",\s*\{\s*repairXp:/i);
   assert.doesNotMatch(script, /\["jfine",\s*\{\s*repairXp:/i);
   assert.match(script, /function hasEarnedSpecialProgressAfterRepair\(/);

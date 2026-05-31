@@ -5029,18 +5029,6 @@ function repairSpecialBadgeContaminatedProgression(
     0,
     Math.floor(Number(progress.totalXp ?? progress.xp) || 0),
   );
-  const loadedProgress = state.progressionV2 || {};
-  const loadedXp = Math.max(
-    0,
-    Math.floor(Number(loadedProgress.totalXp ?? loadedProgress.xp) || 0),
-  );
-  const cleanLoadedXp =
-    !hasSpecialBadgeRepairMarker(loadedProgress) &&
-    loadedXp > 0 &&
-    loadedXp < SPECIAL_BADGE_SUSPECT_XP
-      ? loadedXp
-      : 0;
-  const cleanLocalAccountXp = cleanLoadedXp ? 0 : getCleanAccountLocalProgressionXp();
   const shouldBlockTaintedXp =
     currentXp >= SPECIAL_BADGE_SUSPECT_XP &&
     !hasReviewedAccountProgress(progress) &&
@@ -5049,7 +5037,6 @@ function repairSpecialBadgeContaminatedProgression(
       hintHasUnmarkedProfileRepair ||
       isSpecialBadgeAccountUsername(username));
   if (shouldBlockTaintedXp) {
-    const safeXp = cleanLoadedXp || cleanLocalAccountXp;
     const markerSource = progressHasMarker
       ? "progress-payload"
       : hintHasMarker
@@ -5059,14 +5046,13 @@ function repairSpecialBadgeContaminatedProgression(
         : "unmarked-cache";
     const safeProgression = {
       ...cleaned.progression,
-      xp: safeXp,
-      totalXp: safeXp,
-      level: getLevelFromXP(safeXp),
+      xp: 0,
+      totalXp: 0,
+      level: getLevelFromXP(0),
       accountProgressRepair: {
         source: "special-badge-tainted-xp-blocked",
         username,
         blockedTotalXp: currentXp,
-        preservedLocalTotalXp: safeXp || undefined,
         markerSource,
         requiresReview: true,
         repairedAt: new Date().toISOString(),
@@ -5076,17 +5062,14 @@ function repairSpecialBadgeContaminatedProgression(
       source: "special-badge-tainted-xp-blocked",
       username,
       oldXp: currentXp,
-      newXp: safeXp,
-      preservedLocalTotalXp: safeXp || undefined,
+      newXp: 0,
       reason:
-        "blocked obsolete badge repair XP from becoming active account progress",
+        "blocked obsolete badge repair XP; admin review is required before restoring any higher value",
       markerSource,
     });
     if (onlineState.profileMode === "account") {
       onlineState.profileActionStatus =
-        cleanLoadedXp > 0
-          ? "Blocked an old account XP sync bug and kept your clean local progress."
-          : "Blocked an old account XP sync bug. This account needs admin progress review.";
+        "Blocked an old account XP sync bug. This account needs admin progress review.";
     }
     return {
       progression: safeProgression,
@@ -5170,18 +5153,6 @@ function isBlockedTaintedAccountProgression(progression = {}) {
     getProgressionTotalXp(progression) === 0 &&
     Math.max(0, Number(progression?.accountProgressRepair?.blockedTotalXp) || 0) > 0
   );
-}
-
-function getCleanAccountLocalProgressionXp() {
-  const payload = readAccountSavePayload();
-  const progression = payload?.progressionV2;
-  if (!progression || typeof progression !== "object") return 0;
-  if (hasSpecialBadgeRepairMarker(progression)) return 0;
-  const xp = Math.max(
-    0,
-    Math.floor(Number(progression.totalXp ?? progression.xp) || 0),
-  );
-  return xp > 0 && xp < SPECIAL_BADGE_SUSPECT_XP ? xp : 0;
 }
 
 function hasProgressionPlayEvidence(progression = {}) {
@@ -9994,8 +9965,9 @@ function makeCodexLeaderboardRow(xp = codexLeaderboardXp) {
 }
 
 function ensureCodexAlwaysFirst(rows = [], { random = Math.random } = {}) {
-  const realRows = rows.filter((row) => row && !isCodexLeaderboardRow(row));
-  const existingCodex = rows.find(isCodexLeaderboardRow);
+  const safeRows = sanitizeOnlineLeaderboardRows(rows);
+  const realRows = safeRows.filter((row) => row && !isCodexLeaderboardRow(row));
+  const existingCodex = safeRows.find(isCodexLeaderboardRow);
   const existingXp = getLeaderboardXp(existingCodex);
   if (existingXp > 0 && existingXp < SPECIAL_BADGE_SUSPECT_XP) {
     codexLeaderboardXp = Math.max(CODEX_LEADERBOARD_BASELINE_XP, existingXp);

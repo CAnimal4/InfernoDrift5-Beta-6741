@@ -507,10 +507,10 @@ assert.equal(
   clarkBlockedRepairDoesNotSync.profile.progressDiagnostics[0]?.source,
   "special-badge-tainted-xp-blocked",
 );
-const clarkCleanLocalBeatsContamination = await page.evaluate(() => {
+const clarkContaminationNeedsReviewInsteadOfStaleLocal = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.setOnlineUserForTest({
-    id: "clark-clean-local",
+    id: "clark-stale-local",
     username: "Clark",
     progressRepairHint: {
       specialBadgeRepairVersion: "2026-05-23-badge-xp-repair-v3",
@@ -530,10 +530,13 @@ const clarkCleanLocalBeatsContamination = await page.evaluate(() => {
   );
   return JSON.parse(window.render_game_to_text()).progression;
 });
-assert.equal(clarkCleanLocalBeatsContamination.totalXp, 28000);
 assert.equal(
-  clarkCleanLocalBeatsContamination.accountProgressRepair?.preservedLocalTotalXp,
-  28000,
+  clarkContaminationNeedsReviewInsteadOfStaleLocal.totalXp,
+  0,
+);
+assert.equal(
+  clarkContaminationNeedsReviewInsteadOfStaleLocal.accountProgressRepair?.source,
+  "special-badge-tainted-xp-blocked",
 );
 const codexDoesNotChaseUnmarkedCachedSpecialXp = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
@@ -615,8 +618,11 @@ const leaderboardRecoveryState = await page.evaluate(() => {
     playerRow: diagnostics.online.leaderboardState.playerRow,
   };
 });
-assert.equal(leaderboardRecoveryState.progression.totalXp, 22000);
-assert.equal(leaderboardRecoveryState.progression.embers, 875);
+assert.equal(leaderboardRecoveryState.progression.totalXp, 0);
+assert.equal(
+  leaderboardRecoveryState.progression.accountProgressRepair?.source,
+  "special-badge-tainted-xp-blocked",
+);
 assert.equal(leaderboardRecoveryState.leaderboard[0].username, "ChatGPT (Codex)");
 assert.ok(leaderboardRecoveryState.leaderboard[0].xp < 90000);
 assert.equal(
