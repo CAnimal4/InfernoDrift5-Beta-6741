@@ -67,6 +67,10 @@ const dirtySave = {
     result.progression.accountProgressRepair?.source,
     "special-badge-tainted-xp-blocked",
   );
+  assert.equal(result.progression.accountProgressTrust?.trusted, false);
+  assert.equal(result.progression.accountProgressTrust?.cloudSyncAllowed, false);
+  assert.equal(result.progression.accountProgressTrust?.repairNeeded, true);
+  assert.equal(result.progression.accountProgressTrust?.blockedTotalXp, 100450);
   assert.equal(result.stored.progressionV2?.totalXp, 0);
   assert.equal(
     result.stored.progressionV2?.accountProgressRepair?.source,
@@ -397,6 +401,22 @@ const dirtySave = {
   assert.equal(
     result.progression.accountProgressRepair?.blockedTotalXp,
     100450,
+  );
+  assert.deepEqual(
+    {
+      trusted: result.progression.accountProgressTrust?.trusted,
+      cloudSyncAllowed:
+        result.progression.accountProgressTrust?.cloudSyncAllowed,
+      repairNeeded: result.progression.accountProgressTrust?.repairNeeded,
+      blockedTotalXp:
+        result.progression.accountProgressTrust?.blockedTotalXp,
+    },
+    {
+      trusted: false,
+      cloudSyncAllowed: false,
+      repairNeeded: true,
+      blockedTotalXp: 100450,
+    },
   );
   assert.equal(
     result.profile.snapshot?.save?.payload?.progressionV2?.totalXp,

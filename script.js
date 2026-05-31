@@ -5298,6 +5298,27 @@ function isBlockedTaintedAccountProgression(progression = {}) {
   );
 }
 
+function getAccountProgressTrustSummary(progression = state.progressionV2) {
+  const repair = progression?.accountProgressRepair || null;
+  const blocked = isBlockedTaintedAccountProgression(progression);
+  return {
+    trusted: !blocked,
+    cloudSyncAllowed: !blocked,
+    repairNeeded: blocked || Boolean(repair?.requiresReview),
+    source: repair?.source || "normal",
+    markerSource: repair?.markerSource || "",
+    blockedTotalXp: Math.max(
+      0,
+      Math.floor(Number(repair?.blockedTotalXp) || 0),
+    ),
+    blockedEmbers: Math.max(
+      0,
+      Math.floor(Number(repair?.blockedEmbers) || 0),
+    ),
+    visibleTotalXp: getProgressionTotalXp(progression),
+  };
+}
+
 function hasProgressionPlayEvidence(progression = {}) {
   const normalized = normalizeProgressionV2(progression);
   const defaultRewards = new Set(createProgressionV2().unlockedRewards);
@@ -24508,6 +24529,7 @@ window.render_game_to_text = () => {
       ),
       rewardLog: state.progressionV2.rewardLog.slice(-6),
       accountProgressRepair: state.progressionV2.accountProgressRepair || null,
+      accountProgressTrust: getAccountProgressTrustSummary(state.progressionV2),
     },
     online: {
       backendMode: onlineState.backendMode,
