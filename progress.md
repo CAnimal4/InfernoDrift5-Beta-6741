@@ -18,6 +18,14 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Expanded `smoke_mobile.mjs` to cover phone landscape, phone portrait, tablet portrait, tablet landscape, small laptop, desktop, touch sizing, touch state, rotate prompt, Battle Laser, Max Boost/Hit label, and page errors.
 - Validation for this pass: `node --check script.js`, `node --check firebase-online.js`, `node --check firebase-online-core.js`, `node --check smoke_mobile.mjs`, local `node smoke_mobile.mjs`, local `node smoke_games.mjs`, `npm test`, `npm run typecheck`, `npm run build`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:firebase`, `git diff --check`, and the shared `develop-web-game` Playwright client passed. Visual screenshots reviewed at `output/playwright/mobile-phone-landscape-game.png`, `mobile-phone-portrait-rotate.png`, `mobile-tablet-landscape-game.png`, `mobile-desktop-game.png`, and `output/web-game/shot-0.png`.
 
+2026-05-30 XP reset safety follow-up:
+
+- Continued the special-account XP reset investigation after the recurring Clark `22k` / `100k+` contamination reports.
+- Confirmed the shipped client guard now blocks marked and unmarked special-badge contaminated XP in the suspect range, scrubs dirty local startup cache, prevents Codex from chasing dirty leaderboard rows, and keeps badges metadata-only.
+- Added a reviewed-account verification mode to `scripts/cleanup-firebase-public-data.mjs` so an admin repair can be proven across `progress/{uid}`, `users/{uid}`, and `leaderboards/all-modes/scores/{uid}` with matching XP/Embers/usernames and no obsolete special-badge repair markers.
+- Updated `docs/ACCOUNT_SYNC_XP_SAFETY.md` with the exact post-repair verification command. The remaining raw Firebase cleanup is still admin-gated because this shell has no Firebase owner login or Google OAuth token.
+- Validation for this follow-up: `node --check script.js firebase-online.js firebase-online-core.js scripts/cleanup-firebase-public-data.mjs`, `node --test tests/firebase-online.test.mjs`, `npm run smoke:account-xp`, `npm test`, `npm run build`, and `npm run audit:firebase-public -- --summary` passed. The broad `npm run smoke` browser run hung twice at the existing progression/leaderboard smoke block and was killed so no Playwright browser was left running.
+
 2026-05-24 Firebase realtime sync repair:
 
 - Added a reliable Firebase DM inbox mirror under owner-scoped `dmInboxes/{uid}/messages/{messageId}` and listener so incoming DMs trigger the existing non-obstructive chat notice path; also added per-friend DM room listeners as a rules-compatible fallback when collection-group or inbox listeners are unavailable.

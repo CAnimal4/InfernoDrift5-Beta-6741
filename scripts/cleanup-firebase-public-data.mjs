@@ -8,6 +8,7 @@ const SUMMARY_ONLY = process.argv.includes("--summary");
 const CONFIRM_VALUE = "delete-public-test-data";
 const REPAIR_CONFIRM_VALUE = "repair-reviewed-real-account";
 const REPAIR_REVIEWED_ACCOUNT = process.argv.includes("--repair-reviewed-account");
+const VERIFY_REVIEWED_ACCOUNT = process.argv.includes("--verify-reviewed-account");
 
 const TEST_NAME_PATTERN =
   /^(test|teest|smoke|fresh|runner|pilot|test-removed)[a-z0-9_-]*/i;
@@ -196,7 +197,7 @@ function getLevelFromXP(totalXp = 0) {
 }
 
 function getReviewedRepairRequest() {
-  if (!REPAIR_REVIEWED_ACCOUNT) return null;
+  if (!REPAIR_REVIEWED_ACCOUNT && !VERIFY_REVIEWED_ACCOUNT) return null;
   const uid = argValue("--uid").trim();
   const username = argValue("--username").trim();
   const xp = Math.floor(Number(argValue("--xp")));
@@ -211,6 +212,27 @@ function getReviewedRepairRequest() {
     throw new Error("--embers must be a non-negative number when provided");
   }
   return { uid, username, xp, embers };
+}
+
+function hasObsoleteRepairMarker(progression = {}) {
+  return Boolean(
+    progression?.specialBadgeRepairVersion ||
+      progression?.specialBadgeProgressRepairedAt ||
+      Number.isFinite(Number(progression?.specialBadgeProgressBaselineXp)) ||
+      progression?.specialBadgeProgressEarnedAfterRepair === true ||
+      progression?.specialBadgeProgressSource ||
+      progression?.accountProgressRepair,
+  );
+}
+
+function repairMarkerSnapshot(progression = {}) {
+  if (!hasObsoleteRepairMarker(progression)) return null;
+  return {
+    specialBadgeRepairVersion: progression?.specialBadgeRepairVersion,
+    specialBadgeProgressSource: progression?.specialBadgeProgressSource,
+    specialBadgeProgressBaselineXp: progression?.specialBadgeProgressBaselineXp,
+    accountProgressRepair: progression?.accountProgressRepair,
+  };
 }
 
 function isSuspiciousClark(row = {}) {
@@ -389,6 +411,170 @@ async function repairReviewedAccountProgress(request, token) {
   };
 }
 
+function getDocumentXp(document = {}) {
+  return getXp(document?.payload?.progressionV2 || document?.progress || document);
+}
+
+function getProgressionXp(progression = {}) {
+  return getXp(progression);
+}
+
+function getDocumentEmbers(document = {}) {
+  const raw =
+    document?.payload?.progressionV2?.embers ??
+    document?.progress?.embers ??
+    document?.stats?.embers;
+  return Math.max(0, Math.floor(Number(raw) || 0));
+}
+
+async function verifyReviewedAccountProgress(request, token) {
+  const [progress, user, leaderboard] = await Promise.all([
+    fetchFirestoreDocument(`progress/${request.uid}`, token),
+    fetchFirestoreDocument(`users/${request.uid}`, token),
+    fetchFirestoreDocument(`leaderboards/all-modes/scores/${request.uid}`, token),
+  ]);
+  const progressPayloadProgression = progress?.payload?.progressionV2 || {};
+  const progressStats = progress?.stats || {};
+  const userProgress = user?.progress || {};
+  const userStats = user?.stats || {};
+  const expectedName = normalizedName(request.username);
+  const userName = user?.username || user?.displayName || "";
+  const leaderboardName = leaderboard?.username || leaderboard?.displayName || "";
+  const checks = [
+    {
+      name: "progress exists",
+      ok: Boolean(progress),
+      actual: Boolean(progress),
+      expected: true,
+    },
+    {
+      name: "user exists",
+      ok: Boolean(user),
+      actual: Boolean(user),
+      expected: true,
+    },
+    {
+      name: "leaderboard exists",
+      ok: Boolean(leaderboard),
+      actual: Boolean(leaderboard),
+      expected: true,
+    },
+    {
+      name: "progress payload xp",
+      ok: getProgressionXp(progressPayloadProgression) === request.xp,
+      actual: getProgressionXp(progressPayloadProgression),
+      expected: request.xp,
+    },
+    {
+      name: "progress stats xp",
+      ok: getProgressionXp(progressStats) === request.xp,
+      actual: getProgressionXp(progressStats),
+      expected: request.xp,
+    },
+    {
+      name: "user progress xp",
+      ok: getProgressionXp(userProgress) === request.xp,
+      actual: getProgressionXp(userProgress),
+      expected: request.xp,
+    },
+    {
+      name: "user stats xp",
+      ok: getProgressionXp(userStats) === request.xp,
+      actual: getProgressionXp(userStats),
+      expected: request.xp,
+    },
+    {
+      name: "leaderboard xp",
+      ok: getXp(leaderboard) === request.xp,
+      actual: getXp(leaderboard),
+      expected: request.xp,
+    },
+    {
+      name: "progress payload repair markers absent",
+      ok: !hasObsoleteRepairMarker(progressPayloadProgression),
+      actual: repairMarkerSnapshot(progressPayloadProgression),
+      expected: null,
+    },
+    {
+      name: "progress stats repair markers absent",
+      ok: !hasObsoleteRepairMarker(progressStats),
+      actual: repairMarkerSnapshot(progressStats),
+      expected: null,
+    },
+    {
+      name: "user progress repair markers absent",
+      ok: !hasObsoleteRepairMarker(userProgress),
+      actual: repairMarkerSnapshot(userProgress),
+      expected: null,
+    },
+    {
+      name: "user stats repair markers absent",
+      ok: !hasObsoleteRepairMarker(userStats),
+      actual: repairMarkerSnapshot(userStats),
+      expected: null,
+    },
+    {
+      name: "progress username",
+      ok: !progress?.username || normalizedName(progress.username) === expectedName,
+      actual: progress?.username || null,
+      expected: request.username,
+    },
+    {
+      name: "user username",
+      ok: !userName || normalizedName(userName) === expectedName,
+      actual: userName || null,
+      expected: request.username,
+    },
+    {
+      name: "leaderboard username",
+      ok: !leaderboardName || normalizedName(leaderboardName) === expectedName,
+      actual: leaderboardName || null,
+      expected: request.username,
+    },
+  ];
+  if (request.embers !== null) {
+    checks.push(
+      {
+        name: "progress payload embers",
+        ok:
+          getDocumentEmbers({
+            payload: { progressionV2: progressPayloadProgression },
+          }) === request.embers,
+        actual: getDocumentEmbers({
+          payload: { progressionV2: progressPayloadProgression },
+        }),
+        expected: request.embers,
+      },
+      {
+        name: "progress stats embers",
+        ok: getDocumentEmbers({ stats: progressStats }) === request.embers,
+        actual: getDocumentEmbers({ stats: progressStats }),
+        expected: request.embers,
+      },
+      {
+        name: "user progress embers",
+        ok: getDocumentEmbers({ progress: userProgress }) === request.embers,
+        actual: getDocumentEmbers({ progress: userProgress }),
+        expected: request.embers,
+      },
+      {
+        name: "user stats embers",
+        ok: getDocumentEmbers({ stats: userStats }) === request.embers,
+        actual: getDocumentEmbers({ stats: userStats }),
+        expected: request.embers,
+      },
+    );
+  }
+  return {
+    uid: request.uid,
+    username: request.username,
+    expectedXp: request.xp,
+    expectedEmbers: request.embers,
+    ok: checks.every((check) => check.ok),
+    checks,
+  };
+}
+
 const scores = await listDocuments("leaderboards/all-modes/scores");
 const users = await listDocuments("users");
 const plan = makeCleanupPlan({ scores, users });
@@ -402,6 +588,7 @@ const output = {
     reviewCount: plan.reviewPaths.length,
     destructiveActionsRequire: `--execute and FIREBASE_CLEANUP_CONFIRM=${CONFIRM_VALUE}`,
     reviewedRepairRequires: `--repair-reviewed-account --execute and FIREBASE_REPAIR_CONFIRM=${REPAIR_CONFIRM_VALUE} plus GOOGLE_OAUTH_ACCESS_TOKEN`,
+    reviewedVerifyRequires: `--verify-reviewed-account plus GOOGLE_OAUTH_ACCESS_TOKEN`,
     firebaseAuthRequired: "Run firebase login with project owner/admin access first.",
   },
   deletePaths: plan.deletePaths,
@@ -417,9 +604,30 @@ const output = {
     : null,
 };
 
+function compactOutputForSummary(fullOutput = output) {
+  return {
+    projectId: fullOutput.projectId,
+    generatedAt: fullOutput.generatedAt,
+    execute: fullOutput.execute,
+    summary: fullOutput.summary,
+    sampleDeletePaths: fullOutput.deletePaths.slice(0, 12),
+    reviewPaths: fullOutput.reviewPaths,
+    reviewedRepair: fullOutput.reviewedRepair,
+    reviewedRepairResult: fullOutput.reviewedRepairResult || null,
+    reviewedVerification: fullOutput.reviewedVerification || null,
+    results: fullOutput.results,
+  };
+}
+
+function printOutputForError() {
+  console.error(
+    JSON.stringify(SUMMARY_ONLY ? compactOutputForSummary() : output, null, 2),
+  );
+}
+
 if (EXECUTE && plan.deletePaths.length) {
   if (process.env.FIREBASE_CLEANUP_CONFIRM !== CONFIRM_VALUE) {
-    console.error(JSON.stringify(output, null, 2));
+    printOutputForError();
     throw new Error(
       `Refusing cleanup without FIREBASE_CLEANUP_CONFIRM=${CONFIRM_VALUE}`,
     );
@@ -431,14 +639,14 @@ if (EXECUTE && plan.deletePaths.length) {
 
 if (EXECUTE && reviewedRepair) {
   if (process.env.FIREBASE_REPAIR_CONFIRM !== REPAIR_CONFIRM_VALUE) {
-    console.error(JSON.stringify(output, null, 2));
+    printOutputForError();
     throw new Error(
       `Refusing reviewed repair without FIREBASE_REPAIR_CONFIRM=${REPAIR_CONFIRM_VALUE}`,
     );
   }
   const token = process.env.GOOGLE_OAUTH_ACCESS_TOKEN || process.env.GCLOUD_ACCESS_TOKEN;
   if (!token) {
-    console.error(JSON.stringify(output, null, 2));
+    printOutputForError();
     throw new Error(
       "Reviewed repair requires GOOGLE_OAUTH_ACCESS_TOKEN, for example: GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token)",
     );
@@ -449,24 +657,26 @@ if (EXECUTE && reviewedRepair) {
   );
 }
 
-if (SUMMARY_ONLY) {
-  console.log(
-    JSON.stringify(
-      {
-        projectId: output.projectId,
-        generatedAt: output.generatedAt,
-        execute: output.execute,
-        summary: output.summary,
-        sampleDeletePaths: output.deletePaths.slice(0, 12),
-        reviewPaths: output.reviewPaths,
-        reviewedRepair: output.reviewedRepair,
-        reviewedRepairResult: output.reviewedRepairResult || null,
-        results: output.results,
-      },
-      null,
-      2,
-    ),
+if (VERIFY_REVIEWED_ACCOUNT && reviewedRepair) {
+  const token = process.env.GOOGLE_OAUTH_ACCESS_TOKEN || process.env.GCLOUD_ACCESS_TOKEN;
+  if (!token) {
+    printOutputForError();
+    throw new Error(
+      "Reviewed verification requires GOOGLE_OAUTH_ACCESS_TOKEN, for example: GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token)",
+    );
+  }
+  output.reviewedVerification = await verifyReviewedAccountProgress(
+    reviewedRepair,
+    token,
   );
+  if (!output.reviewedVerification.ok) {
+    printOutputForError();
+    throw new Error("Reviewed account verification failed");
+  }
+}
+
+if (SUMMARY_ONLY) {
+  console.log(JSON.stringify(compactOutputForSummary(), null, 2));
 } else {
   console.log(JSON.stringify(output, null, 2));
 }

@@ -108,6 +108,21 @@ Run the same command without `--execute` first to print the dry-run summary.
 Do not use this repair command unless the XP/Ember values are independently
 verified; it is intentionally not an automatic guess.
 
+After the repair, run the reviewed verification command with the same known-good
+values. It reads `progress/{uid}`, `users/{uid}`, and the public leaderboard row
+with admin credentials and fails if any copy still has the wrong XP, wrong
+Embers, wrong username, or obsolete special-badge repair markers:
+
+```bash
+GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)" \
+npm run cleanup:firebase-public -- \
+  --verify-reviewed-account \
+  --uid C86jDYuYNWZs5f9g7X1r94DO2cq2 \
+  --username Clark \
+  --xp <KNOWN_GOOD_XP> \
+  --embers <KNOWN_GOOD_EMBERS>
+```
+
 The public audit can read `users/{uid}` and leaderboard rows. It cannot read
 `progress/{uid}` without owner/admin credentials; a public REST read returning
 `403 Missing or insufficient permissions` is expected and means private progress
