@@ -216,6 +216,46 @@ const dirtySave = {
       username: "Clark",
     });
     window.__infernodriftTestApi.simulateOnlineMessageForTest({
+      type: "save.repair-needed",
+      payload: {
+        progressionV2: {
+          xp: 0,
+          totalXp: 0,
+          accountProgressRepair: {
+            source: "special-badge-tainted-xp-blocked",
+            blockedTotalXp: 100450,
+            markerSource: "public-profile",
+            requiresReview: true,
+          },
+        },
+      },
+    });
+    const diagnostics = JSON.parse(window.render_game_to_text());
+    return {
+      progression: diagnostics.progression,
+      profile: diagnostics.online.profile,
+      leaderboardState: diagnostics.online.leaderboardState,
+    };
+  });
+  assert.equal(result.progression.totalXp, 0);
+  assert.equal(
+    result.progression.accountProgressRepair?.source,
+    "special-badge-tainted-xp-blocked",
+  );
+  assert.match(result.profile.actionStatus, /Admin review is required/i);
+  assert.equal(result.leaderboardState.syncStatus, "repair-needed");
+  await browser.close();
+}
+
+{
+  const { browser, page } = await openPageWithStorage({});
+  const result = await page.evaluate(() => {
+    window.__infernodriftTestApi.resetLocalProgressionForTest();
+    window.__infernodriftTestApi.configureOnlineForTest({
+      backendMode: "firebase",
+      username: "Clark",
+    });
+    window.__infernodriftTestApi.simulateOnlineMessageForTest({
       type: "auth.ok",
       user: {
         id: "clark-profile-snapshot-targeted",

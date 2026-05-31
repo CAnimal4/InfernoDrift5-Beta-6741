@@ -8036,6 +8036,15 @@ function handleOnlineMessage(raw) {
     onlineState.profileActionStatus = "Progress synced to your account.";
     requestOnlineLeaderboard({ force: true });
     updateProfileUi();
+  } else if (message.type === "save.repair-needed") {
+    if (message.payload) {
+      applyServerSave({ payload: message.payload }, { force: true });
+    }
+    requestOnlineLeaderboard({ force: true });
+    onlineState.leaderboardSyncStatus = "repair-needed";
+    onlineState.profileActionStatus =
+      "Blocked a contaminated account progress value. Admin review is required before any cloud XP repair is written.";
+    updateProfileUi();
   } else if (message.type === "progression.reward") {
     if (message.payload)
       applyServerSave({ payload: message.payload }, { force: true });

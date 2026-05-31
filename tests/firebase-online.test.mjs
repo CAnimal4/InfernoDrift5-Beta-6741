@@ -754,6 +754,7 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   assert.doesNotMatch(script, /function recoverAccountProgressFromLeaderboard\(/);
   assert.doesNotMatch(script, /leaderboard-xp-recovery/);
   assert.match(script, /Blocked a contaminated account progress value\. Admin review is required before any cloud XP repair is written\./);
+  assert.match(script, /message\.type === "save\.repair-needed"/);
   assert.doesNotMatch(script, /blocked-tainted-progress-repair/);
   assert.doesNotMatch(script, /setTimeout\(\(\) => forceOnlineProgressSync\(\{ force: true \}\), 0\)/);
   assert.match(script, /accountSaveDirty: false/);
