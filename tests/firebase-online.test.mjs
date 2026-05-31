@@ -648,8 +648,10 @@ test("Firebase account attach repairs legacy Auth and Firestore splits safely", 
   );
   assert.match(firebaseOnline, /function isBlockedTaintedRepairPayload/);
   assert.match(firebaseOnline, /state\.leaderboardStatus = "repair-needed"/);
+  assert.match(firebaseOnline, /function writeProgressPayload\(payload, \{ silent = false \} = \{\}\)/);
+  assert.match(firebaseOnline, /return writeProgressPayload\(cleanPayload, \{ silent \}\);/);
   assert.match(firebaseOnline, /stripUndefinedForFirestore\(\{\s*uid: state\.uid,/);
-  assert.match(firebaseOnline, /stripUndefinedForFirestore\(\{\s*progress: mergedPayload\.progressionV2 \|\| \{\},/);
+  assert.match(firebaseOnline, /stripUndefinedForFirestore\(\{\s*progress: safePayload\.progressionV2 \|\| \{\},/);
   assert.match(
     firebaseOnline,
     /seedClientSave: Boolean\(allowLegacyAutoCreate\)/,
@@ -752,7 +754,7 @@ test("Firebase progress sync merges server and device economy state", () => {
   assert.match(firebaseOnline, /export function mergeFirebaseSavePayload\(/);
   assert.match(firebaseOnline, /function mergeFirebaseProgression\(existing = {}, incoming = {}\)/);
   assert.match(firebaseOnline, /const existingProgress = await firestore\.getDoc\(progressRef\)/);
-  assert.match(firebaseOnline, /payload: mergedPayload,/);
+  assert.match(firebaseOnline, /return writeProgressPayload\(mergedPayload, \{ silent \}\);/);
   assert.match(firebaseOnline, /function getPayloadUpdatedAt\(payload = \{\}\)/);
   assert.match(firebaseOnline, /const latestShell = chooseLatestSavePayload\(existingPayload, incomingPayload\)/);
   assert.match(firebaseOnline, /embers: Math\.max\(0, Math\.floor\(Number\(latestProgression\.embers\) \|\| 0\)\)/);
@@ -765,7 +767,7 @@ test("Firebase progress sync merges server and device economy state", () => {
   assert.doesNotMatch(firebaseOnline, /customization: latestShell\.customization/);
   assert.doesNotMatch(firebaseOnline, /garage: latestShell\.garage/);
   assert.doesNotMatch(firebaseOnline, /fail\(error, "chat_listener_failed"\)/);
-  assert.match(firebaseOnline, /emit\("save\.synced", \{ payload: mergedPayload \}\)/);
+  assert.match(firebaseOnline, /if \(!silent\) emit\("save\.synced", \{ payload: safePayload \}\)/);
 });
 
 test("legacy import marker cannot hide downgraded Firebase progress", () => {

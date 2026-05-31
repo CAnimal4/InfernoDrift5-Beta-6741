@@ -1434,6 +1434,57 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     return snapshot.exists() ? snapshot.data() : null;
   }
 
+  async function writeProgressPayload(payload, { silent = false } = {}) {
+    const { firestore } = internals.sdk;
+    const safePayload = stripUndefinedForFirestore(payload);
+    const xp = getProgressionXpValue(safePayload?.progressionV2 || {});
+    await firestore.setDoc(
+      firestore.doc(internals.db, "progress", state.uid),
+      stripUndefinedForFirestore({
+        uid: state.uid,
+        username: state.username,
+        payload: safePayload,
+        campaign: {
+          worldIndex: safePayload.worldIndex,
+          levelIndex: safePayload.levelIndex,
+        },
+        unlocks: safePayload.progressionV2?.unlocks || {},
+        cosmetics: safePayload.customization || {},
+        stats: safePayload.progressionV2 || {},
+        settings: safePayload.settings || {},
+        updatedAt: firestore.serverTimestamp(),
+      }),
+      { merge: true },
+    );
+    await firestore.setDoc(
+      firestore.doc(internals.db, "users", state.uid),
+      stripUndefinedForFirestore({
+        progress: safePayload.progressionV2 || {},
+        stats: safePayload.progressionV2 || {},
+        settings: safePayload.settings || {},
+        cosmetics: safePayload.customization || {},
+        loadouts: safePayload.garage || {},
+        lastSeenAt: firestore.serverTimestamp(),
+      }),
+      { merge: true },
+    );
+    if (!state.isGuest && !internals.userProfile?.isGuest) {
+      if (isFirebaseTestLikeAccountName(state.username)) {
+        state.leaderboardStatus = "hidden-test-account";
+      } else {
+        await submitLeaderboard({
+          score: xp,
+          mode: FIREBASE_LEADERBOARD_MODE,
+        }).catch((error) => {
+          state.leaderboardStatus = "failed";
+          fail(error, "leaderboard_sync_failed");
+        });
+      }
+    }
+    if (!silent) emit("save.synced", { payload: safePayload });
+    return safePayload;
+  }
+
   async function syncProgress(payload, { silent = false, replace = false } = {}) {
     requireReady();
     if (!state.uid || !payload) return false;
@@ -1456,68 +1507,14 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       (!cleanExistingPayload || isBlockedTaintedRepairPayload(cleanExistingPayload))
     ) {
       state.leaderboardStatus = "repair-needed";
-      return cleanPayload;
+      return writeProgressPayload(cleanPayload, { silent });
     }
     const mergedPayload = stripUndefinedForFirestore(
       replace && !isBlockedTaintedRepairPayload(cleanPayload)
         ? cleanPayload
         : mergeFirebaseSavePayload(cleanExistingPayload, cleanPayload),
     );
-    const xp = Math.max(
-      0,
-      Math.floor(
-        Number(
-          mergedPayload?.progressionV2?.totalXp ??
-            mergedPayload?.progressionV2?.xp,
-        ) ||
-          0,
-      ),
-    );
-    await firestore.setDoc(
-      progressRef,
-      stripUndefinedForFirestore({
-        uid: state.uid,
-        username: state.username,
-        payload: mergedPayload,
-        campaign: {
-          worldIndex: mergedPayload.worldIndex,
-          levelIndex: mergedPayload.levelIndex,
-        },
-        unlocks: mergedPayload.progressionV2?.unlocks || {},
-        cosmetics: mergedPayload.customization || {},
-        stats: mergedPayload.progressionV2 || {},
-        settings: mergedPayload.settings || {},
-        updatedAt: firestore.serverTimestamp(),
-      }),
-      { merge: true },
-    );
-    await firestore.setDoc(
-      firestore.doc(internals.db, "users", state.uid),
-      stripUndefinedForFirestore({
-        progress: mergedPayload.progressionV2 || {},
-        stats: mergedPayload.progressionV2 || {},
-        settings: mergedPayload.settings || {},
-        cosmetics: mergedPayload.customization || {},
-        loadouts: mergedPayload.garage || {},
-        lastSeenAt: firestore.serverTimestamp(),
-      }),
-      { merge: true },
-    );
-    if (!state.isGuest && !internals.userProfile?.isGuest) {
-      if (isFirebaseTestLikeAccountName(state.username)) {
-        state.leaderboardStatus = "hidden-test-account";
-      } else {
-        await submitLeaderboard({
-          score: xp,
-          mode: FIREBASE_LEADERBOARD_MODE,
-        }).catch((error) => {
-          state.leaderboardStatus = "failed";
-          fail(error, "leaderboard_sync_failed");
-        });
-      }
-    }
-    if (!silent) emit("save.synced", { payload: mergedPayload });
-    return mergedPayload;
+    return writeProgressPayload(mergedPayload, { silent });
   }
 
   async function refreshLeaderboard({ mode = FIREBASE_LEADERBOARD_MODE } = {}) {
