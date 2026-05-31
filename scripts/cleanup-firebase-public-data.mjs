@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "infernodrift4-online";
 const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 const PAGE_SIZE = 100;
+const MAX_FETCH_ATTEMPTS = 4;
 const EXECUTE = process.argv.includes("--execute");
 const SUMMARY_ONLY = process.argv.includes("--summary");
 const CONFIRM_VALUE = "delete-public-test-data";
@@ -103,7 +104,7 @@ async function listDocuments(path) {
     const url = new URL(`${BASE_URL}/${path}`);
     url.searchParams.set("pageSize", String(PAGE_SIZE));
     if (pageToken) url.searchParams.set("pageToken", pageToken);
-    const response = await fetch(url);
+    const response = await fetchWithRetry(url);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(
@@ -116,8 +117,30 @@ async function listDocuments(path) {
   return documents;
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url, options = {}) {
+  let lastResponse = null;
+  for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt += 1) {
+    lastResponse = await fetch(url, options);
+    if (lastResponse.status !== 429 && lastResponse.status < 500) {
+      return lastResponse;
+    }
+    if (attempt < MAX_FETCH_ATTEMPTS) {
+      const retryAfter = Number(lastResponse.headers.get("retry-after")) || 0;
+      const delayMs = retryAfter
+        ? retryAfter * 1000
+        : 500 * Math.pow(2, attempt - 1);
+      await wait(delayMs);
+    }
+  }
+  return lastResponse;
+}
+
 async function fetchFirestoreDocument(path, token) {
-  const response = await fetch(`${BASE_URL}/${path}`, {
+  const response = await fetchWithRetry(`${BASE_URL}/${path}`, {
     headers: { authorization: `Bearer ${token}` },
   });
   const payload = await response.json().catch(() => ({}));
@@ -135,7 +158,7 @@ async function patchFirestoreDocument(path, fields, token) {
   Object.keys(fields).forEach((fieldPath) =>
     url.searchParams.append("updateMask.fieldPaths", fieldPath),
   );
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: "PATCH",
     headers: {
       authorization: `Bearer ${token}`,

@@ -293,10 +293,35 @@ const dirtySave = {
     window.__infernodriftTestApi.resetLocalProgressionForTest();
     window.__infernodriftTestApi.setLeaderboardRowsForTest([
       {
-        userId: "system-chatgpt-codex",
-        username: "ChatGPT (Codex)",
+        userId: "clark-displayname-dirty",
+        displayName: "Clark",
         source: "server",
-        isSystemPlayer: true,
+        account: true,
+        score: 100450,
+      },
+    ]);
+    const diagnostics = JSON.parse(window.render_game_to_text());
+    return {
+      leaderboard: diagnostics.online.leaderboard,
+    };
+  });
+  const clark = result.leaderboard.find((row) => row.displayName === "Clark");
+  assert.equal(clark?.quarantined, true);
+  assert.equal(clark?.score, 0);
+  assert.equal(result.leaderboard[0].username, "ChatGPT (Codex)");
+  assert.ok(result.leaderboard[0].xp < 90000);
+  await browser.close();
+}
+
+{
+  const { browser, page } = await openPageWithStorage({});
+  const result = await page.evaluate(() => {
+    window.__infernodriftTestApi.resetLocalProgressionForTest();
+    window.__infernodriftTestApi.setLeaderboardRowsForTest([
+      {
+        userId: "system-chatgpt-codex",
+        displayName: "ChatGPT (Codex)",
+        source: "server",
         xp: 100450,
         totalXp: 100450,
       },

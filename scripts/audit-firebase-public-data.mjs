@@ -1,6 +1,7 @@
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "infernodrift4-online";
 const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 const PAGE_SIZE = 100;
+const MAX_FETCH_ATTEMPTS = 4;
 const SUMMARY_ONLY = process.argv.includes("--summary");
 
 const TEST_NAME_PATTERN =
@@ -62,7 +63,7 @@ async function listDocuments(path) {
     const url = new URL(`${BASE_URL}/${path}`);
     url.searchParams.set("pageSize", String(PAGE_SIZE));
     if (pageToken) url.searchParams.set("pageToken", pageToken);
-    const response = await fetch(url);
+    const response = await fetchWithRetry(url);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(
@@ -73,6 +74,45 @@ async function listDocuments(path) {
     pageToken = payload.nextPageToken || "";
   } while (pageToken);
   return documents;
+}
+
+async function safeListDocuments(path) {
+  try {
+    return { documents: await listDocuments(path), error: null };
+  } catch (error) {
+    return {
+      documents: [],
+      error: {
+        path,
+        message: String(error?.message || error || "unknown_error"),
+        code: /429|quota|RESOURCE_EXHAUSTED/i.test(String(error?.message || ""))
+          ? "firestore_quota_exceeded"
+          : "firestore_read_failed",
+      },
+    };
+  }
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url) {
+  let lastResponse = null;
+  for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt += 1) {
+    lastResponse = await fetch(url);
+    if (lastResponse.status !== 429 && lastResponse.status < 500) {
+      return lastResponse;
+    }
+    if (attempt < MAX_FETCH_ATTEMPTS) {
+      const retryAfter = Number(lastResponse.headers.get("retry-after")) || 0;
+      const delayMs = retryAfter
+        ? retryAfter * 1000
+        : 500 * Math.pow(2, attempt - 1);
+      await wait(delayMs);
+    }
+  }
+  return lastResponse;
 }
 
 function normalizedName(value = "") {
@@ -105,8 +145,7 @@ function isReviewedProgress(progress = {}) {
   return (
     progress?.accountProgressReviewedSource === ACCOUNT_PROGRESS_REVIEW_SOURCE ||
     progress?.adminRepair?.source === ACCOUNT_PROGRESS_REVIEW_SOURCE ||
-    progress?.adminRepair === "reviewed-real-account-repair" ||
-    Boolean(progress?.accountProgressReviewedAt)
+    progress?.adminRepair === "reviewed-real-account-repair"
   );
 }
 
@@ -187,12 +226,13 @@ function auditScores(scores) {
   return scores
     .map((row) => {
       const fields = scoreXpFields(row);
-      const dirtyFields = dirtySpecialBadgeFields(row.username, fields);
+      const username = row.username || row.displayName || row.name || "";
+      const dirtyFields = dirtySpecialBadgeFields(username, fields);
       return {
         path: `leaderboards/all-modes/scores/${row.id}`,
         id: row.id,
         uid: row.uid || row.userId || row.id,
-        username: row.username || "",
+        username,
         score: scoreXp(row),
         xpFields: fields,
         dirtyFields,
@@ -244,8 +284,13 @@ function auditUsers(users) {
     .sort((a, b) => b.xp - a.xp || a.username.localeCompare(b.username));
 }
 
-const scores = await listDocuments("leaderboards/all-modes/scores");
-const users = await listDocuments("users");
+const [scoreRead, userRead] = await Promise.all([
+  safeListDocuments("leaderboards/all-modes/scores"),
+  safeListDocuments("users"),
+]);
+const scores = scoreRead.documents;
+const users = userRead.documents;
+const auditErrors = [scoreRead.error, userRead.error].filter(Boolean);
 const publicLeaderboardRowsToIgnore = auditScores(scores);
 const publicUserRowsToIgnore = auditUsers(users);
 const contaminatedLeaderboardRows = publicLeaderboardRowsToIgnore.filter(
@@ -270,15 +315,20 @@ const report = {
     contaminatedPublicProfiles: contaminatedPublicProfiles.length,
     testLikeLeaderboardRows: testLikeLeaderboardRows.length,
     testLikePublicProfiles: testLikePublicProfiles.length,
-    displayLeakRisk:
-      contaminatedLeaderboardRows.length || contaminatedPublicProfiles.length
+    displayLeakRisk: auditErrors.length
+      ? "unknown_public_read_failed"
+      : contaminatedLeaderboardRows.length || contaminatedPublicProfiles.length
         ? "guarded_by_client_but_requires_admin_cleanup"
         : "none_detected",
     adminCleanupRequired:
-      publicLeaderboardRowsToIgnore.length > 0 || publicUserRowsToIgnore.length > 0,
+      publicLeaderboardRowsToIgnore.length > 0 ||
+      publicUserRowsToIgnore.length > 0 ||
+      auditErrors.length > 0,
     cleanupRequires:
       "Firebase owner/admin credentials; production rules block public client deletes.",
+    publicReadStatus: auditErrors.length ? "partial_or_failed" : "ok",
   },
+  auditErrors,
   cleanupPlan: {
     deleteLeaderboardScorePaths: publicLeaderboardRowsToIgnore.map((row) => row.path),
     reviewOrDeletePublicUserPaths: publicUserRowsToIgnore.map((row) => row.path),
@@ -310,6 +360,7 @@ if (SUMMARY_ONLY) {
             .slice(0, 5)
             .map((row) => row.path),
         },
+        auditErrors: report.auditErrors,
         contaminatedDetails: {
           leaderboard: contaminatedLeaderboardRows.slice(0, 8).map((row) => ({
             path: row.path,

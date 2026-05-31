@@ -79,6 +79,12 @@ field paths, such as `leaderboards/all-modes/scores/{uid}.score` or
 `users/{uid}.progress.totalXp`, plus whether the row can be self-cleaned by the
 owner signing in or requires owner/admin cleanup.
 
+If Firestore returns `429 RESOURCE_EXHAUSTED`, the audit reports
+`publicReadStatus: "partial_or_failed"` and `displayLeakRisk:
+"unknown_public_read_failed"` instead of pretending the data is clean. In the
+player UI, this maps to the rate-limited online-service message, not a generic
+password or account failure.
+
 Use `SMOKE_URL=<url> npm run smoke:account-xp:target` to run the XP safety smoke
 against a deployed or otherwise already-running build. That smoke seeds dirty
 Clark/local/Firebase-style data in the browser and fails if the rendered profile

@@ -230,8 +230,7 @@ function hasReviewedFirebaseAccountProgress(progression = {}) {
     progression?.adminRepair;
   return (
     source === ACCOUNT_PROGRESS_REVIEW_SOURCE ||
-    source === "reviewed-real-account-repair" ||
-    Boolean(progression?.accountProgressReviewedAt)
+    source === "reviewed-real-account-repair"
   );
 }
 

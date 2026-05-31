@@ -294,6 +294,31 @@ test("Firebase account save merge keeps highest XP and newest device state", () 
   assert.equal(adminReviewedHighXp.progressionV2.totalXp, 100450);
   assert.equal(adminReviewedHighXp.progressionV2.accountProgressRepair, undefined);
 
+  const timestampOnlyReviewMarker = repairSavePayloadWithProfileMarker(
+    {
+      saveMeta: { updatedAtMs: 8_750 },
+      progressionV2: {
+        totalXp: 100450,
+        xp: 100450,
+        embers: 976,
+        accountProgressReviewedAt: "2026-05-31T00:00:00.000Z",
+      },
+    },
+    {
+      username: "Clark",
+      progress: {
+        totalXp: 100450,
+        xp: 100450,
+        accountProgressReviewedAt: "2026-05-31T00:00:00.000Z",
+      },
+    },
+  );
+  assert.equal(timestampOnlyReviewMarker.progressionV2.totalXp, 0);
+  assert.equal(
+    timestampOnlyReviewMarker.progressionV2.accountProgressRepair?.source,
+    "special-badge-tainted-xp-blocked",
+  );
+
   const contaminatedServer = {
     saveMeta: { updatedAtMs: 5_000 },
     progressionV2: {

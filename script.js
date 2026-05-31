@@ -4933,8 +4933,7 @@ function hasReviewedAccountProgress(progression = {}) {
     progression?.adminRepair;
   return (
     source === ACCOUNT_PROGRESS_REVIEW_SOURCE ||
-    source === "reviewed-real-account-repair" ||
-    Boolean(progression?.accountProgressReviewedAt)
+    source === "reviewed-real-account-repair"
   );
 }
 
@@ -9975,18 +9974,19 @@ function isCurrentAccountLeaderboardRow(row = {}) {
   if (currentUserId && String(row.userId || row.uid || "") === currentUserId)
     return true;
   const currentName = claimKeyClient(onlineState.user?.username || onlineState.username);
-  const rowName = claimKeyClient(row.username || row.name || "");
+  const rowName = claimKeyClient(row.username || row.name || row.displayName || "");
   return Boolean(currentName && rowName && currentName === rowName);
 }
 
 function sanitizeSpecialBadgeLeaderboardRow(row = {}) {
   if (!row || typeof row !== "object") return row;
-  if (!isSpecialBadgeAccountUsername(row.username || row.name || "")) return row;
+  const username = row.username || row.name || row.displayName || "";
+  if (!isSpecialBadgeAccountUsername(username)) return row;
   const xp = getLeaderboardXp(row);
   if (xp < SPECIAL_BADGE_SUSPECT_XP) return row;
   recordAccountProgressDiagnostic({
     source: "special-badge-leaderboard-quarantine",
-    username: row.username || row.name || "",
+    username,
     oldXp: xp,
     newXp: 0,
     reason: "ignored suspicious old badge leaderboard score",
@@ -10027,7 +10027,7 @@ function randomIntInclusive(min, max, random = Math.random) {
 function isCodexLeaderboardRow(row = {}) {
   return (
     row.isSystemPlayer === true ||
-    normalizeLeaderboardUsername(row.username) ===
+    normalizeLeaderboardUsername(row.username || row.name || row.displayName) ===
       normalizeLeaderboardUsername(CODEX_LEADERBOARD_USERNAME)
   );
 }
@@ -10179,7 +10179,7 @@ function isGuestLeaderboardRow(row = {}) {
     Boolean(row.guest) ||
     row.source === "guest" ||
     row.badge === "Guest" ||
-    /^guest[_\s-]/i.test(String(row.username || ""))
+    /^guest[_\s-]/i.test(String(row.username || row.name || row.displayName || ""))
   );
 }
 
