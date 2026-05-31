@@ -399,8 +399,15 @@ const clarkUnmarkedWithEvidence = await page.evaluate(() => {
   );
   return JSON.parse(window.render_game_to_text()).progression;
 });
-assert.equal(clarkUnmarkedWithEvidence.totalXp, 100000);
-assert.equal(clarkUnmarkedWithEvidence.accountProgressRepair?.source, undefined);
+assert.equal(clarkUnmarkedWithEvidence.totalXp, 0);
+assert.equal(
+  clarkUnmarkedWithEvidence.accountProgressRepair?.source,
+  "special-badge-tainted-xp-blocked",
+);
+assert.equal(
+  clarkUnmarkedWithEvidence.accountProgressRepair?.markerSource,
+  "unmarked-cache",
+);
 const clarkPublicMarkerRepair = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.setOnlineUserForTest({
