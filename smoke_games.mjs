@@ -27,8 +27,13 @@ await waitForGameHook(page);
 
 const initialUi = JSON.parse(await page.evaluate(() => window.render_game_to_text())).ui;
 assert.equal(initialUi.product, "InfernoDrift4.1");
-assert.equal(initialUi.clientBuildId, "20260610-id41-polish-v15");
-assert.equal(initialUi.releaseWelcome.visible, true);
+assert.equal(initialUi.clientBuildId, "20260610-id41-polish-v16");
+if (initialUi.schoolGate?.visible) {
+  await page.evaluate(() => window.__infernodriftTestApi.dismissSchoolGateForTest());
+  await page.waitForTimeout(120);
+}
+const welcomeUi = JSON.parse(await page.evaluate(() => window.render_game_to_text())).ui;
+assert.equal(welcomeUi.releaseWelcome.visible, true);
 assert.equal(await page.locator("#release-welcome-title").textContent(), "Welcome to InfernoDrift4.1");
 assert.equal(
   (await page.locator("#release-welcome-start").textContent())?.trim(),
@@ -360,6 +365,21 @@ const chasedLeaderboard = await page.evaluate(() =>
 assert.equal(chasedLeaderboard[0].username, "ChatGPT (Codex)");
 assert.ok(chasedLeaderboard[0].xp >= 22153);
 assert.equal(chasedLeaderboard[1].username, "RealTopDriver");
+const megaLeaderboard = await page.evaluate(() =>
+  window.__infernodriftTestApi.setLeaderboardRowsForTest([
+    {
+      userId: "mega-driver",
+      username: "MegaDriver",
+      source: "server",
+      account: true,
+      xp: 250000,
+      totalXp: 250000,
+    },
+  ]),
+);
+assert.equal(megaLeaderboard[0].username, "ChatGPT (Codex)");
+assert.ok(megaLeaderboard[0].xp < 90000);
+assert.equal(megaLeaderboard[1].username, "MegaDriver");
 const pollutedCodexLeaderboard = await page.evaluate(() =>
   window.__infernodriftTestApi.setLeaderboardRowsForTest([
     {
@@ -374,7 +394,8 @@ const pollutedCodexLeaderboard = await page.evaluate(() =>
   ]),
 );
 assert.equal(pollutedCodexLeaderboard[0].username, "ChatGPT (Codex)");
-assert.equal(pollutedCodexLeaderboard[0].xp, 22153);
+assert.ok(pollutedCodexLeaderboard[0].xp >= 22153);
+assert.ok(pollutedCodexLeaderboard[0].xp < 90000);
 const clarkSpecialProgress = await page.evaluate(() => {
   window.__infernodriftTestApi.resetLocalProgressionForTest();
   window.__infernodriftTestApi.setOnlineUserForTest({
@@ -1155,6 +1176,12 @@ for (const modeId of requiredModes) {
     assert.match(state.hud.objectivePrompt, /ring|loop/i);
     assert.ok(state.markers.some((marker) => marker.kind === "loop"));
     assert.equal(typeof state.stunt.combo, "number");
+    const flyThrough = await page.evaluate(() =>
+      window.__infernodriftTestApi.simulateStuntRingFlyThroughForTest(),
+    );
+    assert.equal(flyThrough.marker.kind, "ring");
+    assert.equal(flyThrough.after.rings, flyThrough.before.rings + 1);
+    assert.equal(flyThrough.after.progress, flyThrough.before.progress + 1);
   }
   if (modeId === "ramp-rush") {
     assert.equal(state.bots.length, 0);

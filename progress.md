@@ -636,3 +636,13 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Local online smoke covered two local players, bot fill, sanitized chat, child chat gate behavior, leaderboard rows, and stored feedback fallback.
 - Worker dry-run and generated types remain valid for the legacy Cloudflare fallback/reference stack.
 - Completion decision: InfernoDrift4.1 is ready as a focused polish-and-upgrade release; no required feature, rename, multiplayer, mobile, menu, UI, gameplay, or documentation gate remains open.
+
+2026-06-10 InfernoDrift4.1 stunt-ring and Codex ranking hotfix:
+
+- Fixed Stunt Park/Ramp Rush air-ring scoring so a fast or off-center flight through a visible airborne ring registers during the frame it crosses the ring path, instead of requiring the car center to land near the ring center on a single tick.
+- Kept the existing stunt mode structure, ring layout, loop behavior, and scoring rewards intact.
+- Restored the intended leaderboard contract that `ChatGPT (Codex)` always renders first, while preserving the 4.1 safety cap that prevents Codex from chasing suspect `90k+` contaminated XP.
+- Bumped the client build/cache token to `20260610-id41-polish-v16`.
+- Added smoke regressions for off-center Stunt Park ring fly-throughs, Codex-first ranking above very high real XP rows, and dirty live leaderboard data staying below the suspect XP cap.
+- Validation passed: `node --check script.js`, `node --check smoke_games.mjs`, `node --check smoke_account_xp_safety.mjs`, `npm run smoke`, `npm run smoke:account-xp`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke:firebase`, `npm run smoke:firebase-live`, and `npm run test:e2e`.
+- Live Firebase smoke passed against project `infernodrift4-online`: account `Smoked932a03e57`, lobby `WS6AS`, diagnostics `ok`, transport `firebase`, expected WebSocket status `firebase_no_authoritative_websocket`.

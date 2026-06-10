@@ -1,9 +1,9 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260610-id41-polish-v15";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260610-id41-polish-v16";
 
 const PRODUCT_NAME = "InfernoDrift4.1";
-const CLIENT_BUILD_ID = "20260610-id41-polish-v15";
+const CLIENT_BUILD_ID = "20260610-id41-polish-v16";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -10269,6 +10269,8 @@ function sanitizeOnlineLeaderboardRow(row = null) {
 }
 
 function compareLeaderboard(a, b) {
+  if (isCodexLeaderboardRow(a) && !isCodexLeaderboardRow(b)) return -1;
+  if (isCodexLeaderboardRow(b) && !isCodexLeaderboardRow(a)) return 1;
   return getLeaderboardXp(b) - getLeaderboardXp(a);
 }
 
@@ -20278,6 +20280,29 @@ function isInsideMarker(marker, radiusBoost = 0) {
   );
 }
 
+function didPlayerPassThroughAirMarker(marker, radiusBoost = 0) {
+  if (!marker?.airborne) return false;
+  const center = tempVector.set(
+    marker.group.position.x,
+    marker.y ?? marker.group.position.y,
+    marker.group.position.z,
+  );
+  const start = player.prevPosition ?? player.position;
+  const end = player.position;
+  const segment = tempVectorB.subVectors(end, start);
+  const segmentLengthSq = segment.lengthSq();
+  if (segmentLengthSq <= 0.000001) {
+    return end.distanceTo(center) <= marker.radius + radiusBoost;
+  }
+  const t = THREE.MathUtils.clamp(
+    tempVectorC.subVectors(center, start).dot(segment) / segmentLengthSq,
+    0,
+    1,
+  );
+  const closest = tempVectorC.copy(start).addScaledVector(segment, t);
+  return closest.distanceTo(center) <= marker.radius + radiusBoost;
+}
+
 function updateModeMarkerVisuals(dt) {
   modeMarkers.forEach((marker) => {
     if (marker.hideMarkerVisual) {
@@ -20868,7 +20893,9 @@ function updateStuntMode(dt) {
   const dy = player.position.y - (marker.y ?? marker.group.position.y);
   const dz = player.position.z - marker.group.position.z;
   const distance = Math.hypot(dx, dy, dz);
-  if (distance <= marker.radius + 2) {
+  const passedAirMarker =
+    marker.airborne && didPlayerPassThroughAirMarker(marker, 3.6);
+  if (distance <= marker.radius + 2 || passedAirMarker) {
     if (marker.kind === "loop") {
       if (Math.abs(player.speed) < 40) {
         setEffectToast("Loop needs more speed", { pulse: 0.08 });
@@ -26008,6 +26035,44 @@ window.__infernodriftTestApi = {
   }),
   getLavaState: () => structuredClone(state.modeRun.lava),
   getStuntState: () => structuredClone(state.modeRun.stunt),
+  simulateStuntRingFlyThroughForTest: ({
+    yOffsetRatio = 0.45,
+    zOffsetRatio = 0.35,
+  } = {}) => {
+    if (getModeDefinition().id !== GAME_MODE_STUNT) {
+      setActiveGameMode(GAME_MODE_STUNT, { save: false, reset: false });
+      startRun(true);
+    }
+    const marker = modeMarkers[state.modeRun.markerIndex];
+    if (!marker) return null;
+    const y = (marker.y ?? marker.group.position.y) + marker.radius * yOffsetRatio;
+    const z = marker.group.position.z + marker.radius * zOffsetRatio;
+    const before = {
+      index: state.modeRun.markerIndex,
+      progress: state.modeRun.progress,
+      rings: state.modeRun.stunt.rings,
+    };
+    player.prevPosition.set(marker.group.position.x - marker.radius - 8, y, z);
+    player.position.set(marker.group.position.x + marker.radius + 8, y, z);
+    player.group.position.copy(player.position);
+    player.speed = 58;
+    player.verticalVel = 0;
+    updateStuntMode(1 / 60);
+    return {
+      marker: {
+        id: marker.id,
+        kind: marker.kind,
+        radius: marker.radius,
+      },
+      before,
+      after: {
+        index: state.modeRun.markerIndex,
+        progress: state.modeRun.progress,
+        rings: state.modeRun.stunt.rings,
+        lastTrick: state.modeRun.lastTrick,
+      },
+    };
+  },
   getModeCatalog: () =>
     MODE_CATALOG.map((mode) => ({ ...mode, id: getPublicModeId(mode) })),
   estimateModeRewardsForTest: (
@@ -26145,7 +26210,10 @@ window.__infernodriftTestApi = {
   getExitLinkUrl: () => settings.exitLinkUrl,
   getSchoolGateStatus: (iso = "") =>
     getSchoolGateStatus(iso ? new Date(iso) : new Date()),
-  forceSchoolGateAt: (iso = "") => evaluateSchoolGate(new Date(iso)),
+  forceSchoolGateAt: (iso = "") => {
+    state.schoolGate.dismissed = false;
+    return evaluateSchoolGate(new Date(iso));
+  },
   dismissSchoolGateForTest: () => {
     continuePastSchoolGate();
     return { ...state.schoolGate };
