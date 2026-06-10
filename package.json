@@ -1,9 +1,9 @@
 {
   "name": "infernodrift4",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "private": true,
   "type": "module",
-  "description": "InfernoDrift4, evolved from the current InfernoDrift game.",
+  "description": "InfernoDrift4.1, a polish-and-upgrade release of InfernoDrift4.",
   "scripts": {
     "dev": "npm run dev:web",
     "dev:web": "http-server . -a 127.0.0.1 -p 4173 -c-1",

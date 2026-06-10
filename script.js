@@ -1,8 +1,9 @@
 import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 import { getFirebaseConfig, getFirebaseConfigStatus } from "./firebase-config.js";
-import { createFirebaseOnlineService } from "./firebase-online.js?v=20260531-no-zero-repair-v4";
+import { createFirebaseOnlineService } from "./firebase-online.js?v=20260610-id41-polish-v15";
 
-const CLIENT_BUILD_ID = "20260531-no-zero-repair-v4";
+const PRODUCT_NAME = "InfernoDrift4.1";
+const CLIENT_BUILD_ID = "20260610-id41-polish-v15";
 
 const canvas = document.getElementById("game");
 const overlay = document.getElementById("overlay");
@@ -23,6 +24,8 @@ const startAccountSubmit = document.getElementById("start-account-submit");
 const startAccountStatus = document.getElementById("start-account-status");
 const overlaySubtitle = document.getElementById("overlay-subtitle");
 const tutorialBtn = document.getElementById("tutorial-btn");
+const releaseWelcome = document.getElementById("release-welcome");
+const releaseWelcomeStart = document.getElementById("release-welcome-start");
 const tips = document.getElementById("tips");
 const controlsRemap = document.getElementById("controls-remap");
 const controllerStatus = document.getElementById("controller-status");
@@ -35,6 +38,7 @@ const boostBar = document.getElementById("boost-bar");
 const shieldBar = document.getElementById("shield-bar");
 const statusLabelNodes = document.querySelectorAll(".status .pill .label");
 const effectToast = document.getElementById("effect-toast");
+const modeObjectiveChip = document.getElementById("mode-objective-chip");
 const dailyGiftNotice = document.getElementById("daily-gift");
 const dailyGiftAmount = document.getElementById("daily-gift-amount");
 const debugHud = document.getElementById("debug-hud");
@@ -168,6 +172,7 @@ const onlineConnectionReport = document.getElementById(
 );
 const onlineDiagnostics = document.getElementById("online-diagnostics");
 const onlineStatus = document.getElementById("online-status");
+const onlinePresence = document.getElementById("online-presence");
 const onlineConnect = document.getElementById("online-connect");
 const onlineDisconnect = document.getElementById("online-disconnect");
 const onlineUsernameInput = document.getElementById("online-username");
@@ -356,6 +361,7 @@ const ONLINE_STORAGE_KEY = "infernoDrift4.online.v1";
 const FEEDBACK_STORAGE_KEY = "infernoDrift4.feedback.v1";
 const FEEDBACK_NUDGE_STORAGE_KEY = "infernoDrift4.feedbackNudgeSeen.v1";
 const ONBOARDING_STORAGE_KEY = "infernoDrift4.onboarding.v1";
+const RELEASE_WELCOME_STORAGE_KEY = "infernoDrift4.releaseWelcome.4_1";
 const EXIT_LINK_DEFAULT_URL = "https://lbusd.instructure.com/?login_success=1";
 const EXIT_LINK_KEY_CODE = "KeyQ";
 const ONLINE_PROGRESS_SYNC_INTERVAL_MS = 30_000;
@@ -363,6 +369,7 @@ const ONLINE_HEALTH_TIMEOUT_MS = 6000;
 const ONLINE_CONNECT_TIMEOUT_MS = 8000;
 const ONLINE_AUTH_TIMEOUT_MS = 20000;
 const ONLINE_WS_PROBE_TIMEOUT_MS = 4500;
+const ONLINE_PRESENCE_REFRESH_MS = 15_000;
 const LEGACY_IMPORT_TIMEOUT_MS = 4500;
 const LEGACY_IMPORT_STORAGE_PREFIX = "infernoDrift4.legacyImport.v1:";
 const ACCOUNT_SYNC_TAB_ID = `${Date.now().toString(36)}-${Math.random()
@@ -578,7 +585,7 @@ const CAR_CLASS_OPTIONS = [
     styleId: "balanced",
     powerId: "nitro_core",
     description:
-      "Forgiving handling, quick boost recovery, and the cleanest default InfernoDrift4 feel.",
+      `Forgiving handling, quick boost recovery, and the cleanest default ${PRODUCT_NAME} feel.`,
   },
   {
     id: "drift",
@@ -2395,9 +2402,20 @@ const onlineState = {
   incomingFriendRequests: [],
   outgoingFriendRequests: [],
   recentPlayers: [],
+  presence: {
+    count: 0,
+    status: "idle",
+    source: "local",
+    updatedAt: 0,
+    nextRefreshAt: 0,
+    error: "",
+  },
   remoteSnapshots: [],
   roomShared: false,
   roomSharePending: false,
+  roomCodeCopiedAt: 0,
+  roomCodeCopyStatus: "",
+  lobbyReadyPending: false,
   chatMode: "lobby",
   activeDmUserId: "",
   activeDmUsername: "",
@@ -3416,6 +3434,10 @@ const state = {
     dismissed: false,
     block: "",
     dayType: "",
+  },
+  releaseWelcome: {
+    visible: false,
+    dismissed: false,
   },
   progressionV2: createProgressionV2(),
   modeRun: createModeRunState(),
@@ -6435,7 +6457,7 @@ async function checkOnlineHealth(timeoutMs = ONLINE_HEALTH_TIMEOUT_MS) {
   }
   const healthUrl = `${baseUrl}/health`;
   updateConnectionStage("checking");
-  console.info("[InfernoDrift4 online] health preflight", {
+  console.info(`[${PRODUCT_NAME} online] health preflight`, {
     url: healthUrl,
     origin: window.location.origin,
   });
@@ -7834,7 +7856,7 @@ async function connectOnline({ reconnect = false } = {}) {
       reconnect ? "Reconnecting to backend" : "Connecting to backend",
     );
     updateConnectionStage("connecting");
-    console.info("[InfernoDrift4 online] websocket connect", {
+    console.info(`[${PRODUCT_NAME} online] websocket connect`, {
       url: onlineState.backendUrl,
       protocol: new URL(onlineState.backendUrl).protocol,
       origin: window.location.origin,
@@ -7920,7 +7942,7 @@ async function connectOnline({ reconnect = false } = {}) {
       if (onlineState.connectTimer) clearTimeout(onlineState.connectTimer);
       onlineState.connectTimer = 0;
       onlineState.lastCloseCode = event.code || 0;
-      console.info("[InfernoDrift4 online] websocket close", {
+      console.info(`[${PRODUCT_NAME} online] websocket close`, {
         code: event.code,
         reason: event.reason,
         wasClean: event.wasClean,
@@ -7968,7 +7990,7 @@ async function connectOnline({ reconnect = false } = {}) {
       updateOnlineUi();
     });
     socket.addEventListener("error", () => {
-      console.info("[InfernoDrift4 online] websocket error", {
+      console.info(`[${PRODUCT_NAME} online] websocket error`, {
         url: onlineState.backendUrl,
         origin: window.location.origin,
       });
@@ -8097,6 +8119,7 @@ function handleOnlineMessage(raw) {
       performance.now() + ONLINE_PROGRESS_SYNC_INTERVAL_MS;
     requestOnlineLeaderboard({ force: true });
     requestOnlineProfile();
+    requestOnlinePresence({ force: true });
     if (onlineState.pendingStartAfterAuth) {
       onlineState.pendingStartAfterAuth = false;
       if (overlay.classList.contains("show")) startRun(true);
@@ -8191,6 +8214,8 @@ function handleOnlineMessage(raw) {
     if (previousCode && onlineState.room?.code !== previousCode) {
       onlineState.roomShared = false;
       onlineState.roomSharePending = false;
+      onlineState.roomCodeCopiedAt = 0;
+      onlineState.roomCodeCopyStatus = "";
     }
     if (onlineState.room?.mode && MODE_BY_ID[onlineState.room.mode]) {
       const roomModeChanged = onlineState.room.mode !== settings.activeGameMode;
@@ -8212,6 +8237,13 @@ function handleOnlineMessage(raw) {
     onlineState.leaderboard = Array.isArray(message.room?.leaderboard)
       ? sanitizeOnlineLeaderboardRows(message.room.leaderboard)
       : onlineState.leaderboard;
+    if (onlineState.presence.source !== "online") {
+      setOnlinePresenceSnapshot({
+        count: getLocalOnlinePresenceEstimate(),
+        status: "estimated",
+        source: "local",
+      });
+    }
     updateRemoteSnapshotsFromRoom(message.room);
     if (joinedNewRoom && isFirebaseLiveRoom(onlineState.room) && state.running) {
       sendFirebaseLiveRoomFrame({ force: true, reason: "room_join" });
@@ -8235,6 +8267,8 @@ function handleOnlineMessage(raw) {
     onlineState.joinRoomPendingCode = "";
     onlineState.roomShared = false;
     onlineState.roomSharePending = false;
+    onlineState.roomCodeCopiedAt = 0;
+    onlineState.roomCodeCopyStatus = "";
     onlineState.firebaseLiveStatus = "idle";
     onlineState.firebaseLiveError = "";
     onlineState.remoteSnapshots = [];
@@ -8317,6 +8351,14 @@ function handleOnlineMessage(raw) {
     onlineState.recentPlayers = Array.isArray(message.recentPlayers)
       ? message.recentPlayers
       : [];
+  } else if (message.type === "presence.snapshot") {
+    setOnlinePresenceSnapshot({
+      count: message.count,
+      status: message.status || "live",
+      source: message.source || "online",
+      updatedAt: message.updatedAt || Date.now(),
+      error: message.error || "",
+    });
   } else if (message.type === "friend.requested") {
     pushOnlineChatMessage({
       from: "Friends",
@@ -9374,6 +9416,47 @@ async function shareFirebaseLobby() {
   }
 }
 
+async function copyOnlineRoomCode(code = onlineState.room?.code || "") {
+  const cleanCode = String(code || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 10);
+  if (!cleanCode) {
+    pushOnlineChatMessage({
+      from: "System",
+      text: "Create or join a lobby before copying a code.",
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
+  let copied = false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(cleanCode);
+      copied = true;
+    }
+  } catch {
+    copied = false;
+  }
+  if (!copied && onlineRoomCode) {
+    onlineRoomCode.value = cleanCode;
+    onlineRoomCode.focus({ preventScroll: true });
+    onlineRoomCode.select();
+  }
+  onlineState.roomCodeCopiedAt = performance.now();
+  onlineState.roomCodeCopyStatus = copied ? "copied" : "selected";
+  setEffectToast(copied ? `Lobby code ${cleanCode} copied` : `Lobby code ${cleanCode} selected`);
+  updateOnlineUi();
+  window.setTimeout(() => {
+    if (performance.now() - onlineState.roomCodeCopiedAt < 4300) return;
+    onlineState.roomCodeCopyStatus = "";
+    updateOnlineUi();
+  }, 4500);
+  return copied;
+}
+
 function joinRoomByCode(code, { source = "manual" } = {}) {
   const invite = code ? null : getLatestJoinableRoomInvite();
   const cleanCode = String(code || invite?.code || "")
@@ -9550,7 +9633,7 @@ async function submitFirebaseReport(username, reason) {
       `Reason: ${reason}`,
     ].join("\n"),
     diagnostics,
-    client: "InfernoDrift4 static client",
+    client: `${PRODUCT_NAME} static client`,
     at: new Date().toISOString(),
   };
   try {
@@ -10239,12 +10322,16 @@ function ensureCodexAlwaysFirst(rows = [], { random = Math.random } = {}) {
     (top, row) => Math.max(top, getLeaderboardXp(row)),
     0,
   );
+  const safeTopRealXp =
+    topRealXp >= SPECIAL_BADGE_SUSPECT_XP
+      ? CODEX_LEADERBOARD_BASELINE_XP
+      : topRealXp;
   if (!Number.isFinite(codexLeaderboardXp) || codexLeaderboardXp <= 0) {
-    codexLeaderboardXp = Math.max(150, topRealXp + 50);
+    codexLeaderboardXp = Math.max(150, safeTopRealXp + 50);
   }
-  const gap = codexLeaderboardXp - topRealXp;
-  if (topRealXp >= codexLeaderboardXp) {
-    const neededToPass = topRealXp - codexLeaderboardXp + 1;
+  const gap = codexLeaderboardXp - safeTopRealXp;
+  if (safeTopRealXp >= codexLeaderboardXp) {
+    const neededToPass = safeTopRealXp - codexLeaderboardXp + 1;
     codexLeaderboardXp += randomIntInclusive(
       neededToPass + 25,
       neededToPass + 100,
@@ -10252,6 +10339,9 @@ function ensureCodexAlwaysFirst(rows = [], { random = Math.random } = {}) {
     );
   } else if (gap <= 25) {
     codexLeaderboardXp += randomIntInclusive(25, 150, random);
+  }
+  if (codexLeaderboardXp >= SPECIAL_BADGE_SUSPECT_XP) {
+    codexLeaderboardXp = CODEX_LEADERBOARD_BASELINE_XP;
   }
   return [makeCodexLeaderboardRow(codexLeaderboardXp), ...realRows];
 }
@@ -10466,7 +10556,7 @@ function updateProfileUi() {
           : "Temporary guest profile. Online rooms work, but durable progress requires an account."
         : isFirebaseBackendMode()
           ? "Signed in online. Progress, friends, chat, feedback, and leaderboard sync are active."
-          : "Signed in. Progress, friends, chat, and leaderboard sync use the InfernoDrift4 backend."
+          : "Signed in. Progress, friends, chat, and leaderboard sync use online services."
       : "Offline profile. Sign in or play as guest to use online-lite features; local modes keep working offline.";
   }
   if (profileBadges) {
@@ -10521,11 +10611,410 @@ function updateProfileUi() {
   }
 }
 
+function appendOnlineRoomStat(container, label, value, state = "") {
+  const item = document.createElement("div");
+  item.className = "online-room-stat";
+  if (state) item.dataset.state = state;
+  const labelNode = document.createElement("span");
+  labelNode.textContent = label;
+  const valueNode = document.createElement("strong");
+  valueNode.textContent = value;
+  item.append(labelNode, valueNode);
+  container.append(item);
+}
+
+function getRoomMemberId(member = {}) {
+  return String(member.uid || member.id || member.userId || "").trim();
+}
+
+function getRoomMemberName(member = {}, index = 0) {
+  const rawName = String(member.username || member.name || member.displayName || "").trim();
+  return rawName || `Driver ${index + 1}`;
+}
+
+function getRoomMemberTeamLabel(member = {}) {
+  const team = String(member.team || "").trim().toLowerCase();
+  if (team === "blue") return "Blue";
+  if (team === "red") return "Red";
+  if (team === "neutral") return "Solo";
+  return "Team pending";
+}
+
+function getLobbyReadyStats(room = onlineState.room) {
+  const players = Array.isArray(room?.players) ? room.players : [];
+  const readyCount = players.filter((member) => member?.ready === true).length;
+  return {
+    readyCount,
+    playerCount: players.length,
+    allReady: players.length > 0 && readyCount === players.length,
+  };
+}
+
+function getOwnLobbyMember(room = onlineState.room) {
+  const localId = String(onlineState.user?.id || onlineState.user?.uid || "");
+  if (!localId) return null;
+  return (Array.isArray(room?.players) ? room.players : []).find(
+    (member) => getRoomMemberId(member) === localId,
+  );
+}
+
+function isOwnLobbyReady(room = onlineState.room) {
+  return getOwnLobbyMember(room)?.ready === true;
+}
+
+function setLocalLobbyReady(ready = false) {
+  const room = onlineState.room;
+  const localId = String(onlineState.user?.id || onlineState.user?.uid || "");
+  if (!room || !localId || !Array.isArray(room.players)) return false;
+  let changed = false;
+  room.players = room.players.map((member) => {
+    if (getRoomMemberId(member) !== localId) return member;
+    changed = true;
+    return {
+      ...member,
+      uid: member.uid || localId,
+      id: member.id || localId,
+      username: member.username || onlineState.username || "Driver",
+      ready: ready === true,
+      readyAt: ready === true ? new Date().toISOString() : "",
+    };
+  });
+  return changed;
+}
+
+async function toggleLobbyReady() {
+  const room = onlineState.room;
+  if (!room?.code) {
+    pushOnlineChatMessage({
+      from: "System",
+      text: "Join or create a lobby before setting ready.",
+      quick: true,
+    });
+    updateOnlineUi();
+    return false;
+  }
+  const nextReady = !isOwnLobbyReady(room);
+  onlineState.lobbyReadyPending = true;
+  updateOnlineUi();
+  try {
+    if (isFirebaseBackendMode() && firebaseOnline?.updateLobbyReady) {
+      const updatedRoom = await firebaseOnline.updateLobbyReady(room.code, nextReady);
+      if (updatedRoom) {
+        handleOnlineMessage(JSON.stringify({ type: "room.snapshot", room: updatedRoom }));
+      }
+    } else {
+      setLocalLobbyReady(nextReady);
+      updateOnlineUi();
+    }
+    pushOnlineChatMessage({
+      from: "System",
+      text: nextReady ? "You are marked ready in the lobby." : "You are no longer marked ready.",
+      quick: true,
+    });
+    return true;
+  } catch (error) {
+    pushOnlineChatMessage({
+      from: "System",
+      text: `Could not update lobby ready state: ${describeOnlineError(error?.message || "")}`,
+      quick: true,
+    });
+    return false;
+  } finally {
+    onlineState.lobbyReadyPending = false;
+    updateOnlineUi();
+  }
+}
+
+function appendOnlineRoomMembers(container, room, players, roomSize, liveSynced) {
+  const memberList = document.createElement("div");
+  memberList.className = "online-room-members";
+  const title = document.createElement("span");
+  title.className = "online-room-members-title";
+  title.textContent = "Drivers";
+  memberList.append(title);
+
+  const hostId = String(room.hostUid || room.hostUserId || room.host || "");
+  const liveHostId = getFirebaseLiveHostUid(room);
+  const localId = String(onlineState.user?.id || onlineState.user?.uid || "");
+  players.slice(0, Math.max(1, roomSize)).forEach((member, index) => {
+    const memberId = getRoomMemberId(member);
+    const row = document.createElement("div");
+    row.className = "online-room-member";
+    if (memberId && memberId === localId) row.dataset.current = "true";
+    if (memberId && (memberId === hostId || memberId === liveHostId)) row.dataset.host = "true";
+    row.dataset.ready = member.ready === true ? "true" : "false";
+
+    const name = document.createElement("strong");
+    name.textContent = getRoomMemberName(member, index);
+    const meta = document.createElement("span");
+    const tags = [getRoomMemberTeamLabel(member)];
+    if (memberId && memberId === localId) tags.push("You");
+    if (memberId && memberId === hostId) tags.push("Host");
+    if (liveSynced && memberId && memberId === liveHostId && memberId !== hostId) {
+      tags.push("Live host");
+    }
+    tags.push(member.ready === true ? "Ready" : "Not ready");
+    meta.textContent = tags.join(" / ");
+    row.append(name, meta);
+    memberList.append(row);
+  });
+
+  const openSlots = Math.max(0, roomSize - players.length);
+  if (openSlots) {
+    const waiting = document.createElement("div");
+    waiting.className = "online-room-member online-room-member-empty";
+    const label = document.createElement("strong");
+    label.textContent = openSlots === 1 ? "Open slot" : `${openSlots} open slots`;
+    const meta = document.createElement("span");
+    meta.textContent = "Share code to invite";
+    waiting.append(label, meta);
+    memberList.append(waiting);
+  }
+  container.append(memberList);
+}
+
+function renderOnlineRoomState({ connected, roomsNeedLive, firebaseMode } = {}) {
+  if (!onlineRoomState) return;
+  const room = onlineState.room;
+  const roomBusy = Boolean(onlineState.joinRoomPending || onlineState.roomSharePending);
+  onlineRoomState.setAttribute("aria-busy", roomBusy ? "true" : "false");
+  onlineRoomState.classList.toggle("online-room-card-rich", Boolean(room));
+  onlineRoomState.classList.toggle(
+    "online-room-card-pending",
+    roomBusy,
+  );
+  onlineRoomState.replaceChildren();
+  if (!room) {
+    onlineRoomState.textContent = onlineState.queue
+      ? `Queued for ${onlineState.queue.playlist || "casual"} ${onlineState.queue.teamSize || 2}v${onlineState.queue.teamSize || 2}`
+      : roomsNeedLive
+        ? "Lobbies need a live WebSocket connection. Account, chat, and leaderboard are using HTTPS fallback."
+        : connected
+          ? firebaseMode
+            ? "Pick a mode, create a lobby, or enter a code to join a friend."
+            : "Create a private room or enter a code to join."
+          : "Connect online or continue as an online guest before creating or joining a lobby.";
+    return;
+  }
+  const modeLabel = getModeDefinition(room.mode).label;
+  const code = String(room.code || room.id || "").toUpperCase();
+  const players = Array.isArray(room.players) ? room.players : [];
+  const playerCount = players.length;
+  const roomSize = room.size || Math.max(playerCount, (Number(room.teamSize) || 1) * 2, 1);
+  const teamSize = Math.max(1, Number(room.teamSize) || 1);
+  const liveSynced = isFirebaseLiveRoom(room);
+  const readyStats = getLobbyReadyStats(room);
+  const ownReady = isOwnLobbyReady(room);
+  const header = document.createElement("div");
+  header.className = "online-room-summary-header";
+  const title = document.createElement("strong");
+  title.textContent = room.firebaseLobby ? "Online lobby " : "Private lobby ";
+  const codeNode = document.createElement("button");
+  codeNode.className = "online-room-code-pill";
+  codeNode.type = "button";
+  codeNode.textContent = code ? `${code} Copy` : "NO CODE";
+  codeNode.disabled = !code;
+  codeNode.setAttribute(
+    "aria-label",
+    code ? `Copy lobby code ${code}` : "No lobby code available",
+  );
+  bindPressAction(codeNode, () => copyOnlineRoomCode(code));
+  header.append(title, codeNode);
+
+  const stats = document.createElement("div");
+  stats.className = "online-room-stat-grid";
+  appendOnlineRoomStat(stats, "Mode", modeLabel);
+  appendOnlineRoomStat(stats, "Drivers", `${playerCount}/${roomSize}`);
+  appendOnlineRoomStat(
+    stats,
+    "Ready",
+    `${readyStats.readyCount}/${readyStats.playerCount || 0}`,
+    readyStats.allReady ? "ready" : "lobby",
+  );
+  appendOnlineRoomStat(stats, "Teams", `${teamSize}v${teamSize}`);
+  appendOnlineRoomStat(
+    stats,
+    "Sync",
+    room.firebaseLobby
+      ? liveSynced
+        ? "Live"
+        : "Lobby"
+      : roomsNeedLive
+        ? "Offline"
+        : "Server",
+    liveSynced ? "ready" : room.firebaseLobby ? "lobby" : "",
+  );
+  appendOnlineRoomMembers(stats, room, players, roomSize, liveSynced);
+
+  const note = document.createElement("p");
+  note.className = "online-room-next-step";
+  const copyFeedbackRecent =
+    onlineState.roomCodeCopyStatus &&
+    performance.now() - onlineState.roomCodeCopiedAt < 4500;
+  if (copyFeedbackRecent) {
+    note.textContent =
+      onlineState.roomCodeCopyStatus === "copied"
+        ? "Code copied. Paste it in chat, a text, or wherever your friend can grab it."
+        : "Code selected. Copy it, then send it to your friend.";
+  } else if (onlineState.joinRoomPending) {
+    note.textContent = `Joining lobby ${onlineState.joinRoomPendingCode || code}...`;
+  } else if (onlineState.roomSharePending) {
+    note.textContent = "Sharing the lobby code...";
+  } else if (onlineState.roomShared) {
+    note.textContent = readyStats.allReady
+      ? "Code shared. Everyone in the lobby is ready."
+      : "Code shared in lobby chat. Mark ready when you are set to drive.";
+  } else if (liveSynced) {
+    note.textContent = readyStats.allReady
+      ? "Shared live room active with shared live sync. Everyone is ready; the host can launch."
+      : "Shared live room active with shared live sync. Share the code, mark ready, then drive together.";
+  } else if (room.firebaseLobby) {
+    note.textContent = "Share the code for chat and grouping. Ready marks help everyone coordinate.";
+  } else {
+    note.textContent = readyStats.allReady
+      ? "Everyone in the room is ready."
+      : "Share the code, then mark ready when you are set.";
+  }
+  const readyRow = document.createElement("div");
+  readyRow.className = "online-room-ready-row";
+  const readyButton = document.createElement("button");
+  readyButton.className = "ghost online-room-ready-toggle";
+  readyButton.type = "button";
+  readyButton.textContent = onlineState.lobbyReadyPending
+    ? "Updating..."
+    : ownReady
+      ? "Ready"
+      : "Mark Ready";
+  readyButton.disabled = !getOwnLobbyMember(room) || onlineState.lobbyReadyPending;
+  readyButton.setAttribute("aria-pressed", ownReady ? "true" : "false");
+  readyButton.setAttribute(
+    "aria-label",
+    ownReady ? "Mark yourself not ready" : "Mark yourself ready",
+  );
+  readyButton.setAttribute(
+    "aria-busy",
+    onlineState.lobbyReadyPending ? "true" : "false",
+  );
+  bindPressAction(readyButton, () => toggleLobbyReady());
+  const readyText = document.createElement("span");
+  readyText.textContent =
+    readyStats.playerCount === 0
+      ? "No drivers joined yet."
+      : readyStats.allReady
+        ? "All joined drivers are ready."
+        : `${readyStats.readyCount}/${readyStats.playerCount} joined drivers ready.`;
+  readyRow.append(readyButton, readyText);
+  onlineRoomState.append(header, stats, note, readyRow);
+}
+
+function getLocalOnlinePresenceEstimate() {
+  const ids = new Set();
+  if (onlineState.user?.id) ids.add(String(onlineState.user.id));
+  (Array.isArray(onlineState.room?.players) ? onlineState.room.players : []).forEach(
+    (playerEntry) => {
+      const id = String(playerEntry?.uid || playerEntry?.id || playerEntry?.userId || "");
+      if (id) ids.add(id);
+    },
+  );
+  onlineState.friends.forEach((friend) => {
+    if (!friend?.online) return;
+    const id = String(friend.userId || friend.id || friend.username || "");
+    if (id) ids.add(id);
+  });
+  onlineState.recentPlayers.forEach((playerEntry) => {
+    if (playerEntry?.online === false) return;
+    const id = String(playerEntry.userId || playerEntry.id || playerEntry.username || "");
+    if (id) ids.add(id);
+  });
+  return ids.size;
+}
+
+function setOnlinePresenceSnapshot({
+  count = getLocalOnlinePresenceEstimate(),
+  status = "estimated",
+  source = "local",
+  updatedAt = Date.now(),
+  error = "",
+} = {}) {
+  onlineState.presence = {
+    count: Math.max(0, Math.round(Number(count) || 0)),
+    status,
+    source,
+    updatedAt,
+    nextRefreshAt: performance.now() + ONLINE_PRESENCE_REFRESH_MS,
+    error,
+  };
+}
+
+function renderOnlinePresence() {
+  if (!onlinePresence) return;
+  const presence = onlineState.presence;
+  const count = Math.max(0, Number(presence.count) || 0);
+  const label = count === 1 ? "driver" : "drivers";
+  const state =
+    presence.status === "checking"
+      ? "checking"
+      : presence.status === "live"
+        ? "live"
+        : "estimated";
+  onlinePresence.dataset.state = state;
+  onlinePresence.dataset.source =
+    state === "live" ? "Live" : state === "checking" ? "Updating" : "Estimate";
+  onlinePresence.textContent =
+    state === "checking"
+      ? "Online drivers: updating..."
+      : count
+        ? `Online drivers: ${count} ${label}`
+        : onlineState.user
+          ? "Online drivers: just you for now"
+          : "Online drivers: connect to check";
+}
+
+function requestOnlinePresence({ force = false } = {}) {
+  const now = performance.now();
+  if (!force && now < onlineState.presence.nextRefreshAt) return;
+  const fallbackCount = getLocalOnlinePresenceEstimate();
+  if (!isFirebaseBackendMode() || !onlineState.user || !firebaseOnline?.refreshPresence) {
+    setOnlinePresenceSnapshot({
+      count: fallbackCount,
+      status: "estimated",
+      source: "local",
+    });
+    renderOnlinePresence();
+    return;
+  }
+  onlineState.presence.status = "checking";
+  onlineState.presence.nextRefreshAt = now + ONLINE_PRESENCE_REFRESH_MS;
+  renderOnlinePresence();
+  firebaseOnline
+    .refreshPresence()
+    .then((snapshot) => {
+      setOnlinePresenceSnapshot({
+        count: snapshot?.count ?? fallbackCount,
+        status: "live",
+        source: "online",
+        updatedAt: snapshot?.updatedAt || Date.now(),
+      });
+      renderOnlinePresence();
+    })
+    .catch((error) => {
+      setOnlinePresenceSnapshot({
+        count: fallbackCount,
+        status: "estimated",
+        source: "local",
+        error: describeOnlineError(error?.message || ""),
+      });
+      renderOnlinePresence();
+    });
+}
+
 function updateOnlineUi() {
   const connected = isOnlineServiceConnected();
   const firebaseMode = isFirebaseBackendMode();
   const activeTab =
     document.querySelector(".tab-btn.active")?.dataset.tab ?? "";
+  if (activeTab === "online") requestOnlinePresence();
+  renderOnlinePresence();
   if (connected && (activeTab === "leaderboard" || activeTab === "progress")) {
     requestOnlineLeaderboard();
   }
@@ -10602,12 +11091,23 @@ function updateOnlineUi() {
       onlineJoinRoom.disabled || Boolean(onlineState.joinRoomPending);
     onlineJoinRoom.textContent = onlineState.joinRoomPending
       ? "Joining..."
-      : "Join Room";
+      : "Join Lobby";
+    onlineJoinRoom.setAttribute(
+      "aria-busy",
+      onlineState.joinRoomPending ? "true" : "false",
+    );
   }
   if (onlineCreateRoom) {
+    onlineCreateRoom.disabled =
+      onlineCreateRoom.disabled ||
+      Boolean(onlineState.joinRoomPending || onlineState.roomSharePending);
     onlineCreateRoom.textContent = firebaseMode
       ? "Create Online Lobby"
-      : "Create Private Room";
+      : "Create Private Lobby";
+    onlineCreateRoom.setAttribute(
+      "aria-busy",
+      onlineState.joinRoomPending ? "true" : "false",
+    );
   }
   if (onlineQueue) {
     onlineQueue.disabled = firebaseMode || roomsNeedLive || !connected;
@@ -10631,21 +11131,12 @@ function updateOnlineUi() {
       : onlineState.roomSharePending
         ? "Sharing..."
         : "Share Code";
+    onlineShareRoom.setAttribute(
+      "aria-busy",
+      onlineState.roomSharePending ? "true" : "false",
+    );
   }
-  if (onlineRoomState) {
-    const room = onlineState.room;
-    onlineRoomState.textContent = room
-      ? room.firebaseLobby
-        ? `Online lobby ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${getModeDefinition(room.mode).label}. Shared live room active.`
-        : `Room ${room.code || room.id}: ${room.players?.length || 0}/${room.size || "?"} players, ${room.bots || 0} bots, ${getModeDefinition(room.mode).label}`
-      : onlineState.queue
-        ? `Queued for ${onlineState.queue.playlist || "casual"} ${onlineState.queue.teamSize || 2}v${onlineState.queue.teamSize || 2}`
-        : firebaseMode
-          ? "Online lobby mode is active. Create or join a lobby for shared live play."
-          : roomsNeedLive
-          ? "Rooms need live WebSocket connection. Account, chat, and leaderboard are using HTTPS fallback."
-          : "No room joined.";
-  }
+  renderOnlineRoomState({ connected, roomsNeedLive, firebaseMode });
   renderChatCommandPanel();
   renderChatLog(onlineChatLog);
   renderChatLog(chatPopoutLog);
@@ -10820,7 +11311,7 @@ async function submitFeedback() {
       : null,
     replyEmail: age13 ? String(feedbackEmail?.value || "").trim() : "",
     age13OrOlder: age13,
-    client: "InfernoDrift4 static client",
+    client: `${PRODUCT_NAME} static client`,
     at: new Date().toISOString(),
   };
   try {
@@ -10883,7 +11374,7 @@ async function submitFirebaseFeedback() {
       : null,
     replyEmail: age13 ? String(feedbackEmail?.value || "").trim() : "",
     age13OrOlder: age13,
-    client: "InfernoDrift4 static client",
+    client: `${PRODUCT_NAME} static client`,
     at: new Date().toISOString(),
   };
   try {
@@ -10955,6 +11446,30 @@ function updateFeedbackStatus(text = "") {
       : "Feedback saves only when a backend endpoint is configured.");
 }
 
+function shouldShowTouchBackflipButton() {
+  if (!input.touchEnabled || isBattleMode()) return false;
+  return isStuntMode() || isCarAirborne(player) || player.backflipActive;
+}
+
+function updateTouchActionButtons() {
+  if (touchJump) {
+    touchJump.hidden = !input.touchEnabled;
+    touchJump.textContent = isBattleMode() ? "Hop" : "Jump";
+  }
+  if (touchDrift) touchDrift.textContent = "Drift";
+  if (touchBoost) {
+    touchBoost.textContent = isMaxMode() ? "Boost / Hit" : "Boost";
+  }
+  if (touchBackflip) {
+    touchBackflip.textContent = isStuntMode() ? "Flip" : "Trick";
+    touchBackflip.hidden = !shouldShowTouchBackflipButton();
+  }
+  if (touchLaser) {
+    touchLaser.textContent = "Laser";
+    touchLaser.hidden = !(input.touchEnabled && isBattleMode());
+  }
+}
+
 function refreshDevModeUi() {
   const maxModeActive = isMaxMode();
   if (campaignAiSelect) {
@@ -10963,15 +11478,7 @@ function refreshDevModeUi() {
   if (devModeToggle) devModeToggle.checked = settings.devMode;
   document.body.classList.toggle("dev-mode-enabled", settings.devMode);
   touchControlsRoot?.classList.toggle("dev-mode", settings.devMode);
-  if (touchJump) {
-    touchJump.hidden = !input.touchEnabled;
-  }
-  if (touchBackflip) {
-    touchBackflip.hidden = !input.touchEnabled;
-  }
-  if (touchLaser) {
-    touchLaser.hidden = !(input.touchEnabled && isBattleMode());
-  }
+  updateTouchActionButtons();
   if (devTools) {
     devTools.hidden = !settings.devMode;
   }
@@ -11229,7 +11736,7 @@ function renderModeBoard() {
   if (!modeBoard) return;
   const activeId = normalizeGameModeId(settings.activeGameMode);
   modeBoard.innerHTML = `
-    <section class="mode-group unified-modes" aria-label="InfernoDrift4 modes">
+    <section class="mode-group unified-modes" aria-label="${PRODUCT_NAME} modes">
       <div class="mode-group-title">Choose a Drive</div>
       <div class="games-grid unified-games-grid">
         ${MODE_CATALOG.map((mode, index) => {
@@ -11288,7 +11795,7 @@ function refreshGamesUi() {
   if (overlaySubtitle) {
     overlaySubtitle.textContent = isMaxMode()
       ? `${maxProfile.label} arena rules. Faster cars, cleaner reads, stronger squad play, and smarter goal pressure.`
-      : `${activeMode.objective} Every run keeps the current InfernoDrift4 driving base: drift, boost, jump, recover, and restart fast.`;
+      : `${activeMode.objective} Every run keeps the current ${PRODUCT_NAME} driving base: drift, boost, jump, recover, and restart fast.`;
   }
   const maxModeActive = isMaxMode();
   document.body.classList.toggle("max-mode", maxModeActive);
@@ -11585,23 +12092,7 @@ function refreshModeCopy() {
     `;
   }
   if (state.modeHelpOpen) renderModeHelpCard();
-  if (touchDrift) {
-    touchDrift.textContent = "Drift";
-  }
-  if (touchBoost) {
-    touchBoost.textContent = isMaxMode() ? "Boost / Hit" : "Boost";
-  }
-  if (touchJump) {
-    touchJump.textContent = isBattleMode() ? "Hop" : "Jump";
-  }
-  if (touchBackflip) {
-    touchBackflip.textContent = isStuntMode() ? "Flip" : "Trick";
-    touchBackflip.hidden = !input.touchEnabled || isBattleMode();
-  }
-  if (touchLaser) {
-    touchLaser.textContent = "Laser";
-    touchLaser.hidden = !(input.touchEnabled && isBattleMode());
-  }
+  updateTouchActionButtons();
 }
 
 function renderProgressPanel() {
@@ -14448,16 +14939,17 @@ function makeAirRing({
   );
   ring.rotation.y = Math.PI / 2;
   const core = new THREE.Mesh(
-    new THREE.CircleGeometry(radius * 0.82, 40),
+    new THREE.CircleGeometry(radius * 0.62, 40),
     new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: 0.1,
+      opacity: 0.035,
       side: THREE.DoubleSide,
       depthWrite: false,
     }),
   );
   core.rotation.y = Math.PI / 2;
+  core.renderOrder = -1;
   group.add(ring, core);
   group.position.set(x, y, z);
   group.userData.phase = Math.random() * Math.PI * 2;
@@ -15882,6 +16374,7 @@ function isFeedbackOpen() {
 
 function getUiScreen() {
   if (schoolGate?.classList.contains("show")) return "school-gate";
+  if (releaseWelcome?.classList.contains("show")) return "release-welcome";
   if (overlay.classList.contains("show")) return "title";
   if (message.classList.contains("show")) return "results";
   if (isMenuOpen() || isFeedbackOpen() || state.modeHelpOpen) return "paused";
@@ -16189,8 +16682,8 @@ function getModeSpawn() {
     };
   }
   const spawns = {
-    [GAME_MODE_STUNT]: { x: -118, z: -118, heading: Math.PI * 0.22 },
-    [GAME_MODE_RAMP_RUSH]: { x: -118, z: -118, heading: Math.PI * 0.22 },
+    [GAME_MODE_STUNT]: { x: -142, z: -150, heading: Math.PI * 0.22 },
+    [GAME_MODE_RAMP_RUSH]: { x: -142, z: -150, heading: Math.PI * 0.22 },
     [GAME_MODE_BOOST_BOWLING]: { x: 0, z: -142, heading: 0 },
     [GAME_MODE_HUNTER_TAG]: { x: 0, z: -128, heading: 0 },
     [GAME_MODE_BOT_ESCAPE]: { x: 0, z: -128, heading: 0 },
@@ -16198,7 +16691,7 @@ function getModeSpawn() {
     [GAME_MODE_DRIFT_SCORE]: { x: 0, z: -104, heading: 0 },
     [GAME_MODE_LAVA_FLOOR]: { x: -96, z: -116, heading: Math.PI * 0.17 },
     [GAME_MODE_KING_ZONE]: { x: 0, z: -104, heading: 0 },
-    [GAME_MODE_TRICK_COMBO]: { x: -118, z: -118, heading: Math.PI * 0.22 },
+    [GAME_MODE_TRICK_COMBO]: { x: -142, z: -150, heading: Math.PI * 0.22 },
   };
   const spawn = spawns[mode.id] ?? {
     x: PLAYER_SPAWN_X,
@@ -22094,6 +22587,127 @@ function getModeHudStatus(mode = getModeDefinition()) {
   return `${Math.floor(state.modeRun.progress)}/${Math.floor(target)}`;
 }
 
+function getModeObjectiveMarker(mode = getModeDefinition()) {
+  if (!modeMarkers.length) return null;
+  if (mode.id === GAME_MODE_LAVA_FLOOR) {
+    return modeMarkers[state.modeRun.lava.safeZoneIndex] ?? null;
+  }
+  if (
+    mode.id === GAME_MODE_RACE ||
+    mode.id === GAME_MODE_TIME_TRIAL ||
+    mode.id === GAME_MODE_STUNT ||
+    mode.id === GAME_MODE_RAMP_RUSH ||
+    mode.id === GAME_MODE_KING_ZONE
+  ) {
+    return modeMarkers[state.modeRun.markerIndex] ?? activeModeMarkers()[0] ?? null;
+  }
+  return activeModeMarkers()[0] ?? null;
+}
+
+function getModeObjectiveTargetHint(mode = getModeDefinition()) {
+  const marker = getModeObjectiveMarker(mode);
+  if (!marker?.group?.position) return null;
+  const targetPosition = marker.group.position;
+  const dx = targetPosition.x - player.position.x;
+  const dz = targetPosition.z - player.position.z;
+  const dy = (marker.y ?? targetPosition.y) - player.position.y;
+  const distance = Math.max(1, Math.round(Math.hypot(dx, dz, dy)));
+  const flatDistance = Math.max(1, Math.hypot(dx, dz));
+  const forward = dx * Math.sin(player.heading) + dz * Math.cos(player.heading);
+  const right = dx * Math.cos(player.heading) - dz * Math.sin(player.heading);
+  const lateralRatio = Math.abs(right) / flatDistance;
+  const direction =
+    forward < -flatDistance * 0.3
+      ? lateralRatio > 0.42
+        ? right > 0
+          ? "behind-right"
+          : "behind-left"
+        : "behind"
+      : lateralRatio < 0.28
+        ? "ahead"
+        : right > 0
+          ? "ahead-right"
+          : "ahead-left";
+  return {
+    label: marker.label || marker.kind || "Target",
+    kind: marker.kind || "marker",
+    distance,
+    direction,
+    text: `${distance}m ${direction}`,
+  };
+}
+
+function getModeObjectivePrompt(mode = getModeDefinition()) {
+  if (!state.running && !state.modeHelpOpen) return "";
+  const targetHint = getModeObjectiveTargetHint(mode);
+  const suffix = targetHint ? ` - ${targetHint.text}` : "";
+  if (isCampaignSurvivalMode()) {
+    return `Survive ${getLevel().name}: ${Math.ceil(state.timeLeft)}s left`;
+  }
+  if (mode.id === GAME_MODE_MAX1) {
+    return maxMode.replayActive
+      ? "Replay: watch the goal line"
+      : "Blue attack: push the ball into Red goal";
+  }
+  if (mode.id === GAME_MODE_BATTLE) {
+    const ammo = Math.round(player.battleAmmo ?? 0);
+    if ((player.battleReloadTimer ?? 0) > 0) return "Reloading: use cover";
+    if (ammo <= 0) return "Find Ammo Refill";
+    return `Fire forward: ${ammo}/${BATTLE_RULES.maxAmmo} shots`;
+  }
+  if (mode.id === GAME_MODE_BOOST_BOWLING) {
+    const bowling = state.modeRun.bowling;
+    if (bowling.countdown > 0)
+      return `Aim before launch: ${Math.ceil(bowling.countdown)}`;
+    if (bowling.resetTimer > 0) return `Frame ${bowling.frame}: resetting pins`;
+    return `Steer only: ${bowling.pinsStanding} pins standing`;
+  }
+  if (mode.id === GAME_MODE_LAVA_FLOOR) {
+    const total = modeMarkers.length || 1;
+    const current = Math.min(total, state.modeRun.lava.safeZoneIndex + 1);
+    return `Reach safe platform ${current}/${total}${suffix}`;
+  }
+  if (mode.id === GAME_MODE_HUNTER_TAG) {
+    return state.modeRun.tagState === "it"
+      ? "Tag the marked hunter back"
+      : "Escape gates: do not get tagged";
+  }
+  if (mode.id === GAME_MODE_STUNT || mode.id === GAME_MODE_RAMP_RUSH) {
+    const marker = modeMarkers[state.modeRun.markerIndex];
+    const target = Math.max(1, state.modeRun.target || mode.target || 1);
+    const current = Math.min(target, Math.floor(state.modeRun.progress) + 1);
+    return marker?.kind === "loop"
+      ? `Boost into loop ${current}/${target}${suffix}`
+      : `Fly through ring ${current}/${target}${suffix}`;
+  }
+  if (mode.id === GAME_MODE_KING_ZONE) {
+    return `Hold zone ${Math.floor(state.modeRun.progress)}/${Math.floor(state.modeRun.target || 1)}${suffix}`;
+  }
+  if (mode.id === GAME_MODE_RACE || mode.id === GAME_MODE_TIME_TRIAL) {
+    const target = Math.max(1, state.modeRun.target || mode.target || 1);
+    const next = Math.min(target, Math.floor(state.modeRun.progress) + 1);
+    return `Gate ${next}/${target}${suffix}`;
+  }
+  return mode.objective;
+}
+
+function updateModeObjectiveChip() {
+  if (!modeObjectiveChip) return;
+  const blockedByOverlay =
+    overlay?.classList.contains("show") ||
+    message?.classList.contains("show") ||
+    schoolGate?.classList.contains("show") ||
+    releaseWelcome?.classList.contains("show") ||
+    state.modeHelpOpen;
+  const text = getModeObjectivePrompt();
+  modeObjectiveChip.textContent = text;
+  modeObjectiveChip.hidden = blockedByOverlay || !text;
+  modeObjectiveChip.dataset.mode = getModeDefinition().id;
+  const targetHint = getModeObjectiveTargetHint();
+  if (targetHint?.direction) modeObjectiveChip.dataset.direction = targetHint.direction;
+  else delete modeObjectiveChip.dataset.direction;
+}
+
 function updateHud() {
   const level = getLevel();
   const mode = getModeDefinition();
@@ -22203,6 +22817,8 @@ function updateHud() {
       ? Math.min(100, (1 - state.timeLeft / level.time) * 100)
       : modeProgressPercent() * 100;
   progressBar.style.width = `${progressPercent}%`;
+  updateTouchActionButtons();
+  updateModeObjectiveChip();
   drawMinimap();
   updateDebugHud();
   updateBotHealthBars();
@@ -22461,11 +23077,12 @@ function setSchoolGateVisible(visible, status = state.schoolGate) {
   if (schoolGateDetail) {
     schoolGateDetail.textContent = status.block
       ? `${status.block} may be in session right now.`
-      : "InfernoDrift4 is paused while class may be in session.";
+      : `${PRODUCT_NAME} is paused while class may be in session.`;
   }
   schoolGate?.classList.toggle("show", Boolean(visible));
   document.body.classList.toggle("school-gate-open", Boolean(visible));
   if (visible) {
+    setReleaseWelcomeVisible(false);
     state.running = false;
     setMenuOpen(false);
     message.classList.remove("show");
@@ -22487,6 +23104,7 @@ function continuePastSchoolGate() {
   state.schoolGate.dismissed = true;
   setSchoolGateVisible(false, state.schoolGate);
   overlay?.classList.add("show");
+  maybeShowReleaseWelcome();
   startBtn?.focus({ preventScroll: true });
 }
 
@@ -22497,8 +23115,57 @@ function leaveFromSchoolGate() {
   }, 120);
 }
 
+function setReleaseWelcomeVisible(visible) {
+  state.releaseWelcome.visible = Boolean(visible);
+  releaseWelcome?.classList.toggle("show", Boolean(visible));
+  document.body.classList.toggle("release-welcome-open", Boolean(visible));
+  if (visible) {
+    state.running = false;
+    setMenuOpen(false);
+    message.classList.remove("show");
+    releaseWelcomeStart?.focus({ preventScroll: true });
+  }
+}
+
+function hasSeenReleaseWelcome() {
+  if (state.releaseWelcome.dismissed) return true;
+  try {
+    return localStorage.getItem(RELEASE_WELCOME_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function maybeShowReleaseWelcome({ force = false } = {}) {
+  if (!releaseWelcome) return false;
+  if (state.schoolGate.active && !state.schoolGate.dismissed) return false;
+  if (!force && hasSeenReleaseWelcome()) {
+    state.releaseWelcome.dismissed = true;
+    setReleaseWelcomeVisible(false);
+    return false;
+  }
+  setReleaseWelcomeVisible(true);
+  return true;
+}
+
+function dismissReleaseWelcome() {
+  state.releaseWelcome.dismissed = true;
+  try {
+    localStorage.setItem(RELEASE_WELCOME_STORAGE_KEY, "1");
+  } catch {
+    // Release notes are optional; do not block the game in private contexts.
+  }
+  setReleaseWelcomeVisible(false);
+  if (overlay?.classList.contains("show")) {
+    startHereBtn?.focus({ preventScroll: true });
+  } else {
+    returnFocusToGame();
+  }
+}
+
 function startRun(resetLives = false) {
   if (state.schoolGate.active && !state.schoolGate.dismissed) return;
+  if (state.releaseWelcome.visible) dismissReleaseWelcome();
   markOnboardingSeen();
   window.scrollTo?.(0, 0);
   overlay.classList.remove("show");
@@ -22998,6 +23665,17 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     return;
   }
+  if (state.releaseWelcome.visible) {
+    if (
+      event.code === "Enter" ||
+      event.code === "Space" ||
+      event.code === "Escape"
+    ) {
+      dismissReleaseWelcome();
+    }
+    event.preventDefault();
+    return;
+  }
   if (event.code === EXIT_LINK_KEY_CODE && !event.repeat) {
     event.preventDefault();
     openExitLink();
@@ -23378,6 +24056,7 @@ function initTouchControls() {
 bindPressAction(startBtn, () => startGuestProfile());
 bindPressAction(startHereBtn, () => startFirstRace());
 bindPressAction(startAccountSubmit, () => submitStartAccount());
+bindPressAction(releaseWelcomeStart, () => dismissReleaseWelcome());
 bindPressAction(schoolLeave, () => leaveFromSchoolGate());
 bindPressAction(schoolContinue, () => continuePastSchoolGate());
 bindPressAction(tutorialBtn, () => startFirstDriveTutorial());
@@ -24152,9 +24831,19 @@ window.render_game_to_text = () => {
     ui: {
       screen: activeScreen,
       tab: activeTab,
-      paused: isMenuOpen() || isFeedbackOpen() || state.modeHelpOpen,
+      paused:
+        isMenuOpen() ||
+        isFeedbackOpen() ||
+        state.modeHelpOpen ||
+        state.releaseWelcome.visible,
       resultsVisible: message.classList.contains("show"),
-      product: "InfernoDrift4",
+      product: PRODUCT_NAME,
+      clientBuildId: CLIENT_BUILD_ID,
+      releaseWelcome: {
+        visible: Boolean(state.releaseWelcome.visible),
+        dismissed: Boolean(state.releaseWelcome.dismissed),
+        storageKey: RELEASE_WELCOME_STORAGE_KEY,
+      },
       schoolGate: {
         visible: Boolean(schoolGate?.classList.contains("show")),
         active: Boolean(state.schoolGate.active),
@@ -24200,6 +24889,8 @@ window.render_game_to_text = () => {
     hud: {
       time: Number(state.timeLeft.toFixed(2)),
       effect: state.effectToast || "",
+      objectivePrompt: getModeObjectivePrompt(),
+      objectiveTarget: getModeObjectiveTargetHint(),
       combo: Number(state.combo.toFixed(2)),
       driftActive: Boolean(input.drift),
       boost: Number(state.boost.toFixed(2)),
@@ -24644,7 +25335,14 @@ window.render_game_to_text = () => {
             playlist: onlineState.room.playlist,
             host: onlineState.room.host || onlineState.room.hostUserId || "",
             shared: Boolean(onlineState.roomShared),
+            joinPending: Boolean(onlineState.joinRoomPending),
+            joinPendingCode: onlineState.joinRoomPendingCode || "",
             sharePending: Boolean(onlineState.roomSharePending),
+            ready: {
+              local: isOwnLobbyReady(onlineState.room),
+              pending: Boolean(onlineState.lobbyReadyPending),
+              ...getLobbyReadyStats(onlineState.room),
+            },
             sharedBy: onlineState.room.sharedBy || [],
             routingId: onlineState.room.routingId || onlineState.room.id,
             firebaseLobby: Boolean(onlineState.room.firebaseLobby),
@@ -24660,6 +25358,13 @@ window.render_game_to_text = () => {
             liveSeq: onlineState.room.liveSeq || 0,
           }
         : null,
+      presence: {
+        count: onlineState.presence.count,
+        status: onlineState.presence.status,
+        source: onlineState.presence.source,
+        updatedAt: onlineState.presence.updatedAt,
+        error: onlineState.presence.error,
+      },
       firebaseLive: {
         status: onlineState.firebaseLiveStatus,
         seq: onlineState.firebaseLiveSeq,
@@ -24865,6 +25570,12 @@ window.__infernodriftTestApi = {
     onlineState.username = username;
     onlineState.profileMode = "account";
     onlineState.guestTemporary = false;
+    setOnlinePresenceSnapshot({
+      count: getLocalOnlinePresenceEstimate(),
+      status: "estimated",
+      source: "local",
+    });
+    updateOnlineUi();
     return JSON.parse(window.render_game_to_text()).online;
   },
   simulateRoomJoinForTest: (room = {}) => {
@@ -24904,6 +25615,27 @@ window.__infernodriftTestApi = {
       }),
     );
     return JSON.parse(window.render_game_to_text());
+  },
+  setLobbyPendingForTest: ({
+    join = false,
+    code = onlineState.room?.code || "TEST7",
+    share = false,
+  } = {}) => {
+    onlineState.joinRoomPending = Boolean(join);
+    onlineState.joinRoomPendingCode = join
+      ? String(code || "").toUpperCase()
+      : "";
+    onlineState.roomSharePending = Boolean(share);
+    if (share) onlineState.roomShared = false;
+    onlineState.roomCodeCopiedAt = 0;
+    onlineState.roomCodeCopyStatus = "";
+    updateOnlineUi();
+    return JSON.parse(window.render_game_to_text()).online;
+  },
+  setLobbyReadyForTest: (ready = true) => {
+    setLocalLobbyReady(ready === true);
+    updateOnlineUi();
+    return JSON.parse(window.render_game_to_text()).online.room?.ready || null;
   },
   simulateFirebaseLiveSnapshotForTest: (room = {}) => {
     onlineState.backendMode = BACKEND_MODE_FIREBASE;
@@ -25151,6 +25883,7 @@ window.__infernodriftTestApi = {
   },
   setTouchInputForTest: ({
     steer = 0,
+    throttle = true,
     drift = false,
     boost = false,
     laser = false,
@@ -25158,7 +25891,7 @@ window.__infernodriftTestApi = {
     updateAutoInputMode("touch");
     input.touchSteerTarget = THREE.MathUtils.clamp(Number(steer) || 0, -1, 1);
     input.touchSteer = input.touchSteerTarget;
-    input.throttle = true;
+    input.throttle = Boolean(throttle);
     input.drift = Boolean(drift);
     input.boost = Boolean(boost);
     input.laser = Boolean(laser);
@@ -25558,6 +26291,30 @@ window.__infernodriftTestApi = {
     menuClass: menu?.className || "",
     text: menuFeedbackNudge?.textContent || "",
   }),
+  resetReleaseWelcomeForTest: () => {
+    try {
+      localStorage.removeItem(RELEASE_WELCOME_STORAGE_KEY);
+    } catch {
+      // Local storage can be unavailable in private contexts.
+    }
+    state.releaseWelcome.dismissed = false;
+    return maybeShowReleaseWelcome({ force: true });
+  },
+  dismissReleaseWelcomeForTest: () => {
+    dismissReleaseWelcome();
+    return {
+      visible: Boolean(state.releaseWelcome.visible),
+      dismissed: Boolean(state.releaseWelcome.dismissed),
+      stored: hasSeenReleaseWelcome(),
+    };
+  },
+  getReleaseWelcomeStateForTest: () => ({
+    visible: Boolean(state.releaseWelcome.visible),
+    dismissed: Boolean(state.releaseWelcome.dismissed),
+    stored: hasSeenReleaseWelcome(),
+    title: document.getElementById("release-welcome-title")?.textContent || "",
+    button: releaseWelcomeStart?.textContent || "",
+  }),
   sampleDailyGiftRolls: (count = 1000) =>
     Array.from(
       { length: Math.max(0, Math.min(5000, Number(count) || 0)) },
@@ -25636,4 +26393,5 @@ resetLevel();
 readOnboardingState();
 updateHud();
 evaluateSchoolGate();
+maybeShowReleaseWelcome();
 requestAnimationFrame(animate);

@@ -11,19 +11,22 @@ npm run lint
 npm test
 npm run build
 npm run smoke
+npm run smoke:account-xp
+npm run smoke:firebase
 npm run test:e2e
 npm run smoke:online-local
 ```
 
 ## Browser Scenarios
 
-- Title/menu launches the root static InfernoDrift4 game.
+- Title/menu launches the root static InfernoDrift4.1 game.
 - Campaign Survival starts, drives, drifts, boosts, jumps, backflips with `B`, pauses, restarts, and returns results.
 - Max Arena starts, ball/goal/replay paths work, and ball cam state is visible.
 - Radar projects correctly relative to the car: front/top, left/left, right/right, behind/bottom.
 - Phone landscape keeps HUD/radar/touch controls usable and unselectable.
 - Garage/customization changes apply instantly.
 - Remote human name tags are visible and unobtrusive.
+- Online lobby card shows driver count, ready count, member teams, copyable code, pending join/share state, and phone-readable ready toggle.
 
 ## Backend Tests
 
@@ -36,6 +39,7 @@ Firebase manual checks:
 - Firestore production database has `firestore.rules` published.
 - Online -> Server settings -> Run Firebase Test passes from local and deployed Pages.
 - Create account, duplicate username, anonymous guest, lobby chat, leaderboard, feedback, friends, and offline fallback work without hangs.
+- Create/join/share lobby flows show clear pending/error states, online driver count, member list, and ready-state feedback.
 
 Legacy Cloudflare dry checks:
 

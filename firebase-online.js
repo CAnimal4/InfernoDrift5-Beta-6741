@@ -793,6 +793,8 @@ function mapLobbyDoc(snapshot) {
         username: player.username || "Player",
         badge: Array.isArray(player.badges) ? player.badges[0] || "" : "",
         badges: Array.isArray(player.badges) ? player.badges : [],
+        ready: player.ready === true,
+        readyAt: typeof player.readyAt === "string" ? player.readyAt : "",
         team:
           player.team === "red" || player.team === "blue"
             ? player.team
@@ -1698,7 +1700,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       mode: validation.mode,
       carClass: row.carClass || "",
       runId: row.runId || `client-${state.uid}`,
-      clientVersion: "InfernoDrift4 static",
+      clientVersion: "InfernoDrift4.1 static",
       verified: false,
       createdAt: firestore.serverTimestamp(),
     };
@@ -1880,7 +1882,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       },
       (error) => {
         state.chatStatus = "dm-inbox-listener-failed";
-        console.warn("InfernoDrift4 DM inbox listener unavailable", error);
+        console.warn("InfernoDrift4.1 DM inbox listener unavailable", error);
       },
     );
     internals.dmInboxUnsubscribe = unsubscribe;
@@ -1922,7 +1924,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       },
       (error) => {
         state.chatStatus = "dm-thread-listener-failed";
-        console.warn("InfernoDrift4 DM thread listener unavailable", error);
+        console.warn("InfernoDrift4.1 DM thread listener unavailable", error);
       },
     );
     internals.dmThreadUnsubscribers.set(roomId, unsubscribe);
@@ -1975,7 +1977,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       (error) => {
         state.chatStatus = "failed";
         state.chatListenerActive = false;
-        console.warn("InfernoDrift4 chat listener unavailable", error);
+        console.warn("InfernoDrift4.1 chat listener unavailable", error);
       },
     );
     internals.unsubscribers.push(unsubscribe);
@@ -2077,6 +2079,8 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       username: state.username || "Player",
       badges: internals.userProfile?.badges || [],
       team: getLobbyPlayerTeam(0, teamSize),
+      ready: false,
+      readyAt: "",
     };
     for (let attempt = 0; attempt < 8; attempt += 1) {
       const code = createFirebaseLobbyCode();
@@ -2136,6 +2140,8 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
                 username: state.username || "Player",
                 badges: internals.userProfile?.badges || [],
                 team: getLobbyPlayerTeam(players.length, data.teamSize),
+                ready: false,
+                readyAt: "",
               },
             ];
         if (nextPlayers.length > FIREBASE_LOBBY_MAX_PLAYERS) {
@@ -2206,6 +2212,54 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     emit("room.left", { code: validation.code, reason: "left" });
     stopLobbySubscription();
     return true;
+  }
+
+  async function updateLobbyReady(code = internals.lobbyCode, ready = false) {
+    requireReady();
+    if (!state.uid) throw new Error("sign_in_required");
+    const validation = validateFirebaseLobbyCode(code);
+    if (!validation.ok) throw new Error(validation.error);
+    const { firestore } = internals.sdk;
+    const ref = firestore.doc(
+      internals.db,
+      LOBBY_COLLECTION_ID,
+      validation.code,
+    );
+    let updatedRoom = null;
+    const readyValue = ready === true;
+    await firestore.runTransaction(internals.db, async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists()) throw new Error("room_not_found");
+      const data = snapshot.data() || {};
+      const players = Array.isArray(data.players) ? data.players : [];
+      let found = false;
+      const nextPlayers = players.map((entry) => {
+        if (entry?.uid !== state.uid && entry?.id !== state.uid) return entry;
+        found = true;
+        return {
+          ...entry,
+          uid: entry.uid || state.uid,
+          username: entry.username || state.username || "Player",
+          ready: readyValue,
+          readyAt: readyValue ? nowIso() : "",
+        };
+      });
+      if (!found) throw new Error("not_in_room");
+      transaction.set(
+        ref,
+        {
+          players: nextPlayers,
+          updatedAt: firestore.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      updatedRoom = mapLobbyDoc({
+        id: snapshot.id,
+        data: () => ({ ...data, players: nextPlayers }),
+      });
+    });
+    if (updatedRoom) emit("room.snapshot", { room: updatedRoom });
+    return updatedRoom;
   }
 
   async function updateLobbyLiveState(
@@ -2282,7 +2336,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
       message: validation.text,
       feedbackType: payload.feedbackType || payload.type || "other",
       diagnostics: payload.diagnostics || null,
-      clientVersion: "InfernoDrift4 static",
+      clientVersion: "InfernoDrift4.1 static",
       userAgent:
         typeof navigator !== "undefined"
           ? navigator.userAgent.slice(0, 180)
@@ -2519,6 +2573,54 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     return snapshot;
   }
 
+  async function refreshPresence({
+    windowMs = 2 * 60 * 1000,
+    limit = 80,
+    emitSnapshot = true,
+  } = {}) {
+    requireReady();
+    const { firestore } = internals.sdk;
+    if (state.uid) {
+      await firestore
+        .setDoc(
+          firestore.doc(internals.db, "users", state.uid),
+          { lastSeenAt: firestore.serverTimestamp() },
+          { merge: true },
+        )
+        .catch((error) => {
+          fail(error, "presence_heartbeat_failed");
+        });
+    }
+    const cutoff = new Date(Date.now() - Math.max(30_000, Number(windowMs) || 0));
+    const presenceSnapshot = await firestore.getDocs(
+      firestore.query(
+        firestore.collection(internals.db, "users"),
+        firestore.where("lastSeenAt", ">=", cutoff),
+        firestore.orderBy("lastSeenAt", "desc"),
+        firestore.limit(Math.max(1, Math.min(100, Number(limit) || 80))),
+      ),
+    );
+    const users = presenceSnapshot.docs.map((doc) => {
+      const data = doc.data() || {};
+      return {
+        uid: doc.id,
+        username: normalizeFirebaseUsername(
+          data.username || data.displayName || "Driver",
+        ),
+      };
+    });
+    const result = {
+      count: users.length,
+      users,
+      status: "live",
+      source: "online",
+      updatedAt: Date.now(),
+      windowMs,
+    };
+    if (emitSnapshot) emit("presence.snapshot", result);
+    return result;
+  }
+
   async function runDiagnostics({ timeoutMs = 8000 } = {}) {
     const status = await init({ timeoutMs });
     if (!status.available)
@@ -2547,7 +2649,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
           username: state.username || "DiagGuest",
           backendMode: FIREBASE_BACKEND_MODE,
           at: firestore.serverTimestamp(),
-          client: "InfernoDrift4 static",
+          client: "InfernoDrift4.1 static",
         },
         { merge: true },
       );
@@ -2593,6 +2695,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     createLobby,
     joinLobby,
     leaveLobby,
+    updateLobbyReady,
     updateLobbyLiveState,
     subscribeChat,
     unsubscribeRealtime,
@@ -2602,6 +2705,7 @@ export function createFirebaseOnlineService({ config = {}, onEvent } = {}) {
     requestFriend,
     acceptFriend,
     refreshFriends,
+    refreshPresence,
     runDiagnostics,
   };
 }

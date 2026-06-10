@@ -1,6 +1,6 @@
 # Architecture / Build Subagent Report
 
-Current launch architecture is the InfernoDrift4 static game:
+Current launch architecture is the InfernoDrift4.1 static game:
 
 - Active shipped client: root `index.html`, `script.js`, and `style.css`.
 - Build: `scripts/build-site.mjs` copies root static assets into `dist/` and writes `.nojekyll`.

@@ -88,6 +88,11 @@ const touchButtons = await phoneLandscape
     }),
   );
 assert.ok(touchButtons.length >= 3);
+assert.equal(
+  touchButtons.some((button) => button.id === "touch-backflip"),
+  false,
+  "Race should hide the extra Trick button until airtime",
+);
 for (const button of touchButtons) {
   assert.ok(button.width >= 52, `${button.id} width ${button.width}`);
   assert.ok(button.height >= 52, `${button.id} height ${button.height}`);
@@ -114,6 +119,7 @@ await screenshot(phoneLandscape, "mobile-phone-landscape-game");
 const scrollGuard = await phoneLandscape.evaluate(() => {
   window.__infernodriftTestApi?.openMenuTab?.("controls");
   const menuContent = document.getElementById("menu-content");
+  const menuPanel = document.querySelector(".menu-panel");
   const canvas = document.querySelector("canvas");
   const menuEvent = new Event("touchmove", { bubbles: true, cancelable: true });
   const gameEvent = new Event("touchmove", { bubbles: true, cancelable: true });
@@ -125,6 +131,7 @@ const scrollGuard = await phoneLandscape.evaluate(() => {
     gameAllowed,
     gamePrevented: gameEvent.defaultPrevented,
     canScroll: menuContent.scrollHeight > menuContent.clientHeight,
+    panelCanScroll: menuPanel.scrollHeight > menuPanel.clientHeight,
     touchAction: getComputedStyle(menuContent).touchAction,
   };
 });
@@ -132,7 +139,7 @@ assert.equal(scrollGuard.menuAllowed, true);
 assert.equal(scrollGuard.menuPrevented, false);
 assert.equal(scrollGuard.gameAllowed, false);
 assert.equal(scrollGuard.gamePrevented, true);
-assert.equal(scrollGuard.canScroll, true);
+assert.equal(scrollGuard.canScroll || scrollGuard.panelCanScroll, true);
 assert.match(scrollGuard.touchAction, /pan-y/i);
 await phoneLandscape.close();
 
@@ -200,7 +207,25 @@ await battlePage.waitForTimeout(500);
 state = await getState(battlePage);
 assert.equal(state.mode, "battle-arena");
 assert.equal(await battlePage.locator("#touch-laser").isVisible(), true);
+assert.equal(await battlePage.locator("#touch-backflip").isVisible(), false);
 await battlePage.close();
+
+const stuntPage = await makePage({
+  width: 844,
+  height: 390,
+  isMobile: true,
+  hasTouch: true,
+});
+await stuntPage.evaluate(() => {
+  window.__infernodriftTestApi?.setDeviceMode?.("phone");
+  window.__infernodriftTestApi?.startMode?.("stunt-park");
+});
+await stuntPage.waitForTimeout(500);
+state = await getState(stuntPage);
+assert.equal(state.mode, "stunt-park");
+assert.equal(await stuntPage.locator("#touch-backflip").isVisible(), true);
+assert.match((await stuntPage.locator("#touch-backflip").textContent()) || "", /Flip/i);
+await stuntPage.close();
 
 const maxPage = await makePage({
   width: 844,

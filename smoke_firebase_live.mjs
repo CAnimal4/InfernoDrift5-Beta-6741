@@ -93,6 +93,21 @@ async function cleanupSmokeAccount(targetPage) {
   }
 }
 
+async function dismissReleaseWelcomeIfShown(targetPage) {
+  await targetPage
+    .evaluate(() =>
+      window.__infernodriftTestApi?.dismissReleaseWelcomeForTest?.(),
+    )
+    .catch(() => {});
+  await targetPage
+    .waitForFunction(
+      () => !document.querySelector("#release-welcome")?.classList.contains("show"),
+      null,
+      { timeout: 5000 },
+    )
+    .catch(() => {});
+}
+
 const consoleErrors = [];
 page.on("console", (msg) => {
   const text = msg.text();
@@ -133,6 +148,7 @@ try {
   await page.evaluate(() =>
     window.__infernodriftTestApi.dismissSchoolGateForTest(),
   );
+  await dismissReleaseWelcomeIfShown(page);
   await page.waitForFunction(
     () =>
       !document.querySelector("#school-gate")?.classList.contains("show") &&
@@ -274,6 +290,7 @@ try {
   await accountMirror.evaluate(() =>
     window.__infernodriftTestApi.dismissSchoolGateForTest(),
   );
+  await dismissReleaseWelcomeIfShown(accountMirror);
   await accountMirror.locator("#start-account-username").fill(accountUsername);
   await accountMirror.locator("#start-account-password").fill("smoke12345");
   await accountMirror.locator("#start-account-age").fill("13");
@@ -442,6 +459,7 @@ try {
   await joiner.evaluate(() =>
     window.__infernodriftTestApi.dismissSchoolGateForTest(),
   );
+  await dismissReleaseWelcomeIfShown(joiner);
   await joiner.locator("#start-account-username").fill(joinerUsername);
   await joiner.locator("#start-account-password").fill("smoke12345");
   await joiner.locator("#start-account-age").fill("13");

@@ -1,6 +1,6 @@
-# InfernoDrift4
+# InfernoDrift4.1
 
-InfernoDrift4 is the restored launch rescue: the shipped game is the root static `index.html`, `script.js`, and `style.css` experience, built from the proven base InfernoDrift4 feel instead of the rejected React rewrite.
+InfernoDrift4.1 is a polish-and-upgrade release of the restored InfernoDrift4 launch surface. The shipped game is still the root static `index.html`, `script.js`, and `style.css` experience, preserving the proven InfernoDrift4 feel instead of replacing it with the rejected React rewrite.
 
 Play: https://canimal4.github.io/InfernoDrift4/
 
@@ -13,7 +13,8 @@ Play: https://canimal4.github.io/InfernoDrift4/
 
 ## Implemented In The Rescue Surface
 
-- InfernoDrift4 visible identity over the restored survival game
+- InfernoDrift4.1 visible identity over the restored survival game
+- First-run InfernoDrift4.1 welcome popup with persistent dismissal
 - Campaign Survival mode using the base InfernoDrift4 hunter/ramp/powerup loop
 - Max Arena mode with ball, teams, bot roles, goal replay, ball cam, and local match stats
 - Preserved ground speed/reference lines for speed readability
@@ -21,7 +22,7 @@ Play: https://canimal4.github.io/InfernoDrift4/
 - Forward-relative radar: top is in front, left is car-left, right is car-right, edge icons show off-radar threats
 - Local garage/customization loadout system with instant car changes and unlock previews
 - Touch controls, phone/tablet layout tuning, deterministic smoke hooks, and local saves
-- Firebase online-lite integration with anonymous guest auth, username/password account wrapper, Firestore chat/leaderboards/friends/feedback/progress, diagnostics, and offline fallback
+- Firebase online-lite integration with anonymous guest auth, username/password account wrapper, Firestore chat/leaderboards/friends/feedback/progress, diagnostics, online lobby presence, ready-state, and offline fallback
 - Local WebSocket backend smoke coverage remains for legacy room-server development only
 
 ## Run Locally

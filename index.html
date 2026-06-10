@@ -3,7 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>InfernoDrift4</title>
+    <title>InfernoDrift4.1</title>
+    <meta
+      name="description"
+      content="InfernoDrift4.1 is a neon-fire drifting survival game with smoother online lobbies, cleaner menus, better mobile support, and sharper mode guidance."
+    />
+    <meta name="application-name" content="InfernoDrift4.1" />
+    <meta name="apple-mobile-web-app-title" content="InfernoDrift4.1" />
+    <meta property="og:title" content="InfernoDrift4.1" />
+    <meta
+      property="og:description"
+      content="Drive, drift, boost, and survive through upgraded online lobbies, mobile controls, and arcade modes."
+    />
+    <meta property="og:type" content="website" />
     <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="icon" type="image/png" href="icon-48.png" sizes="48x48" />
     <link rel="icon" type="image/png" href="icon-192.png" sizes="192x192" />
@@ -17,7 +29,7 @@
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="style.css?v=20260531-no-zero-repair-v4" />
+    <link rel="stylesheet" href="style.css?v=20260610-id41-polish-v15" />
   </head>
   <body>
     <div id="game-wrap">
@@ -69,6 +81,7 @@
       </div>
 
       <div class="effect-toast" id="effect-toast" aria-live="polite"></div>
+      <div class="mode-objective-chip" id="mode-objective-chip" aria-live="polite"></div>
       <button
         class="daily-gift"
         id="daily-gift"
@@ -137,8 +150,8 @@
 
       <div class="overlay show" id="overlay">
         <div class="panel">
-          <div class="overlay-kicker">InfernoDrift4 Handling, Full InfernoDrift4 Heat</div>
-          <h1>InfernoDrift4</h1>
+          <div class="overlay-kicker">InfernoDrift4.1 Handling, Full InfernoDrift Heat</div>
+          <h1>InfernoDrift4.1</h1>
           <p class="subtitle" id="overlay-subtitle">
             Free-roam survival racers. Drift through neon arenas, grab powerups, launch off ramps,
             and stay ahead of relentless hunter bots.
@@ -180,12 +193,40 @@
         </div>
       </div>
 
+      <div
+        class="overlay release-welcome"
+        id="release-welcome"
+        aria-modal="true"
+        role="dialog"
+        aria-labelledby="release-welcome-title"
+      >
+        <div class="panel release-welcome-panel">
+          <div class="overlay-kicker">Polish Release</div>
+          <h2 id="release-welcome-title">Welcome to InfernoDrift4.1</h2>
+          <p class="subtitle" id="release-welcome-body">
+            InfernoDrift4.1 is here with smoother multiplayer, cleaner menus,
+            better mobile support, gameplay polish, bug fixes, and upgraded
+            visuals. Thanks for playing.
+          </p>
+          <div class="release-highlights" aria-hidden="true">
+            <span>Smoother online</span>
+            <span>Cleaner menus</span>
+            <span>Mobile polish</span>
+          </div>
+          <div class="cta-row compact-actions">
+            <button class="primary" id="release-welcome-start" type="button">
+              Start Driving
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div class="overlay school-gate" id="school-gate" aria-modal="true" role="dialog">
         <div class="panel school-gate-panel">
           <div class="overlay-kicker">School Time Check</div>
           <h2>It looks like you may be in school, are you sure you want to continue?</h2>
           <p class="subtitle" id="school-gate-detail">
-            InfernoDrift4 is paused while class may be in session.
+            InfernoDrift4.1 is paused while class may be in session.
           </p>
           <div class="cta-row school-gate-actions">
             <button class="primary school-leave-btn" id="school-leave" type="button">Leave</button>
@@ -217,7 +258,7 @@
           <div class="menu-header">
             <div>
               <div class="overlay-kicker" id="menu-state-label">Paused</div>
-              <h2>InfernoDrift4</h2>
+              <h2>InfernoDrift4.1</h2>
             </div>
             <button class="ghost" id="menu-feedback" type="button">Feedback</button>
           </div>
@@ -240,7 +281,7 @@
           </div>
           <div class="menu-content" id="menu-content">
             <section class="tab-panel active" id="tab-games">
-              <p class="hint">Pick a run. Every mode keeps the same InfernoDrift4 driving feel, then changes the objective.</p>
+              <p class="hint">Pick a run. Every mode keeps the same InfernoDrift4.1 driving feel, then changes the objective.</p>
               <div class="mode-board" id="mode-board" aria-label="Offline mode board"></div>
               <div class="mode-brief" id="mode-brief"></div>
             </section>
@@ -320,7 +361,7 @@
             </section>
             <section class="tab-panel" id="tab-progress">
               <div class="progress-grid" id="progress-panel"></div>
-              <p class="hint">Progress stays local unless an InfernoDrift4 backend URL is configured and connected.</p>
+              <p class="hint">Progress stays local unless online services are configured and connected.</p>
             </section>
             <section class="tab-panel" id="tab-profile">
               <div class="profile-shell">
@@ -368,16 +409,31 @@
               </div>
             </section>
             <section class="tab-panel" id="tab-online">
+              <div class="online-flow" aria-label="Online play steps">
+                <div class="online-flow-step">
+                  <strong>1</strong>
+                  <span>Connect or sign in</span>
+                </div>
+                <div class="online-flow-step">
+                  <strong>2</strong>
+                  <span>Create or join a lobby</span>
+                </div>
+                <div class="online-flow-step">
+                  <strong>3</strong>
+                  <span>Share the code and drive</span>
+                </div>
+              </div>
               <div class="online-layout">
                 <div class="online-panel">
-                  <div class="custom-section-title">Account & Online</div>
+                  <div class="custom-section-title">Driver Login</div>
                   <div class="online-status" id="online-status">Online services are ready when available</div>
+                  <div class="online-presence" id="online-presence" aria-live="polite">Online drivers: connect to check.</div>
                   <div class="cta-row compact-actions">
-                    <button class="primary" id="online-connect" type="button">Connect</button>
+                    <button class="primary" id="online-connect" type="button">Connect Online</button>
                     <button class="ghost" id="online-disconnect" type="button">Disconnect</button>
                   </div>
                   <label class="field">
-                    <span>Online Name</span>
+                    <span>Driver Name</span>
                     <input id="online-username" type="text" maxlength="24" placeholder="Guest Racer" autocomplete="nickname" />
                   </label>
                   <label class="field">
@@ -404,11 +460,12 @@
                     <p class="hint">Production uses Firebase for accounts, chat, leaderboard, friends, feedback, and progress. Legacy WebSocket servers are manual fallback only; server-authoritative rooms are unavailable when Firebase online-lite is active.</p>
                   </details>
                 </div>
-                <div class="online-panel">
-                  <div class="custom-section-title">Rooms</div>
+                <div class="online-panel online-lobby-panel">
+                  <div class="custom-section-title">Online Lobby</div>
+                  <p class="hint">Pick a mode, create a lobby, then share the code with a friend. 1v1 lobbies keep Bot Fill off.</p>
                   <div class="online-grid">
                     <label class="field">
-                      <span>Room Mode</span>
+                      <span>Lobby Mode</span>
                       <select id="online-room-mode">
                         <option value="infernodrift33">Campaign Survival</option>
                         <option value="infernodriftmax1">Max Arena</option>
@@ -447,15 +504,15 @@
                   </label>
                   <div class="cta-row compact-actions">
                     <button class="ghost" id="online-create-room" type="button">Create Private Room</button>
-                    <button class="ghost" id="online-queue" type="button">Join Queue</button>
+                    <button class="ghost" id="online-queue" type="button">Find Match</button>
                     <button class="ghost" id="online-cancel-queue" type="button">Cancel</button>
                   </div>
                   <div class="join-code-row">
-                    <input id="online-room-code" type="text" maxlength="10" placeholder="Room code" autocomplete="off" />
-                    <button class="ghost" id="online-join-room" type="button">Join</button>
+                    <input id="online-room-code" type="text" maxlength="10" placeholder="Lobby code" autocomplete="off" />
+                    <button class="ghost" id="online-join-room" type="button">Join Lobby</button>
                     <button class="ghost" id="online-share-room" type="button">Share Code</button>
                   </div>
-                  <div class="online-room-card" id="online-room-state">No room joined.</div>
+                  <div class="online-room-card" id="online-room-state" aria-live="polite">No lobby joined.</div>
                 </div>
                 <div class="online-panel online-chat-panel">
                   <div class="online-chat-header">
@@ -752,7 +809,7 @@
         <div class="panel feedback-panel">
           <div class="menu-header">
             <div>
-              <div class="overlay-kicker">InfernoDrift4 Feedback</div>
+              <div class="overlay-kicker">InfernoDrift4.1 Feedback</div>
               <h2>Feedback</h2>
             </div>
             <button class="ghost" id="feedback-close" type="button">Close</button>
@@ -792,6 +849,6 @@
       </div>
     </div>
 
-    <script type="module" src="script.js?v=20260531-no-zero-repair-v4"></script>
+    <script type="module" src="script.js?v=20260610-id41-polish-v15"></script>
   </body>
 </html>

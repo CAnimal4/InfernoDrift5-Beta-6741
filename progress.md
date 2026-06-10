@@ -473,3 +473,166 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Rebalanced mode-run XP around expected mode duration plus clear performance bonuses, so longer matches pay more overall while faster/cleaner completions beat slow completions with random score padding.
 - Made Firebase 1v1 lobbies default to true two-player rooms: team size defaults to 1v1, Bot Fill is off/disabled for 1v1, and lobby members get alternating blue/red teams that drive local team spawn, cosmetics, and snapshots.
 - Added a one-time menu Feedback nudge with a short clean banner and a pulsing Feedback button highlight; it marks itself seen immediately so it only appears once per browser profile.
+
+2026-06-10 InfernoDrift4.1 release identity and welcome batch:
+
+- Started the requested InfernoDrift4.1 polish-and-upgrade release as a focused first batch, preserving the static root launch surface and existing save/storage keys.
+- Updated player-facing title/menu/manifest/package/readme identity to InfernoDrift4.1 and cache-busted the static script/style imports with `20260610-id41-welcome-v1`.
+- Added a polished first-time InfernoDrift4.1 popup with the requested copy and a version-specific localStorage key, `infernoDrift4.releaseWelcome.4_1`, so existing saves remain compatible and the popup appears once per browser profile/reset.
+- Exposed release welcome state through `render_game_to_text().ui.releaseWelcome` and `__infernodriftTestApi` helpers, and extended `smoke_games.mjs` to verify the popup, product name, build id, dismissal, and stored seen flag.
+- Updated `smoke_account_xp_safety.mjs` to expect the new client build id while leaving the account/XP safety behavior unchanged.
+- Validation passed: `node --check script.js`, `node --check smoke_games.mjs`, `node --check smoke_account_xp_safety.mjs`, `git diff --check`, `npm run typecheck`, `npm run build`, `npm run smoke`, `npm run test:e2e`, and the shared develop-web-game Playwright client.
+- Visual QA reviewed `output/web-game/id41-release-welcome/shot-0.png` for the welcome popup and `output/web-game/id41-welcome/shot-0.png` / `shot-2.png` for gameplay after dismissal. Headless WebGL emitted only the known SwiftShader `ReadPixels` warnings.
+- Follow-up candidates: deeper online menu/lobby clarity pass, mobile touch target review beyond smoke coverage, and targeted multiplayer/Firebase live verification if the next batch needs owner-console state.
+
+2026-06-10 InfernoDrift4.1 online menu clarity batch:
+
+- Added a compact 1-2-3 Online flow band: connect/sign in, create or join a lobby, share the code and drive.
+- Renamed normal Online-tab labels toward player tasks (`Driver Login`, `Online Lobby`, `Lobby Mode`, `Join Lobby`, `Create Private/Online Lobby`) while preserving existing element IDs and backend behavior.
+- Promoted the lobby panel visually and clarified the default empty-room state: create a lobby or enter a code to start shared live play.
+- Kept Firebase-specific wording inside advanced/server diagnostics only; normal Online UI continues to use online services/lobby wording.
+- Updated `smoke_games.mjs` to verify the new Online flow and lobby labels across backend modes.
+- Fixed Firebase offline/live smoke setup so the new 4.1 welcome popup is dismissed before account/login flows; this repaired `npm run smoke:firebase` after it caught the modal intercepting `#start-account-submit`.
+- Validation passed: `node --check script.js`, `node --check smoke_games.mjs`, `node --check smoke_firebase_offline.mjs`, `node --check smoke_firebase_live.mjs`, `git diff --check`, `npm run typecheck`, `npm run smoke`, `npm run test:e2e`, `npm run smoke:firebase`, targeted Online-tab desktop/phone Playwright screenshots, and the shared develop-web-game Playwright client.
+- Visual QA reviewed `output/playwright/id41-online-tab-desktop-started.png`, `output/playwright/id41-online-tab-phone.png`, and `output/web-game/id41-online-polish/shot-0.png`. Live Firebase smoke was not run in this batch; use it only when live owner/backend verification is needed.
+
+2026-06-10 InfernoDrift4.1 mobile touch declutter batch:
+
+- Reduced phone landscape touch clutter by hiding the extra Trick button during normal Race/driving play; Jump still covers jump/trick input, while Flip stays visible in stunt modes and the Trick action can appear dynamically during airtime.
+- Added a single touch-action button updater so touch labels and visibility stay consistent across Race, Battle, Stunt, HUD refreshes, and mode changes.
+- Extended `smoke_mobile.mjs` to assert Race shows only Jump/Drift/Boost, Battle shows Laser without the extra Trick button, and Stunt Park shows a dedicated Flip button.
+- Validation passed: `node --check script.js`, `node --check smoke_mobile.mjs`, `git diff --check`, `npm run test:e2e`, `npm run smoke`, `npm run typecheck`, the shared develop-web-game Playwright client, and targeted mobile Race/Stunt screenshots.
+- Visual QA reviewed `output/playwright/id41-mobile-race-touch-actions.png`, `output/playwright/id41-mobile-stunt-touch-actions.png`, and `output/web-game/id41-mobile-touch-polish/shot-0.png`.
+- Follow-up candidates: optional phone control presets, touch gesture customization, and broader gameplay/mode additions once the release polish batches move past mobile usability.
+
+2026-06-10 InfernoDrift4.1 online lobby status and presence batch:
+
+- Replaced the flat lobby status sentence with a structured lobby summary showing code, mode, driver count, team size, live/lobby sync state, and a clear next step.
+- Added an Online-tab presence indicator that shows online driver count, refreshes on a 15-second cadence, queries recent Firebase `lastSeenAt` profiles when available, and falls back to a local estimate from the current user/lobby/friends/recent players.
+- Improved phone landscape menu usability by switching from a tiny nested menu-content scroller to one outer scrolling menu surface; the Online lobby card can now be scrolled fully into view on short landscape screens.
+- Extended `smoke_games.mjs` for the lobby summary and presence state, and updated `smoke_mobile.mjs` to accept the new phone-landscape scroll surface while preserving touchmove protection on the game canvas.
+- Validation passed: `node --check script.js`, `node --check firebase-online.js`, `node --check smoke_games.mjs`, `node --check smoke_mobile.mjs`, `git diff --check`, `npm run test:e2e`, `npm run smoke`, `npm run typecheck`, `npm run smoke:firebase`, `node --test tests/firebase-online.test.mjs`, and the shared develop-web-game Playwright client.
+- Visual QA reviewed `output/playwright/id41-online-room-state-card-desktop.png`, `output/playwright/id41-online-room-state-card-phone-landscape-scrolled.png`, `output/playwright/id41-online-presence-indicator.png`, and `output/web-game/id41-online-presence-lobby/shot-0.png`.
+- Follow-up candidates: run `npm run smoke:firebase-live` when owner/live backend verification is desired, and consider a richer live lobby member list if global presence data proves useful to players.
+
+2026-06-10 InfernoDrift4.1 release metadata and cache boundary batch:
+
+- Bumped the 4.1 client build/cache token from `20260610-id41-welcome-v1` to `20260610-id41-polish-v5` across `index.html`, `script.js`, and smoke expectations so deployed browsers fetch the latest polish/online/mobile changes.
+- Updated Firebase-submitted client metadata and diagnostic warning labels from `InfernoDrift4 static` to `InfernoDrift4.1 static`.
+- Refreshed current-state QA/feature/final/testing docs so visible product identity and launch-surface wording refer to InfernoDrift4.1 while preserving repository URLs, storage keys, package lineage, and base-game identity references.
+- Validation passed: `node --check script.js`, `node --check firebase-online.js`, `node --check smoke_games.mjs`, `node --check smoke_account_xp_safety.mjs`, `git diff --check`, `npm run typecheck`, `npm run smoke`, `npm run smoke:account-xp`, and the shared develop-web-game Playwright client.
+- Browser readback verified `script.js?v=20260610-id41-polish-v5`, `style.css?v=20260610-id41-polish-v5`, runtime `clientBuildId: 20260610-id41-polish-v5`, and the existing one-time 4.1 welcome storage key.
+- Remaining plain `InfernoDrift4` references after this batch are intentional stable URLs/repo names, old storage/key lineage, package description ancestry, or base-loop identity references rather than stale player-facing 4.0 release labels.
+
+2026-06-10 InfernoDrift4.1 mode objective prompt batch:
+
+- Added a compact, mode-aware in-game objective chip so players get immediate next-step guidance during play without opening mode help.
+- Exposed the same prompt through `render_game_to_text().hud.objectivePrompt` and extended `smoke_games.mjs` to verify meaningful prompts for Race, Stunt/Ramp, Lava, Bowling, and Battle.
+- Hid the objective chip while blocking overlays/help/results are visible so it does not float over menus or first-time release/tutorial flows.
+- Reduced air-ring target core size/opacity so Stunt/Ramp rings guide without washing over the camera.
+- Moved Stunt/Ramp/Trick starting spawns back from their first ramp so those modes start with a readable run-up instead of spawning the camera inside ramp geometry.
+- Validation passed: `node --check script.js`, `node --check smoke_games.mjs`, `git diff --check`, `npm run typecheck`, `npm run smoke`, `npm run test:e2e`, targeted Stunt Playwright capture, and the shared develop-web-game Playwright client.
+- Visual QA reviewed `output/playwright/id41-objective-chip-boost-bowling.png`, `output/playwright/id41-objective-chip-lava-floor.png`, `output/playwright/id41-objective-chip-stunt-park.png`, and `output/web-game/id41-objective-chip-ring-polish/shot-1.png`.
+- Follow-up candidates: richer target arrows for air rings/lava platforms, a lobby member list beside the new online presence count, and optional mode-specific tutorial refinements after broader multiplayer/mobile checks.
+
+2026-06-10 InfernoDrift4.1 lobby member clarity batch:
+
+- Added a compact driver list inside the Online lobby summary so joined rooms show who is present, each driver's team, the local player, the host, and open invite slots.
+- Kept the member list within the existing room snapshot/render path; no new multiplayer protocol or backend writes were added.
+- Styled the member list for desktop and phone layouts, including single-column rows on phone screens and host/current-player visual cues.
+- Extended `smoke_games.mjs` to verify a solo live lobby shows the current host plus an open slot, and a 1v1 duel lobby shows Host/Blue and Joiner/Red/You.
+- Validation passed: `node --check script.js`, `node --check smoke_games.mjs`, `git diff --check`, `npm run smoke`, `npm run typecheck`, `npm run test:e2e`, `npm run smoke:firebase`, targeted Online lobby screenshots, and the shared develop-web-game Playwright client.
+- Visual QA reviewed `output/playwright/id41-lobby-members-desktop.png`, `output/playwright/id41-lobby-members-phone-landscape-scrolled.png`, and `output/web-game/id41-lobby-members/shot-1.png`.
+- Follow-up candidates: live ready/checkmark state per member, invite/share affordance polish, and live Firebase room verification when owner backend state is available.
+
+2026-06-10 InfernoDrift4.1 copyable lobby code batch:
+
+- Made the Online lobby code pill an actionable copy button inside the room summary, so players can copy/select the code directly from the card instead of hunting for the separate Share Code button.
+- Added clipboard-first behavior with a safe fallback that fills/selects the join-code field when clipboard access is unavailable, plus short toast and room-card feedback.
+- Reset copy feedback when switching/leaving lobbies so stale copied-state text does not follow players between rooms.
+- Stabilized a flaky Max Arena acceleration smoke check by using the existing test input hook instead of relying on real keyboard focus; the hook now accepts `throttle: false` so smoke can clear held input after the check.
+- Extended `smoke_games.mjs` to verify the copy/select feedback and the stabilized Max acceleration path.
+- Validation passed: `node --check script.js`, `node --check smoke_games.mjs`, `git diff --check`, `npm run smoke`, `npm run typecheck`, `npm run test:e2e`, `npm run smoke:firebase`, targeted copy-code desktop/phone screenshots, and the shared develop-web-game Playwright client.
+- Visual QA reviewed `output/playwright/id41-copy-lobby-code-desktop.png`, `output/playwright/id41-copy-lobby-code-phone-landscape.png`, and `output/web-game/id41-copy-lobby-code/shot-1.png`.
+- Follow-up candidates: show a dedicated invite/share state per member, add ready checkmarks for live rooms, and run live Firebase smoke when owner/backend state is available.
+
+2026-06-10 InfernoDrift4.1 lobby pending-state polish batch:
+
+- Added polite live-region and `aria-busy` state to the Online lobby summary so join/share progress is announced instead of only changing text visually.
+- Added busy ARIA state to Join, Create, and Share controls, and disabled Create while another lobby action is pending to avoid overlapping room actions.
+- Added a restrained pending visual treatment to the lobby card so “Joining...” and “Sharing...” states read as active work without adding a modal.
+- Exposed `joinPending` and `joinPendingCode` through `render_game_to_text().online.room`, and added a narrow test hook for pending-state smoke coverage.
+- Extended `smoke_games.mjs` to verify share-pending and join-pending button text, disabled states, ARIA busy flags, pending card class, and exported runtime state.
+- Validation passed: `node --check script.js`, `node --check smoke_games.mjs`, `git diff --check`, `npm run smoke`, `npm run typecheck`, `npm run test:e2e`, `npm run smoke:firebase`, targeted pending-state desktop/phone screenshots, and the shared develop-web-game Playwright client.
+- Visual QA reviewed `output/playwright/id41-lobby-pending-desktop-share.png`, `output/playwright/id41-lobby-pending-phone-join.png`, and `output/web-game/id41-lobby-pending/shot-1.png`.
+- Follow-up candidates: live ready/checkmarks per member, a host-only “start together” lobby affordance, and live Firebase verification when backend owner state is available.
+
+2026-06-10 InfernoDrift4.1 objective target hint batch:
+
+- Added compact distance/direction hints to marker-based objective prompts, so Race, Time Trial, Stunt Park, Ramp Rush, Lava Floor, and zone-style targets now show guidance like `Gate 2/10 - 112m ahead`.
+- Reused existing mode marker and player heading state; no new marker system, physics changes, or HUD layer was added.
+- Exposed the structured target hint through `render_game_to_text().hud.objectiveTarget` for smoke tests and future diagnostics.
+- Extended `smoke_games.mjs` to verify marker-guided modes include distance/direction prompt text and structured target data.
+- Validation passed: `node --check script.js`, `node --check smoke_games.mjs`, `git diff --check`, `npm run smoke`, `npm run typecheck`, `npm run test:e2e`, `npm run smoke:firebase`, targeted Race/Stunt screenshots, and the shared develop-web-game Playwright client.
+- Visual QA reviewed `output/playwright/id41-objective-target-race.png`, `output/playwright/id41-objective-target-stunt.png`, and `output/web-game/id41-objective-target-hints/shot-1.png`.
+- Follow-up candidates: optional on-screen target arrow for off-camera objectives, mode-specific distance thresholds, and live playtesting for whether the hint should hide when targets are directly visible.
+
+2026-06-10 InfernoDrift4.1 objective chevron polish batch:
+
+- Added a small directional chevron to the existing objective chip for marker-guided modes, driven by `hud.objectiveTarget.direction`.
+- Kept the affordance CSS-only and inside the existing objective chip; no new HUD layer, assets, marker system, or gameplay logic was added.
+- Extended `smoke_games.mjs` to verify the chip `data-direction` matches the structured objective target direction for marker-guided modes.
+- Validation passed: `node --check script.js`, `node --check smoke_games.mjs`, `git diff --check`, `npm run smoke`, `npm run typecheck`, `npm run test:e2e`, `npm run smoke:firebase`, targeted desktop/phone objective-chip screenshots, and the shared develop-web-game Playwright client.
+- Visual QA reviewed `output/playwright/id41-objective-chevron-desktop.png`, `output/playwright/id41-objective-chevron-phone.png`, and `output/web-game/id41-objective-chevron/shot-1.png`.
+- Follow-up candidates: optional stronger off-screen arrow only if playtesting shows the chip hint is still too subtle.
+
+2026-06-10 InfernoDrift4.1 post-polish cache boundary batch:
+
+- Bumped the 4.1 client build/cache token from `20260610-id41-polish-v5` to `20260610-id41-polish-v12` across `index.html`, `script.js`, and smoke expectations so deployed browsers fetch the latest lobby, objective, mobile, and welcome polish together.
+- Kept storage/save keys, release welcome persistence, and gameplay systems unchanged; this batch only updates the cache boundary and runtime build id.
+- Validation passed: `node --check script.js`, `node --check smoke_games.mjs`, `node --check smoke_account_xp_safety.mjs`, `git diff --check`, `npm run typecheck`, `npm run smoke`, and `npm run smoke:account-xp`.
+- Browser readback verified `script.js?v=20260610-id41-polish-v12`, `style.css?v=20260610-id41-polish-v12`, `clientBuildId: 20260610-id41-polish-v12`, `product: InfernoDrift4.1`, and `infernoDrift4.releaseWelcome.4_1`.
+- Visual QA reviewed `output/playwright/id41-cache-boundary-readback.png` and `output/web-game/id41-cache-boundary/shot-0.png`; no shared-client console error artifact was produced.
+- Follow-up candidates: final completion audit across renamed/cached surfaces, optional live Firebase smoke when owner/backend state is available, and a last mobile pass before packaging.
+
+2026-06-10 InfernoDrift4.1 lobby ready-state batch:
+
+- Added a ready/not-ready flag to existing Firebase lobby member data, with a transaction-backed `updateLobbyReady` service method so simultaneous toggles do not overwrite the member list.
+- Added a compact Ready stat, per-driver ready chips, and a Mark Ready/Ready toggle inside the existing Online lobby card; the copy keeps the shared live sync state clear.
+- Kept the feature inside the existing lobby snapshot/render path. No new lobby protocol family, room screen, save key, or gameplay physics change was added.
+- Added phone-specific ready-row wrapping and bumped the client build/cache token to `20260610-id41-polish-v13`.
+- Extended `smoke_games.mjs` to verify the ready stat, local ready state, button text, ARIA pressed state, and exported `online.room.ready` object.
+- Validation passed: `node --check script.js`, `node --check firebase-online.js`, `node --check smoke_games.mjs`, `node --check smoke_account_xp_safety.mjs`, `git diff --check`, `npm run typecheck`, `npm run smoke`, `npm run smoke:account-xp`, `node --test tests/firebase-online.test.mjs`, `npm run smoke:firebase`, `npm run test:e2e`, targeted ready-state screenshots, and the shared develop-web-game Playwright client.
+- Visual QA reviewed `output/playwright/id41-lobby-ready-card-desktop.png`, `output/playwright/id41-lobby-ready-phone-landscape-card-visible.png`, `output/playwright/id41-lobby-ready-phone-landscape-toggle-visible.png`, and `output/web-game/id41-lobby-ready/shot-0.png`.
+- Follow-up candidates: live two-browser Firebase ready toggle verification when owner/backend state is available, optional host-only Start Together affordance, and final release completion audit.
+
+2026-06-10 InfernoDrift4.1 release metadata and sign-off docs batch:
+
+- Added polished browser metadata to `index.html`: description, application name, Apple web app title, and Open Graph title/description/type for the 4.1 release.
+- Bumped the client build/cache token from `20260610-id41-polish-v13` to `20260610-id41-polish-v14` across index, script import, runtime build id, and smoke expectations.
+- Updated README and current release docs so QA/sign-off evidence reflects the 2026-06-10 InfernoDrift4.1 polish batches instead of leading with older May rescue evidence.
+- Kept old Pages smoke entries explicitly labeled as recorded historical evidence, not current local v14 proof.
+- Validation passed: `node --check script.js`, `node --check firebase-online.js`, `node --check smoke_games.mjs`, `node --check smoke_account_xp_safety.mjs`, `git diff --check`, `npm run typecheck`, `npm run smoke`, `npm run smoke:account-xp`, `npm run smoke:firebase`, `npm run test:e2e`, direct browser metadata/cache readback, and the shared develop-web-game Playwright client.
+- Browser readback verified title, meta description, application name, Apple web app title, Open Graph title/description, `style.css?v=20260610-id41-polish-v14`, `script.js?v=20260610-id41-polish-v14`, runtime `clientBuildId: 20260610-id41-polish-v14`, `product: InfernoDrift4.1`, and `infernoDrift4.releaseWelcome.4_1`.
+- Visual QA reviewed `output/playwright/id41-release-metadata-readback.png` and `output/web-game/id41-release-metadata/shot-0.png`.
+- Follow-up candidates: run live Firebase two-browser ready-state smoke if owner/browser auth state is available, then do the final requirement-by-requirement completion audit.
+
+2026-06-10 InfernoDrift4.1 final live-Firebase and leaderboard safety audit batch:
+
+- Ran the full final audit gates and fixed a live Firebase regression where a dirty high-XP live leaderboard row could still pull the synthetic `ChatGPT (Codex)` system row above the suspect XP threshold.
+- Capped Codex leaderboard chasing against `SPECIAL_BADGE_SUSPECT_XP`, added a regression in `smoke_account_xp_safety.mjs`, and bumped the client build/cache token to `20260610-id41-polish-v15`.
+- Restored both player-facing live-room clarity phrases in the Online lobby card: `Shared live room active` and `shared live sync`.
+- Improved room-card text extraction by separating `Online lobby` from the copyable room code in DOM text.
+- Validation passed: `node --check script.js`, `node --check smoke_games.mjs`, `node --check smoke_account_xp_safety.mjs`, `git diff --check`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke`, `npm run smoke:account-xp`, `npm run smoke:firebase`, `npm run smoke:firebase-live`, `npm run test:e2e`, final browser metadata/cache readback, and the shared develop-web-game Playwright client.
+- Live Firebase smoke passed against project `infernodrift4-online`: account `Smoke1f3f14dd46`, lobby `JYTNN`, diagnostics `ok`, transport `firebase`, expected WebSocket status `firebase_no_authoritative_websocket`.
+- Browser readback verified `style.css?v=20260610-id41-polish-v15`, `script.js?v=20260610-id41-polish-v15`, runtime `clientBuildId: 20260610-id41-polish-v15`, `product: InfernoDrift4.1`, and `infernoDrift4.releaseWelcome.4_1`.
+- Visual QA reviewed `output/playwright/id41-final-v15-readback.png` and `output/web-game/id41-final-v15/shot-0.png`; no shared-client console error artifact was produced.
+- Final audit note: optional new vehicle modes such as plane/boat/platformer were deferred as too risky for this polish release; the implemented 4.1 scope remains the upgraded ID4 driving game with safer online, mobile, menu, objective, visual, and metadata polish.
+
+2026-06-10 InfernoDrift4.1 completion gate:
+
+- Ran the remaining documented online/legacy-worker gates after the v15 live Firebase fix.
+- Validation passed: `npm run smoke:online-local`, `npm run worker:check`, and `npm run worker:types`.
+- Local online smoke covered two local players, bot fill, sanitized chat, child chat gate behavior, leaderboard rows, and stored feedback fallback.
+- Worker dry-run and generated types remain valid for the legacy Cloudflare fallback/reference stack.
+- Completion decision: InfernoDrift4.1 is ready as a focused polish-and-upgrade release; no required feature, rename, multiplayer, mobile, menu, UI, gameplay, or documentation gate remains open.

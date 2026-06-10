@@ -24,6 +24,25 @@ const smokeUrl = process.env.SMOKE_URL || "http://127.0.0.1:4173/index.html";
 const smokeUsername = `RunnerRacer${Date.now().toString().slice(-6)}`;
 await page.goto(smokeUrl, { waitUntil: "commit", timeout: 45000 });
 await waitForGameHook(page);
+
+const initialUi = JSON.parse(await page.evaluate(() => window.render_game_to_text())).ui;
+assert.equal(initialUi.product, "InfernoDrift4.1");
+assert.equal(initialUi.clientBuildId, "20260610-id41-polish-v15");
+assert.equal(initialUi.releaseWelcome.visible, true);
+assert.equal(await page.locator("#release-welcome-title").textContent(), "Welcome to InfernoDrift4.1");
+assert.equal(
+  (await page.locator("#release-welcome-start").textContent())?.trim(),
+  "Start Driving",
+);
+await page.locator("#release-welcome-start").click({ force: true });
+await page.waitForTimeout(180);
+const dismissedWelcome = await page.evaluate(() =>
+  window.__infernodriftTestApi.getReleaseWelcomeStateForTest(),
+);
+assert.equal(dismissedWelcome.visible, false);
+assert.equal(dismissedWelcome.dismissed, true);
+assert.equal(dismissedWelcome.stored, true);
+
 await page.evaluate((username) => {
   window.__infernodriftTestApi.configureOnlineForTest({
     backendMode: "websocket",
@@ -204,9 +223,35 @@ assert.ok(leftProbe.screenX < 0.5);
 await openMenu(page);
 await page.locator('[data-tab="online"]').click({ force: true });
 await page.waitForTimeout(150);
+const onlineFlowSteps = await page
+  .locator(".online-flow-step")
+  .evaluateAll((nodes) =>
+    nodes.map((node) => node.textContent.trim().replace(/\s+/g, " ")),
+  );
+assert.deepEqual(onlineFlowSteps, [
+  "1 Connect or sign in",
+  "2 Create or join a lobby",
+  "3 Share the code and drive",
+]);
+assert.match(
+  (await page.locator("#online-create-room").textContent())?.trim() || "",
+  /^Create (Online|Private) Lobby$/,
+);
+assert.equal(
+  (await page.locator("#online-join-room").textContent())?.trim(),
+  "Join Lobby",
+);
+assert.match(
+  (await page.locator("#online-room-state").textContent()) ?? "",
+  /connect|create|join|lobby/i,
+);
 assert.match(
   (await page.locator("#online-status").textContent()) ?? "",
   /online|connected|backend|firebase/i,
+);
+assert.match(
+  (await page.locator("#online-presence").textContent()) ?? "",
+  /Online drivers/i,
 );
 await page.locator("#online-username").fill(smokeUsername);
 await page.locator("#online-age").fill("12");
@@ -901,15 +946,23 @@ assert.ok(maxState.bots.some((bot) => bot.team === "blue"));
 assert.match(await page.locator("#hud-world").textContent(), /\S/);
 assert.match(await page.locator("#hud-level").textContent(), /\S/);
 
-await page.keyboard.down("w");
-await page.evaluate(() => window.advanceTime(1400));
-await page.keyboard.up("w");
+await page.evaluate(() => {
+  window.__infernodriftTestApi.setTouchInputForTest({ steer: 0, boost: true });
+  window.advanceTime(1400);
+});
 const maxSpeedState = JSON.parse(
   await page.evaluate(() => window.render_game_to_text()),
 );
 assert.ok(
   maxSpeedState.player.speed_mph >= 38,
   `Max Arena acceleration should feel lively, got ${maxSpeedState.player.speed_mph} mph`,
+);
+await page.evaluate(() =>
+  window.__infernodriftTestApi.setTouchInputForTest({
+    steer: 0,
+    throttle: false,
+    boost: false,
+  }),
 );
 const xpBalance = await page.evaluate(() => ({
   fastRace: window.__infernodriftTestApi.estimateModeRewardsForTest("race", {
@@ -1033,6 +1086,16 @@ for (const modeId of requiredModes) {
   assert.ok(state.modeInfo.label);
   assert.ok(state.modeInfo.objective);
   assert.ok(state.modeInfo.rewardPreview);
+  assert.match(state.hud.objectivePrompt || "", /\w/);
+  if (["race", "time-trial", "stunt-park", "ramp-rush", "lava-floor"].includes(modeId)) {
+    assert.match(state.hud.objectivePrompt, /\d+m (ahead|behind)/i);
+    assert.ok(state.hud.objectiveTarget?.distance > 0);
+    assert.match(state.hud.objectiveTarget?.direction || "", /ahead|behind/i);
+    assert.equal(
+      await page.locator("#mode-objective-chip").getAttribute("data-direction"),
+      state.hud.objectiveTarget.direction,
+    );
+  }
   assert.ok(state.progression.levelNumber >= 1);
   if (
     [
@@ -1070,6 +1133,7 @@ for (const modeId of requiredModes) {
   assert.equal(await page.locator("#mode-help-card").isVisible(), true);
   if (modeId === "race") {
     assert.equal(state.modeInfo.scene, "track");
+    assert.match(state.hud.objectivePrompt, /Gate/i);
     assert.ok(state.track.checkpoints >= 9);
     assert.equal(
       typeof (state.race?.trackBounded ?? state.track.trackBounded),
@@ -1088,22 +1152,26 @@ for (const modeId of requiredModes) {
   }
   if (modeId === "stunt-park") {
     assert.equal(state.bots.length, 0);
+    assert.match(state.hud.objectivePrompt, /ring|loop/i);
     assert.ok(state.markers.some((marker) => marker.kind === "loop"));
     assert.equal(typeof state.stunt.combo, "number");
   }
   if (modeId === "ramp-rush") {
     assert.equal(state.bots.length, 0);
+    assert.match(state.hud.objectivePrompt, /ring|loop/i);
     assert.ok(
       state.markers.filter((marker) => marker.kind === "ring").length >= 8,
     );
   }
   if (modeId === "lava-floor") {
     assert.equal(state.modeInfo.scene, "lava");
+    assert.match(state.hud.objectivePrompt, /safe platform/i);
     assert.ok(state.lava.platformHeight > 0);
     assert.ok(state.bots.length >= 1);
   }
   if (modeId === "boost-bowling") {
     assert.equal(state.modeInfo.scene, "bowling");
+    assert.match(state.hud.objectivePrompt, /Aim|Steer|pins/i);
     assert.equal(
       state.markers.filter((marker) => marker.kind === "pin").length,
       10,
@@ -1114,6 +1182,7 @@ for (const modeId of requiredModes) {
   }
   if (modeId === "battle-arena") {
     assert.equal(state.modeInfo.scene, "battle");
+    assert.match(state.hud.objectivePrompt, /Fire|Reloading|Ammo/i);
     assert.equal(state.battle.team, "blue");
     assert.equal(state.battle.health, 180);
     assert.equal(state.battle.ammo, 10);
@@ -1623,6 +1692,112 @@ assert.equal(roomJoinState.running, true);
 assert.equal(roomJoinState.ui.screen, "playing");
 assert.equal(roomJoinState.online.room.code, "BTTL7");
 assert.equal(roomJoinState.online.room.liveRole, "host");
+assert.equal(roomJoinState.online.room.ready.readyCount, 0);
+assert.equal(roomJoinState.online.room.ready.playerCount, 1);
+assert.equal(roomJoinState.online.room.ready.local, false);
+assert.equal(roomJoinState.online.presence.count, 1);
+assert.equal(roomJoinState.online.presence.status, "estimated");
+await openMenu(page);
+await page.locator('[data-tab="online"]').click({ force: true });
+await page.waitForTimeout(100);
+assert.equal(
+  (await page.locator("#online-room-state .online-room-code-pill").textContent())?.trim(),
+  "BTTL7 Copy",
+);
+const roomSummaryText = ((await page.locator("#online-room-state").textContent()) ?? "").replace(
+  /\s+/g,
+  " ",
+);
+assert.match(roomSummaryText, /Online lobby/i);
+assert.match(roomSummaryText, /Battle Arena/i);
+assert.match(roomSummaryText, /shared live sync/i);
+const roomStats = await page
+  .locator("#online-room-state .online-room-stat")
+  .evaluateAll((nodes) =>
+    Object.fromEntries(
+      nodes.map((node) => [
+        node.querySelector("span")?.textContent?.trim() || "",
+        node.querySelector("strong")?.textContent?.trim() || "",
+      ]),
+    ),
+);
+assert.equal(roomStats.Drivers, "1/2");
+assert.equal(roomStats.Ready, "0/1");
+assert.equal(roomStats.Sync, "Live");
+await page.locator("#online-room-state .online-room-code-pill").click({ force: true });
+await page.waitForTimeout(150);
+const copiedRoomSummaryText = (
+  (await page.locator("#online-room-state").textContent()) ?? ""
+).replace(/\s+/g, " ");
+assert.match(copiedRoomSummaryText, /Code (copied|selected)/i);
+const sharePendingState = await page.evaluate(() =>
+  window.__infernodriftTestApi.setLobbyPendingForTest({ share: true }),
+);
+assert.equal(sharePendingState.room.sharePending, true);
+assert.equal(await page.locator("#online-room-state").getAttribute("aria-busy"), "true");
+assert.equal(
+  await page.locator("#online-room-state").evaluate((node) =>
+    node.classList.contains("online-room-card-pending"),
+  ),
+  true,
+);
+assert.equal(await page.locator("#online-share-room").textContent(), "Sharing...");
+assert.equal(await page.locator("#online-share-room").getAttribute("aria-busy"), "true");
+assert.equal(await page.locator("#online-share-room").isDisabled(), true);
+assert.equal(await page.locator("#online-create-room").isDisabled(), true);
+const joinPendingState = await page.evaluate(() =>
+  window.__infernodriftTestApi.setLobbyPendingForTest({
+    join: true,
+    code: "BTTL7",
+  }),
+);
+assert.equal(joinPendingState.room.joinPending, true);
+assert.equal(joinPendingState.room.joinPendingCode, "BTTL7");
+assert.match(
+  ((await page.locator("#online-room-state").textContent()) ?? "").replace(/\s+/g, " "),
+  /Joining lobby BTTL7/i,
+);
+assert.equal(await page.locator("#online-join-room").textContent(), "Joining...");
+assert.equal(await page.locator("#online-join-room").getAttribute("aria-busy"), "true");
+assert.equal(await page.locator("#online-join-room").isDisabled(), true);
+await page.evaluate(() => window.__infernodriftTestApi.setLobbyPendingForTest());
+const soloMemberRows = await page
+  .locator("#online-room-state .online-room-member")
+  .evaluateAll((nodes) => nodes.map((node) => node.textContent?.replace(/\s+/g, " ").trim()));
+assert.ok(
+  soloMemberRows.some((text) => /You/i.test(text || "") && /Host/i.test(text || "")),
+  "solo lobby should identify the current host driver",
+);
+assert.ok(
+  soloMemberRows.some((text) => /Open slot/i.test(text || "")),
+  "solo lobby should show the remaining open slot",
+);
+assert.equal(
+  await page.locator("#online-room-state .online-room-ready-toggle").textContent(),
+  "Mark Ready",
+);
+assert.equal(
+  await page.locator("#online-room-state .online-room-ready-toggle").getAttribute("aria-pressed"),
+  "false",
+);
+const readyState = await page.evaluate(() =>
+  window.__infernodriftTestApi.setLobbyReadyForTest(true),
+);
+assert.equal(readyState.local, true);
+assert.equal(readyState.readyCount, 1);
+assert.equal(readyState.allReady, true);
+assert.equal(
+  await page.locator("#online-room-state .online-room-ready-toggle").textContent(),
+  "Ready",
+);
+assert.equal(
+  await page.locator("#online-room-state .online-room-ready-toggle").getAttribute("aria-pressed"),
+  "true",
+);
+assert.match(
+  ((await page.locator("#online-room-state").textContent()) ?? "").replace(/\s+/g, " "),
+  /Ready 1\/1|All joined drivers are ready/i,
+);
 const duelRoomState = await page.evaluate(() => {
   window.__infernodriftTestApi.simulateRoomJoinForTest({
     code: "DUEL1",
@@ -1643,6 +1818,20 @@ const duelRoomState = await page.evaluate(() => {
 assert.equal(duelRoomState.battle.team, "red");
 assert.equal(duelRoomState.bots.length, 0);
 assert.equal(duelRoomState.online.room.botFill, false);
+await openMenu(page);
+await page.locator('[data-tab="online"]').click({ force: true });
+await page.waitForTimeout(100);
+const duelMemberRows = await page
+  .locator("#online-room-state .online-room-member")
+  .evaluateAll((nodes) => nodes.map((node) => node.textContent?.replace(/\s+/g, " ").trim()));
+assert.ok(
+  duelMemberRows.some((text) => /Host/i.test(text || "") && /Blue/i.test(text || "")),
+  "duel lobby should show the blue host",
+);
+assert.ok(
+  duelMemberRows.some((text) => /Joiner/i.test(text || "") && /Red/i.test(text || "") && /You/i.test(text || "")),
+  "duel lobby should show the current red joiner",
+);
 const maxLiveState = await page.evaluate(() => {
   window.__infernodriftTestApi.simulateRoomJoinForTest({
     code: "MAX77",

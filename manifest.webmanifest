@@ -1,7 +1,7 @@
 {
-  "name": "InfernoDrift4",
-  "short_name": "InfernoDrift4",
-  "description": "Neon-fire survival drifting evolved from the current InfernoDrift.",
+  "name": "InfernoDrift4.1",
+  "short_name": "InfernoDrift4.1",
+  "description": "Neon-fire survival drifting with cleaner menus, smoother online flow, and upgraded mobile polish.",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#07101a",

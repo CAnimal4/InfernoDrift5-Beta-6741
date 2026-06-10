@@ -8,7 +8,7 @@ const baseUrl =
 const SAVE_STORAGE_KEY = "infernoDrift4.save.v1";
 const ONLINE_STORAGE_KEY = "infernoDrift4.online.v1";
 const ACCOUNT_SAVE_STORAGE_PREFIX = "infernoDrift4.accountSave.v1:";
-const EXPECTED_CLIENT_BUILD_ID = "20260531-no-zero-repair-v4";
+const EXPECTED_CLIENT_BUILD_ID = "20260610-id41-polish-v15";
 
 async function openPageWithStorage(seedStorage) {
   const browser = await chromium.launch({ headless: true });
@@ -545,6 +545,43 @@ const dirtySave = {
   assert.ok(codex, "Codex row is present");
   assert.ok(codex.xp < 90000, "dirty server Codex XP is ignored");
   assert.equal(result.leaderboard[0].username, "ChatGPT (Codex)");
+  await browser.close();
+}
+
+{
+  const { browser, page } = await openPageWithStorage({});
+  const result = await page.evaluate(() => {
+    window.__infernodriftTestApi.setLeaderboardRowsForTest([
+      {
+        userId: "dirty-live-real",
+        username: "DirtyLiveReal",
+        source: "server",
+        account: true,
+        xp: 152555,
+        totalXp: 152555,
+      },
+      {
+        userId: "normal-driver",
+        username: "NormalDriver",
+        source: "server",
+        account: true,
+        xp: 23450,
+        totalXp: 23450,
+      },
+    ]);
+    const diagnostics = JSON.parse(window.render_game_to_text());
+    return {
+      leaderboard: diagnostics.online.leaderboard,
+    };
+  });
+  const codex = result.leaderboard.find(
+    (row) => row.username === "ChatGPT (Codex)",
+  );
+  assert.ok(codex, "Codex row is present with dirty live real row");
+  assert.ok(
+    codex.xp < 90000,
+    `Codex must not chase suspect live XP; got ${codex.xp}`,
+  );
   await browser.close();
 }
 

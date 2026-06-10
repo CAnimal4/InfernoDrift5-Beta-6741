@@ -30,6 +30,21 @@ page.on("console", (msg) => {
   }
 });
 
+async function dismissReleaseWelcomeIfShown(targetPage) {
+  await targetPage
+    .evaluate(() =>
+      window.__infernodriftTestApi?.dismissReleaseWelcomeForTest?.(),
+    )
+    .catch(() => {});
+  await targetPage
+    .waitForFunction(
+      () => !document.querySelector("#release-welcome")?.classList.contains("show"),
+      null,
+      { timeout: 5000 },
+    )
+    .catch(() => {});
+}
+
 try {
   await page.addInitScript(() => {
     localStorage.setItem(
@@ -49,6 +64,7 @@ try {
   await page.evaluate(() =>
     window.__infernodriftTestApi.dismissSchoolGateForTest(),
   );
+  await dismissReleaseWelcomeIfShown(page);
   await page.waitForFunction(
     () =>
       !document.querySelector("#school-gate")?.classList.contains("show") &&
