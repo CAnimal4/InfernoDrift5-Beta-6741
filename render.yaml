@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: infernodrift5-afterburn
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./apps/afterburn-server/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: AFTERBURN_REGION
+        value: us-west
+      - key: AFTERBURN_ALLOWED_ORIGINS
+        value: https://canimal4.github.io,https://infernodrift5-beta-6741.web.app,https://infernodrift5-beta-6741.firebaseapp.com
+      - key: FIREBASE_PROJECT_ID
+        value: infernodrift5-beta-6741

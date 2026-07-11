@@ -10,6 +10,7 @@ output/rescue-core*/
 output/smoke/
 output/web-game/
 output/web-game-audit*/
+output/afterburn/
 test-results/
 .DS_Store
 .env

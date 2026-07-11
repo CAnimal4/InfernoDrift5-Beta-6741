@@ -646,3 +646,33 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Added smoke regressions for off-center Stunt Park ring fly-throughs, Codex-first ranking above very high real XP rows, and dirty live leaderboard data staying below the suspect XP cap.
 - Validation passed: `node --check script.js`, `node --check smoke_games.mjs`, `node --check smoke_account_xp_safety.mjs`, `npm run smoke`, `npm run smoke:account-xp`, `npm run typecheck`, `npm test`, `npm run build`, `npm run smoke:firebase`, `npm run smoke:firebase-live`, and `npm run test:e2e`.
 - Live Firebase smoke passed against project `infernodrift4-online`: account `Smoked932a03e57`, lobby `WS6AS`, diagnostics `ok`, transport `firebase`, expected WebSocket status `firebase_no_authoritative_websocket`.
+
+2026-07-10 InfernoDrift: Afterburn clean rebuild foundation:
+
+- New user request: rebuild InfernoDrift around dramatically better driving, a cinematic volcanic world, and real authoritative six-player multiplayer.
+- Created branch `codex/infernodrift-afterburn`; preserved existing untracked handoff files and audit output.
+- Replaced the active Vite client surface with an Afterburn React/Three.js experience: live full-canvas title composition, safehouse navigation, Burn Run/Burn Crew/Heat Circuit/Drift Clash/Wreckyard routes, garage, records, settings, minimal HUD, touch controls, Web Audio, and procedural PBR volcanic rendering.
+- Added shared deterministic `packages/afterburn-core` simulation for vehicle grip/slip, drift/boost/jump/recovery, road bounds, hunters, hazards, pickups, co-op revives, scoring, results, progression, legacy Veteran grants, and test snapshots.
+- Added strict protocol v2 and a new `apps/afterburn-server` authoritative 30 Hz room server with private codes, quick queue, bot fill, ready/rematch, host-independent rooms, input sequence validation, 15 Hz snapshots, reconnect sessions, quick chat, server-owned results, health/readiness/metrics endpoints, and Docker packaging.
+- Added deterministic core/protocol tests plus real two-, four-, and six-WebSocket-client room tests. Initial run found protocol unknown fields were being stripped; input frames are now strict so forged score fields are rejected.
+- Remaining work: rerun tests after strict protocol fix, build and browser-smoke the client, visually inspect title/game/menu/mobile screenshots, repair issues, add browser smoke artifacts and final documentation.
+
+2026-07-10 Afterburn professional asset and visual-authenticity pass:
+
+- User correctly flagged the first procedural vehicle/world pass as feeling too AI-generated.
+- Replaced assembled box cars with four authored Kenney Car Kit 3.1 GLB vehicles and added selected Kenney City Kit (Industrial) GLB factory buildings, chimneys, and tanks. Both packs are CC0; source URLs and file use are documented in `client/public/assets/ASSET_LICENSES.md`.
+- Added Poly Haven Asphalt 02 and Rocky Terrain 1K diffuse/normal/roughness maps (CC0), real texture repetition/anisotropy, improved fill/rim lighting, professional vehicle model loading, authored industrial district silhouettes, and jagged mountain geometry.
+- Replaced floating crystal-orb pickups with readable physical fuel cells, boost canisters, and repair cases.
+- Fixed camera start snapping, extended road geometry behind the starting grid, moved grid rows ahead of the local player, and widened phone camera distance to prevent cars from filling/clipping the frame.
+- Browser smoke caught a missing external Kenney `colormap.png`; copied and verified the supplied texture, then reran the full local/multiplayer/mobile flow with zero browser errors.
+- Current smoke artifacts: `output/afterburn/smoke/desktop-burn-run.png`, `desktop-burn-crew-online.png`, `desktop-safehouse.png`, `desktop-results.png`, and `mobile-burn-run.png`.
+- Final validation passed after the asset/camera pass: `npm run typecheck`, `npm test` (8 tests, including real 2/4/6-client rooms), `npm run build`, `npm run build:server`, `npm run smoke:afterburn`, `git diff --check`, and the required shared develop-web-game client in headed WebGL mode.
+- The shared client produced `output/afterburn/shared-final/shot-0.png` and matching text state with no console-error artifact. The project browser smoke produced local gameplay/results, safehouse, authoritative Burn Crew, and phone gameplay screenshots with no browser errors.
+- No commit, push, Firebase rule deployment, server hosting, or public release was performed; those remain explicitly outside the current authorization.
+
+2026-07-10 Afterburn release infrastructure pass:
+
+- Provisioned the isolated no-cost Firebase project `infernodrift5-beta-6741` in Chrome with optional Gemini and Analytics disabled.
+- Added Firebase anonymous-session/profile integration, protocol-v2 Firebase reconnects, public-key server token verification, optional Admin-backed verified Firestore results, locked-down Afterburn rules, and Firebase Hosting configuration.
+- Added a free Render WebSocket deployment blueprint and GitHub Pages build variables for the server and Firebase web configuration.
+- Re-ran typecheck, all eight deterministic/protocol/multiplayer tests, both production builds, the dependency high-severity audit gate, whitespace validation, and the complete browser smoke. Desktop local/results/menu, live four-car Burn Crew, and mobile touch flows passed without browser errors.

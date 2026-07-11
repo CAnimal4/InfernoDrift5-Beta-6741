@@ -10,6 +10,26 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
+    match /afterburnProfiles/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.save is map
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'schemaVersion',
+          'save',
+          'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    match /afterburnVerifiedResults/{resultId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     function safeUsername(value) {
       return value is string
         && value.size() >= 3

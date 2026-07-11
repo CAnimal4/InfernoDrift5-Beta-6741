@@ -21,7 +21,8 @@
   "include": [
     "client/src",
     "client/vite.config.ts",
-    "packages/**/*.ts",
-    "tests/**/*.ts"
+    "packages/afterburn-*/**/*.ts",
+    "apps/afterburn-server/**/*.ts",
+    "tests/afterburn-*.test.ts"
   ]
 }

@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   root: "client",
-  base: "/InfernoDrift4/",
+  base: "./",
   plugins: [react()],
   build: {
     outDir: "../dist",
@@ -12,6 +12,7 @@ export default defineConfig({
   },
   server: {
     host: "127.0.0.1",
-    port: 5173,
+    port: 4173,
+    strictPort: true,
   },
 });

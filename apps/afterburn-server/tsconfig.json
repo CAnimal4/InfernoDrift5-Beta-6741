@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "../..",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "isolatedModules": false
+  },
+  "include": [
+    "src/**/*.ts",
+    "../../packages/afterburn-core/src/**/*.ts",
+    "../../packages/afterburn-protocol/src/**/*.ts"
+  ]
+}
