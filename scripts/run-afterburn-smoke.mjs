@@ -66,6 +66,7 @@ try {
       paints: ["afterglow"],
       activePaint: "afterglow",
       veteran: false,
+      tutorialCompleted: true,
       contractsCompleted: 0,
       bests: {},
       settings: { quality: "low", reducedMotion: true, cameraShake: 0, masterVolume: 0 },
@@ -121,6 +122,27 @@ try {
   await menuPage.waitForSelector(".menu-shell");
   await menuPage.waitForTimeout(450);
   await menuPage.screenshot({ path: path.join(outputDir, "desktop-safehouse.png") });
+  await menuPage.getByRole("button", { name: "Garage" }).click();
+  await menuPage.waitForSelector(".customization-workbench");
+  await menuPage.getByRole("button", { name: /Oil Black/ }).click();
+  assert.equal(await menuPage.evaluate(() => JSON.parse(localStorage.getItem("infernodrift.afterburn.v1") || "{}").activePaint), "oil-black");
+  await menuPage.screenshot({ path: path.join(outputDir, "desktop-customization.png") });
+  await menuPage.getByRole("button", { name: "Settings" }).click();
+  await menuPage.getByLabel("Camera mode").selectOption("cinematic");
+  await menuPage.getByLabel("Speed units").selectOption("kph");
+  await menuPage.getByLabel("High-contrast HUD").check();
+  await menuPage.locator(".menu-content").evaluate((element) => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    element.scrollTop = 0;
+  });
+  await menuPage.waitForTimeout(150);
+  await menuPage.screenshot({ path: path.join(outputDir, "desktop-settings.png") });
+  await menuPage.getByRole("button", { name: "Drive" }).click();
+  await menuPage.getByRole("button", { name: "Tutorial" }).click();
+  await menuPage.waitForSelector(".tutorial-briefing");
+  await menuPage.waitForTimeout(600);
+  await menuPage.screenshot({ path: path.join(outputDir, "desktop-tutorial-briefing.png") });
+  await menuPage.getByRole("button", { name: "Close" }).click();
   await menuPage.locator(".mode-list button", { hasText: "Burn Crew" }).click();
   await menuPage.getByLabel("Driver name").fill("Smoke Driver");
   await menuPage.getByRole("button", { name: "Connect" }).click();
@@ -144,6 +166,26 @@ try {
   await noErrors(menuErrors, "multiplayer flow");
   await desktop.close();
 
+  const tutorialContext = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  await tutorialContext.addInitScript(() => localStorage.clear());
+  const tutorialPage = await tutorialContext.newPage();
+  const tutorialErrors = [];
+  tutorialPage.on("console", (message) => { if (message.type() === "error") tutorialErrors.push(message.text()); });
+  tutorialPage.on("pageerror", (error) => tutorialErrors.push(error.message));
+  await tutorialPage.goto(baseUrl, { waitUntil: "networkidle" });
+  await tutorialPage.locator("#start-btn").evaluate((element) => element.click());
+  await tutorialPage.waitForSelector(".tutorial-briefing");
+  for (let step = 0; step < 4; step += 1) await tutorialPage.getByRole("button", { name: "Next lesson" }).click();
+  await tutorialPage.getByRole("button", { name: "Start training" }).click();
+  await tutorialPage.waitForSelector(".tutorial-coach");
+  await tutorialPage.waitForTimeout(1200);
+  const tutorialState = await state(tutorialPage);
+  assert.equal(tutorialState.tutorial.stage, 0);
+  assert.match(tutorialState.tutorial.objective, /accelerate/);
+  await tutorialPage.screenshot({ path: path.join(outputDir, "desktop-live-training.png") });
+  await noErrors(tutorialErrors, "tutorial flow");
+  await tutorialContext.close();
+
   const mobile = await browser.newContext({
     viewport: { width: 844, height: 390 },
     isMobile: true,
@@ -160,6 +202,7 @@ try {
       paints: ["afterglow"],
       activePaint: "afterglow",
       veteran: false,
+      tutorialCompleted: true,
       contractsCompleted: 0,
       bests: {},
       settings: { quality: "low", reducedMotion: true, cameraShake: 0, masterVolume: 0 },

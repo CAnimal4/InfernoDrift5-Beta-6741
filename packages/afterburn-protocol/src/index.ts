@@ -11,6 +11,12 @@ export const QUICK_CHAT = [
   "Take the shortcut",
   "Ready to extract",
   "Rematch?",
+  "Regroup on me",
+  "Route left",
+  "Route right",
+  "Boosting now",
+  "🔥 Clean drift",
+  "⚠ Hunter close",
 ] as const;
 
 const modeSchema = z.enum(["burn-run", "burn-crew", "heat-circuit", "drift-clash", "wreckyard"]);

@@ -12,6 +12,7 @@ export interface NetworkState {
   packetLoss: number;
   message: string;
   quickMessage: string;
+  quickLog: string[];
 }
 
 type Listener = (state: NetworkState) => void;
@@ -28,6 +29,7 @@ export class MultiplayerClient {
     packetLoss: 0,
     message: "Local drive ready",
     quickMessage: "",
+    quickLog: [],
   };
   private socket: WebSocket | null = null;
   private listener: Listener | null = null;
@@ -91,6 +93,11 @@ export class MultiplayerClient {
     this.send({ type: "room.join", code: code.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) });
   }
 
+  leaveRoom() {
+    this.send({ type: "room.leave" });
+    this.patch({ room: null, snapshot: null, message: "Left room · server online" });
+  }
+
   ready(ready: boolean) {
     this.send({ type: "match.ready", ready });
   }
@@ -149,7 +156,8 @@ export class MultiplayerClient {
       return;
     }
     if (message.type === "quick.message") {
-      this.patch({ quickMessage: `${message.name}: ${message.text}` });
+      const line = `${message.name}: ${message.text}`;
+      this.patch({ quickMessage: line, quickLog: [...this.state.quickLog, line].slice(-8) });
       window.setTimeout(() => this.patch({ quickMessage: "" }), 2400);
       return;
     }

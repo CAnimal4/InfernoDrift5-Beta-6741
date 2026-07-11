@@ -9,7 +9,10 @@ InfernoDrift: Afterburn is a clean TypeScript/Three.js rebuild of InfernoDrift f
 - Heat Circuit: up to six-player contact racing
 - Drift Clash: up to six-player drift scoring
 - Wreckyard: offline free drive
-- Four handling-distinct chassis, local-plus-Firebase progression, daily seeds, garage, records, settings, keyboard/gamepad/touch input, synthesized vehicle audio, and deterministic test hooks
+- Four handling-distinct chassis, local-plus-Firebase progression, daily seeds, career contracts, keyboard/gamepad/touch input, synthesized vehicle audio, and deterministic test hooks
+- A full garage economy with paints, finishes, graphics, forged rims, underglow, reputation gates, credit purchases, and test drives
+- A five-part cinematic briefing plus five live training gates, and expanded graphics/camera/HUD/audio/accessibility/difficulty settings
+- Multiplayer staging with bot-fill choice, private invite codes, ready states, reconnects, tactical chat history, and validated quick-chat/emotes
 - Protocol-v2 Node/WebSocket server with private room codes, quick queue, bot fill, ready/rematch, reconnect sessions, quick chat, server-owned simulation/results, metrics, and Docker packaging
 - Professionally authored CC0 vehicles/environment models plus CC0 PBR road and terrain materials; see `client/public/assets/ASSET_LICENSES.md`
 

@@ -676,3 +676,13 @@ Original prompt: Implement the InfernoDrift4 revamp plan on top of the current I
 - Added Firebase anonymous-session/profile integration, protocol-v2 Firebase reconnects, public-key server token verification, optional Admin-backed verified Firestore results, locked-down Afterburn rules, and Firebase Hosting configuration.
 - Added a free Render WebSocket deployment blueprint and GitHub Pages build variables for the server and Firebase web configuration.
 - Re-ran typecheck, all eight deterministic/protocol/multiplayer tests, both production builds, the dependency high-severity audit gate, whitespace validation, and the complete browser smoke. Desktop local/results/menu, live four-car Burn Crew, and mobile touch flows passed without browser errors.
+
+2026-07-10 Afterburn expansion pack:
+
+- Added a deeper garage economy with seven paints, three finishes, five graphics, four forged-rim sets, four underglow options, live Three.js material/lighting changes, reputation gates, credit purchases, and one-click test drives.
+- Expanded settings to cover graphics, particles, shadows, route lighting, three camera modes, camera distance, FOV, HUD scale, speed units, camera shake, master volume, reduced motion, high contrast, and three color-assist profiles.
+- Added a cinematic five-part tutorial briefing and five live training gates for acceleration, drift, boost, core collection, and recovery, including a one-time certification reward.
+- Upgraded multiplayer staging with bot-fill choice, copyable room invites, richer ready-state roster, leave-room control, persistent tactical comms history, and thirteen validated quick-chat messages/emotes without adding unrestricted public text chat.
+- Added career contract/milestone surfaces and extended deterministic save sanitization coverage. Typecheck, all nine unit/protocol/2-4-6-client tests, both production builds, and whitespace validation pass; browser feature smoke and visual review are next.
+- Added Rookie/Standard/Inferno local pressure scaling while preserving server-owned online rules, wired route-lighting visibility, and corrected migration defaults for older audio/camera saves.
+- Final validation passed: typecheck, 10 deterministic/save/protocol/2-4-6-client tests, client and server production builds, high-severity dependency audit gate, whitespace validation, the expanded project browser smoke, and the required shared develop-web-game client. Reviewed customization, full settings, first-run briefing, live training, multiplayer, desktop gameplay, and mobile gameplay screenshots; no browser error artifact was produced.

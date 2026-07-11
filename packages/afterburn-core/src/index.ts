@@ -149,15 +149,60 @@ export interface RunResult {
   reputation: number;
 }
 
+export const PAINTS = {
+  afterglow: { name: "Afterglow Orange", color: "#ff5a1f", cost: 0, reputation: 0 },
+  "oil-black": { name: "Oil Black", color: "#17191c", cost: 0, reputation: 0 },
+  "reactor-cyan": { name: "Reactor Cyan", color: "#40e9ff", cost: 600, reputation: 300 },
+  "slag-white": { name: "Slag White", color: "#e8e3d9", cost: 900, reputation: 800 },
+  "hazard-lime": { name: "Hazard Lime", color: "#b8f34a", cost: 1400, reputation: 1600 },
+  "violet-arc": { name: "Violet Arc", color: "#b776ff", cost: 1800, reputation: 2400 },
+  "veteran-black": { name: "Veteran Black", color: "#292522", cost: 0, reputation: 0 },
+} as const;
+
+export const DECALS = {
+  none: { name: "Clean body", cost: 0 },
+  slash: { name: "Caldera Slash", cost: 450 },
+  circuit: { name: "Heat Circuit", cost: 800 },
+  rescue: { name: "Crew Rescue", cost: 1100 },
+  veteran: { name: "Veteran Mark", cost: 0 },
+} as const;
+
+export const RIMS = {
+  factory: { name: "Factory Forged", color: "#8c9298", cost: 0 },
+  ember: { name: "Emberline", color: "#ff6b28", cost: 700 },
+  cyan: { name: "Ion Split", color: "#57efff", cost: 950 },
+  blackout: { name: "Blackout", color: "#24272b", cost: 1200 },
+} as const;
+
+export const UNDERGLOWS = {
+  none: { name: "No underglow", color: "#000000", cost: 0 },
+  ember: { name: "Ember Wake", color: "#ff4c18", cost: 900 },
+  cyan: { name: "Cyan Wake", color: "#41efff", cost: 1200 },
+  violet: { name: "Violet Wake", color: "#bf78ff", cost: 1500 },
+} as const;
+
+export type PaintId = keyof typeof PAINTS;
+export type DecalId = keyof typeof DECALS;
+export type RimId = keyof typeof RIMS;
+export type UnderglowId = keyof typeof UNDERGLOWS;
+
 export interface SaveV1 {
   schemaVersion: 1;
   credits: number;
   reputation: number;
   chassis: ChassisId[];
   activeChassis: ChassisId;
-  paints: string[];
-  activePaint: string;
+  paints: PaintId[];
+  activePaint: PaintId;
+  decals: DecalId[];
+  activeDecal: DecalId;
+  rims: RimId[];
+  activeRim: RimId;
+  underglows: UnderglowId[];
+  activeUnderglow: UnderglowId;
+  paintFinish: "satin" | "metallic" | "forged";
   veteran: boolean;
+  tutorialCompleted: boolean;
   contractsCompleted: number;
   bests: Partial<Record<ModeId, number>>;
   settings: {
@@ -165,6 +210,17 @@ export interface SaveV1 {
     reducedMotion: boolean;
     cameraShake: number;
     masterVolume: number;
+    cameraDistance: number;
+    cameraFov: number;
+    hudScale: number;
+    speedUnit: "mph" | "kph";
+    difficulty: "rookie" | "standard" | "inferno";
+    cameraMode: "chase" | "close" | "cinematic";
+    particleDensity: "low" | "medium" | "high";
+    shadows: boolean;
+    highContrast: boolean;
+    colorAssist: "default" | "deuteranopia" | "protanopia" | "tritanopia";
+    showDrivingLine: boolean;
   };
 }
 
@@ -245,9 +301,17 @@ export function defaultSave(veteran = false): SaveV1 {
     reputation: 0,
     chassis: ["vandal"],
     activeChassis: "vandal",
-    paints: veteran ? ["afterglow", "veteran-black"] : ["afterglow"],
+    paints: veteran ? ["afterglow", "oil-black", "veteran-black"] : ["afterglow", "oil-black"],
     activePaint: veteran ? "veteran-black" : "afterglow",
+    decals: veteran ? ["none", "veteran"] : ["none"],
+    activeDecal: veteran ? "veteran" : "none",
+    rims: ["factory"],
+    activeRim: "factory",
+    underglows: ["none"],
+    activeUnderglow: "none",
+    paintFinish: "metallic",
     veteran,
+    tutorialCompleted: false,
     contractsCompleted: 0,
     bests: {},
     settings: {
@@ -255,6 +319,17 @@ export function defaultSave(veteran = false): SaveV1 {
       reducedMotion: false,
       cameraShake: 0.7,
       masterVolume: 0.75,
+      cameraDistance: 1,
+      cameraFov: 1,
+      hudScale: 1,
+      speedUnit: "mph",
+      difficulty: "standard",
+      cameraMode: "chase",
+      particleDensity: "high",
+      shadows: true,
+      highContrast: false,
+      colorAssist: "default",
+      showDrivingLine: true,
     },
   };
 }
@@ -275,10 +350,24 @@ export function sanitizeSave(value: unknown, veteran = false): SaveV1 {
         ? source.activeChassis
         : fallback.activeChassis,
     paints: Array.isArray(source.paints)
-      ? [...new Set(source.paints.filter((paint): paint is string => typeof paint === "string"))].slice(0, 64)
+      ? [...new Set(source.paints.filter((paint): paint is PaintId => typeof paint === "string" && paint in PAINTS))].slice(0, 64)
       : fallback.paints,
-    activePaint: typeof source.activePaint === "string" ? source.activePaint : fallback.activePaint,
+    activePaint: typeof source.activePaint === "string" && source.activePaint in PAINTS ? source.activePaint as PaintId : fallback.activePaint,
+    decals: Array.isArray(source.decals)
+      ? [...new Set(source.decals.filter((decal): decal is DecalId => typeof decal === "string" && decal in DECALS))]
+      : fallback.decals,
+    activeDecal: typeof source.activeDecal === "string" && source.activeDecal in DECALS ? source.activeDecal as DecalId : fallback.activeDecal,
+    rims: Array.isArray(source.rims)
+      ? [...new Set(source.rims.filter((rim): rim is RimId => typeof rim === "string" && rim in RIMS))]
+      : fallback.rims,
+    activeRim: typeof source.activeRim === "string" && source.activeRim in RIMS ? source.activeRim as RimId : fallback.activeRim,
+    underglows: Array.isArray(source.underglows)
+      ? [...new Set(source.underglows.filter((glow): glow is UnderglowId => typeof glow === "string" && glow in UNDERGLOWS))]
+      : fallback.underglows,
+    activeUnderglow: typeof source.activeUnderglow === "string" && source.activeUnderglow in UNDERGLOWS ? source.activeUnderglow as UnderglowId : fallback.activeUnderglow,
+    paintFinish: ["satin", "metallic", "forged"].includes(source.paintFinish ?? "") ? source.paintFinish! : fallback.paintFinish,
     veteran: veteran || Boolean(source.veteran),
+    tutorialCompleted: Boolean(source.tutorialCompleted),
     contractsCompleted: clamp(Math.floor(Number(source.contractsCompleted) || 0), 0, 100_000),
     bests: source.bests && typeof source.bests === "object" ? source.bests : {},
     settings: {
@@ -286,8 +375,19 @@ export function sanitizeSave(value: unknown, veteran = false): SaveV1 {
         ? source.settings!.quality
         : fallback.settings.quality,
       reducedMotion: Boolean(source.settings?.reducedMotion),
-      cameraShake: clamp(Number(source.settings?.cameraShake) || 0, 0, 1),
-      masterVolume: clamp(Number(source.settings?.masterVolume) || 0, 0, 1),
+      cameraShake: clamp(finiteNumber(source.settings?.cameraShake, fallback.settings.cameraShake), 0, 1),
+      masterVolume: clamp(finiteNumber(source.settings?.masterVolume, fallback.settings.masterVolume), 0, 1),
+      cameraDistance: clamp(finiteNumber(source.settings?.cameraDistance, fallback.settings.cameraDistance), 0.75, 1.4),
+      cameraFov: clamp(finiteNumber(source.settings?.cameraFov, fallback.settings.cameraFov), 0.8, 1.25),
+      hudScale: clamp(finiteNumber(source.settings?.hudScale, fallback.settings.hudScale), 0.8, 1.25),
+      speedUnit: source.settings?.speedUnit === "kph" ? "kph" : "mph",
+      difficulty: ["rookie", "standard", "inferno"].includes(source.settings?.difficulty ?? "") ? source.settings!.difficulty : fallback.settings.difficulty,
+      cameraMode: ["chase", "close", "cinematic"].includes(source.settings?.cameraMode ?? "") ? source.settings!.cameraMode : fallback.settings.cameraMode,
+      particleDensity: ["low", "medium", "high"].includes(source.settings?.particleDensity ?? "") ? source.settings!.particleDensity : fallback.settings.particleDensity,
+      shadows: source.settings?.shadows ?? fallback.settings.shadows,
+      highContrast: Boolean(source.settings?.highContrast),
+      colorAssist: ["default", "deuteranopia", "protanopia", "tritanopia"].includes(source.settings?.colorAssist ?? "") ? source.settings!.colorAssist : fallback.settings.colorAssist,
+      showDrivingLine: source.settings?.showDrivingLine ?? fallback.settings.showDrivingLine,
     },
   };
 }
@@ -337,6 +437,21 @@ export function createSimulation(
     events: [],
     winnerIds: [],
   };
+}
+
+export function applyLocalDifficulty(state: SimulationState, difficulty: SaveV1["settings"]["difficulty"]): SimulationState {
+  if (difficulty === "rookie") {
+    state.hunters = state.hunters.filter((hunter) => hunter.archetype === "rammer" || hunter.archetype === "interceptor");
+    state.hazards = state.hazards.filter((_, index) => index % 2 === 0);
+    state.bossIntegrity = 75;
+  } else if (difficulty === "inferno") {
+    state.hunters.forEach((hunter, index) => {
+      hunter.z = -55 - index * 48;
+      hunter.integrity *= 1.35;
+    });
+    state.bossIntegrity = 130;
+  }
+  return state;
 }
 
 function createVehicle(
@@ -872,4 +987,9 @@ function mulberry32(seed: number): () => number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function finiteNumber(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }

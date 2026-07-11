@@ -50,6 +50,9 @@ async function runRoomScenario(clientCount: 2 | 4 | 6) {
       if (message.type !== "room.snapshot") return false;
       return ((message.room as { players: unknown[] }).players?.length ?? 0) === clientCount;
     });
+    clients[0].ws.send(JSON.stringify({ type: "quick.send", text: "Regroup on me" }));
+    const comms = await Promise.all(clients.map((client) => waitFor(client.messages, (message) => message.type === "quick.message" && message.text === "Regroup on me")));
+    assert.equal(comms.length, clientCount);
     for (const client of clients) client.ws.send(JSON.stringify({ type: "match.ready", ready: true }));
     await Promise.all(clients.map((client) => waitFor(client.messages, (message) => message.type === "match.started")));
     const internalRoom = instance.rooms.get(code) as unknown as { simulation: { countdown: number } | null };

@@ -19,7 +19,11 @@ interface CarVisual {
   brakeLights: THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial>[];
   glow: THREE.PointLight;
   materials: THREE.MeshStandardMaterial[];
+  rimMaterial: THREE.MeshStandardMaterial;
+  decalMaterial: THREE.MeshStandardMaterial;
+  decalGroup: THREE.Group;
   assetReady: boolean;
+  style?: PlayerStyle;
 }
 
 interface Spark {
@@ -32,6 +36,20 @@ export interface RendererSettings {
   quality: "low" | "medium" | "high";
   reducedMotion: boolean;
   cameraShake: number;
+  cameraDistance: number;
+  cameraFov: number;
+  cameraMode: "chase" | "close" | "cinematic";
+  particleDensity: "low" | "medium" | "high";
+  shadows: boolean;
+  showDrivingLine: boolean;
+}
+
+export interface PlayerStyle {
+  paint: string;
+  finish: "satin" | "metallic" | "forged";
+  decal: string;
+  rim: string;
+  underglow: string;
 }
 
 export class AfterburnRenderer {
@@ -57,6 +75,8 @@ export class AfterburnRenderer {
   private lastRouteKey = "";
   private lastImpactTick = -1;
   private shake = 0;
+  private playerStyle: PlayerStyle = { paint: "#ff5a1f", finish: "metallic", decal: "none", rim: "#8c9298", underglow: "#000000" };
+  private localPlayerId = "";
   private readonly textureLoader = new THREE.TextureLoader();
   private readonly asphaltTextures: { map: THREE.Texture; normalMap: THREE.Texture; roughnessMap: THREE.Texture };
   private readonly rockTextures: { map: THREE.Texture; normalMap: THREE.Texture; roughnessMap: THREE.Texture };
@@ -77,7 +97,7 @@ export class AfterburnRenderer {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.08;
-    this.renderer.shadowMap.enabled = settings.quality !== "low";
+    this.renderer.shadowMap.enabled = settings.shadows && settings.quality !== "low";
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.setPixelRatio(Math.min(settings.quality === "high" ? 1.75 : 1.15, window.devicePixelRatio || 1));
 
@@ -123,11 +143,19 @@ export class AfterburnRenderer {
   setSettings(settings: RendererSettings) {
     this.settings = settings;
     this.renderer.setPixelRatio(Math.min(settings.quality === "high" ? 1.75 : settings.quality === "medium" ? 1.2 : 1, window.devicePixelRatio || 1));
-    this.renderer.shadowMap.enabled = settings.quality !== "low";
+    this.renderer.shadowMap.enabled = settings.shadows && settings.quality !== "low";
+    this.applyRouteLighting();
     this.resize();
   }
 
+  setPlayerStyle(style: PlayerStyle) {
+    this.playerStyle = style;
+    const visual = this.cars.get(this.localPlayerId);
+    if (visual) applyCarStyle(visual, style);
+  }
+
   update(snapshot: MatchSnapshot, localPlayerId: string, dt: number) {
+    this.localPlayerId = localPlayerId;
     this.lastSnapshot = snapshot;
     const routeKey = `${snapshot.seed}:${snapshot.mode}`;
     const routeChanged = routeKey !== this.lastRouteKey;
@@ -135,7 +163,7 @@ export class AfterburnRenderer {
       this.lastRouteKey = routeKey;
       this.buildRoute(snapshot);
     }
-    this.syncCars(snapshot);
+    this.syncCars(snapshot, localPlayerId);
     this.syncHunters(snapshot);
     this.syncPickups(snapshot);
     this.syncHazards(snapshot);
@@ -298,6 +326,7 @@ export class AfterburnRenderer {
     if (mode === "drift-clash" || mode === "wreckyard") this.buildArena(width);
     else this.buildHighwayDetails(snapshot, segments, width);
     this.buildMountains(snapshot.seed);
+    this.applyRouteLighting();
   }
 
   private buildHighwayDetails(snapshot: MatchSnapshot, segments: number, width: number) {
@@ -310,6 +339,7 @@ export class AfterburnRenderer {
     const markerGeometry = new THREE.BoxGeometry(0.22, 0.08, 8);
     const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xffc05e });
     const markers = new THREE.InstancedMesh(markerGeometry, markerMaterial, segments);
+    markers.userData.routeLighting = true;
     const dummy = new THREE.Object3D();
     for (let index = 0; index < segments; index += 1) {
       const z = (index / segments) * snapshot.routeLength;
@@ -346,10 +376,17 @@ export class AfterburnRenderer {
       beam.position.y = 8.5;
       arch.add(beam);
       arch.position.set(center, 0, z);
+      arch.userData.routeLighting = true;
       this.routeGroup.add(arch);
     }
 
     this.populateIndustrialDistrict(snapshot, width);
+  }
+
+  private applyRouteLighting() {
+    this.routeGroup.traverse((object) => {
+      if (object.userData.routeLighting) object.visible = this.settings.showDrivingLine;
+    });
   }
 
   private populateIndustrialDistrict(snapshot: MatchSnapshot, width: number) {
@@ -440,7 +477,7 @@ export class AfterburnRenderer {
     this.environmentGroup.add(mountains);
   }
 
-  private syncCars(snapshot: MatchSnapshot) {
+  private syncCars(snapshot: MatchSnapshot, localPlayerId: string) {
     const active = new Set(Object.keys(snapshot.players));
     for (const [id, visual] of this.cars) {
       if (!active.has(id)) {
@@ -455,6 +492,7 @@ export class AfterburnRenderer {
         this.cars.set(vehicle.id, visual);
         this.scene.add(visual.root);
       }
+      if (vehicle.id === localPlayerId) applyCarStyle(visual, this.playerStyle);
       updateCar(visual, vehicle, snapshot.elapsed);
     }
   }
@@ -528,8 +566,11 @@ export class AfterburnRenderer {
     const forward = new THREE.Vector3(Math.sin(vehicle.heading), 0, Math.cos(vehicle.heading));
     const speedRatio = Math.min(1, vehicle.speed / CHASSIS[vehicle.chassis].topSpeed);
     const wideMobile = this.camera.aspect > 1.95;
-    const desired = new THREE.Vector3(vehicle.x, vehicle.y + 7.5 + speedRatio * 2.2 + (wideMobile ? 1.8 : 0), vehicle.z)
-      .addScaledVector(forward, -(wideMobile ? 24 : 18) - speedRatio * 9);
+    const modeDistance = this.settings.cameraMode === "close" ? 0.78 : this.settings.cameraMode === "cinematic" ? 1.2 : 1;
+    const distance = this.settings.cameraDistance * modeDistance;
+    const cinematicLift = this.settings.cameraMode === "cinematic" ? 3.2 : 0;
+    const desired = new THREE.Vector3(vehicle.x, vehicle.y + 7.5 + speedRatio * 2.2 + (wideMobile ? 1.8 : 0) + cinematicLift, vehicle.z)
+      .addScaledVector(forward, (-(wideMobile ? 24 : 18) - speedRatio * 9) * distance);
     const look = new THREE.Vector3(vehicle.x, vehicle.y + 2.1, vehicle.z).addScaledVector(forward, 20 + speedRatio * 25);
     const response = 1 - Math.exp(-Math.max(2.8, 6.5 - speedRatio * 2.2) * dt);
     this.cameraPosition.lerp(desired, response);
@@ -544,7 +585,7 @@ export class AfterburnRenderer {
       ),
     );
     this.camera.lookAt(this.cameraLook);
-    const fov = 61 + speedRatio * 11 + (vehicle.boost < 0.98 && vehicle.speed > 35 ? 4 : 0);
+    const fov = (61 + speedRatio * 11 + (vehicle.boost < 0.98 && vehicle.speed > 35 ? 4 : 0)) * this.settings.cameraFov;
     this.camera.fov += (fov - this.camera.fov) * (1 - Math.exp(-4 * dt));
     this.camera.updateProjectionMatrix();
   }
@@ -564,7 +605,7 @@ export class AfterburnRenderer {
   private updateEffects(vehicle: VehicleState, snapshot: MatchSnapshot, dt: number) {
     const drifting = vehicle.slip > 0.13 && vehicle.speed > 16 && vehicle.y < 0.1;
     if (drifting && this.sparks.length < 220) {
-      const count = this.settings.quality === "low" ? 1 : 3;
+      const count = this.settings.particleDensity === "low" ? 1 : this.settings.particleDensity === "medium" ? 2 : 4;
       for (let index = 0; index < count; index += 1) {
         this.sparks.push({
           life: 0.35 + Math.random() * 0.5,
@@ -657,6 +698,7 @@ function makeCar(vehicle: VehicleState, hunter: boolean): CarVisual {
   root.add(splitter);
   const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x050608, roughness: 0.68, metalness: 0.35 });
   const wheels: CarVisual["wheels"] = [];
+  const rimMaterial = new THREE.MeshStandardMaterial({ color: 0x8c9298, metalness: 0.95, roughness: 0.18, emissive: 0x000000 });
   for (const x of [-2.25, 2.25]) {
     for (const z of [-2.55, 2.55]) {
       const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.82, 0.62, 18), wheelMaterial);
@@ -665,8 +707,21 @@ function makeCar(vehicle: VehicleState, hunter: boolean): CarVisual {
       wheel.castShadow = true;
       root.add(wheel);
       wheels.push(wheel);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.53, 0.09, 8, 18), rimMaterial);
+      rim.rotation.y = Math.PI / 2;
+      rim.position.set(x + (x < 0 ? -0.34 : 0.34), 0.85, z);
+      root.add(rim);
     }
   }
+  const decalMaterial = new THREE.MeshStandardMaterial({ color: 0xf5ece3, metalness: 0.55, roughness: 0.3, emissive: 0x000000 });
+  const decalGroup = new THREE.Group();
+  for (const x of [-0.48, 0.48]) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.055, 5.8), decalMaterial);
+    stripe.position.set(x, 2.92, 0.3);
+    decalGroup.add(stripe);
+  }
+  decalGroup.visible = false;
+  root.add(decalGroup);
   const brakeLights: CarVisual["brakeLights"] = [];
   for (const x of [-1.45, 1.45]) {
     const light = new THREE.Mesh(
@@ -693,6 +748,9 @@ function makeCar(vehicle: VehicleState, hunter: boolean): CarVisual {
     brakeLights,
     glow,
     materials: [bodyMaterial],
+    rimMaterial,
+    decalMaterial,
+    decalGroup,
     assetReady: false,
   };
   void attachProfessionalCarModel(visual, vehicle.chassis, hunter);
@@ -713,7 +771,29 @@ function updateCar(visual: CarVisual, vehicle: VehicleState, elapsed: number) {
     material.emissive.setHex(vehicle.integrity < 0.35 ? 0x360600 : 0x000000);
     material.emissiveIntensity = vehicle.integrity < 0.35 ? 0.6 + Math.sin(elapsed * 8) * 0.2 : 0;
   });
-  visual.glow.intensity = vehicle.boost < 0.98 && vehicle.speed > 30 ? 11 : 3.2;
+  visual.glow.intensity = vehicle.boost < 0.98 && vehicle.speed > 30 ? 11 : visual.style ? visual.style.underglow !== "#000000" ? 4.8 : 0.15 : 3.2;
+}
+
+function applyCarStyle(visual: CarVisual, style: PlayerStyle) {
+  const key = `${style.paint}:${style.finish}:${style.decal}:${style.rim}:${style.underglow}`;
+  if (visual.root.userData.styleKey === key) return;
+  visual.root.userData.styleKey = key;
+  visual.style = style;
+  const tint = new THREE.Color(style.paint);
+  for (const material of visual.materials) {
+    const stored = material.userData.afterburnBase as { r: number; g: number; b: number } | undefined;
+    const base = stored ? new THREE.Color(stored.r, stored.g, stored.b) : material.color.clone();
+    if (!stored) material.userData.afterburnBase = { r: base.r, g: base.g, b: base.b };
+    const luminance = base.r * 0.3 + base.g * 0.59 + base.b * 0.11;
+    if (luminance > 0.18) material.color.copy(base).lerp(tint, 0.72);
+    material.metalness = style.finish === "forged" ? 0.9 : style.finish === "metallic" ? 0.68 : 0.42;
+    material.roughness = style.finish === "satin" ? 0.48 : style.finish === "forged" ? 0.16 : 0.25;
+  }
+  visual.decalGroup.visible = style.decal !== "none";
+  visual.decalMaterial.color.set(style.decal === "rescue" ? 0x62efff : style.decal === "circuit" ? 0xff6526 : style.decal === "veteran" ? 0xd8b26a : 0xf4eee7);
+  visual.rimMaterial.color.set(style.rim);
+  visual.rimMaterial.emissive.set(style.rim).multiplyScalar(0.12);
+  visual.glow.color.set(style.underglow === "#000000" ? style.paint : style.underglow);
 }
 
 const vehicleLoader = new GLTFLoader();
@@ -741,6 +821,7 @@ function attachProfessionalCarModel(visual: CarVisual, chassis: VehicleState["ch
           material.emissive.setHex(0x180604);
           material.emissiveIntensity = 0.22;
         }
+        material.userData.afterburnBase = { r: material.color.r, g: material.color.g, b: material.color.b };
         materials.push(material);
         return material;
       });
@@ -761,6 +842,10 @@ function attachProfessionalCarModel(visual: CarVisual, chassis: VehicleState["ch
     visual.root.add(model);
     visual.materials.push(...materials);
     visual.assetReady = true;
+    if (visual.style) {
+      visual.root.userData.styleKey = "";
+      applyCarStyle(visual, visual.style);
+    }
   }).catch(() => {
     visual.assetReady = false;
   });
